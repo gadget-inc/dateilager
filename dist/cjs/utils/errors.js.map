@@ -1,0 +1,1 @@
+{"version":3,"file":"errors.js","sourceRoot":"","sources":["../../../src/utils/errors.ts"],"names":[],"mappings":";;;AAAA;;GAEG;AACH,MAAa,yBAA0B,SAAQ,KAAK;CAAG;AAAvD,8DAAuD","sourcesContent":["/**\n * Thrown when a project already exists in the DL server\n */\nexport class ProjectAlreadyExistsError extends Error {}\n"]}
