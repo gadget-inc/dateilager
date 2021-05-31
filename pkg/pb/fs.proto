@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "github.com/angelini/dateilager/pkg/pb";
+
+service Fs {
+    rpc Get(GetRequest) returns (stream GetResponse);
+
+    rpc Update(stream UpdateRequest) returns (UpdateResponse);
+}
+
+message ObjectQuery {
+    string path = 1;
+    bool is_prefix = 2;
+    bool with_content = 3;
+}
+
+message Object {
+    string path = 1;
+    int32 mode = 2;
+    int32 size = 3;
+    optional bytes contents = 5;
+}
+
+message GetRequest {
+    int32 project = 1;
+    optional int64 version = 2;
+    repeated ObjectQuery queries = 3;
+}
+
+message GetResponse {
+    int64 version = 1;
+    Object object = 2;
+}
+
+message UpdateRequest {
+    int32 project = 1;
+    Object object = 2;
+}
+
+message UpdateResponse {
+    int64 version = 1;
+}
