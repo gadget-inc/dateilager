@@ -1,3 +1,4 @@
 bin/
 input/
+input_old/
 *.pb.go

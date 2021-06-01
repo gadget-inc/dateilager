@@ -1,12 +1,14 @@
 package client
 
 import (
+	"io/ioutil"
 	"os"
+	"strings"
 
 	"github.com/angelini/dateilager/internal/pb"
 )
 
-func readFileObject(path string) (*pb.Object, error) {
+func readFileObject(path, prefix string) (*pb.Object, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -18,15 +20,15 @@ func readFileObject(path string) (*pb.Object, error) {
 		return nil, err
 	}
 
-	var bytes []byte
-	_, err = file.Read(bytes)
+	bytes, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
 	return &pb.Object{
-		Path: path,
-		Mode: int32(info.Mode()),
-		Size: int32(info.Size()),
+		Path:     strings.TrimPrefix(path, prefix),
+		Mode:     int32(info.Mode()),
+		Size:     int32(info.Size()),
+		Contents: bytes,
 	}, nil
 }

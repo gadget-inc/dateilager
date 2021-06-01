@@ -34,7 +34,7 @@ server:
 	go run cmd/server/main.go -dburi $(DB_URI) -port 5051
 
 client-update:
-	go run cmd/client/main.go -project 1 -server localhost:5051 update $(file)
+	go run cmd/client/main.go -project 1 -server localhost:5051 update $(file) $(prefix)
 
 client-get:
 	go run cmd/client/main.go -project 1 -server localhost:5051 get

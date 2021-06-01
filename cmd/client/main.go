@@ -45,18 +45,18 @@ func getLatest(ctx context.Context, log *zap.Logger, c *client.Client, project i
 
 	log.Info("listing objects in project", zap.Int32("project", project))
 	for _, object := range objects {
-		log.Info("object", zap.String("path", object.Path))
+		log.Info("object", zap.String("path", object.Path), zap.String("contents", string(object.Contents)))
 	}
 }
 
-func updateProject(ctx context.Context, log *zap.Logger, c *client.Client, project int32, path string) {
-	content, err := ioutil.ReadFile(path)
+func updateProject(ctx context.Context, log *zap.Logger, c *client.Client, project int32, diff, prefix string) {
+	content, err := ioutil.ReadFile(diff)
 	if err != nil {
-		log.Fatal("cannot read update file", zap.String("path", path), zap.Error(err))
+		log.Fatal("cannot read update file", zap.String("diff", diff), zap.Error(err))
 	}
 
 	filePaths := strings.Split(string(content), "\n")
-	version, err := c.UpdateObjects(ctx, project, filePaths)
+	version, err := c.UpdateObjects(ctx, project, filePaths, prefix)
 	if err != nil {
 		log.Fatal("update objects", zap.Error(err))
 	}
@@ -83,11 +83,11 @@ func main() {
 	case "get":
 		getLatest(ctx, log, c, args.project)
 	case "update":
-		if len(args.args) != 1 {
+		if len(args.args) != 2 {
 			log.Fatal("invalid update args", zap.Any("args", args.args))
 		}
 
-		updateProject(ctx, log, c, args.project, args.args[0])
+		updateProject(ctx, log, c, args.project, args.args[0], args.args[1])
 	default:
 		log.Fatal("unknown command", zap.String("command", args.cmd))
 	}

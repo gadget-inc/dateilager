@@ -64,7 +64,7 @@ func (c *Client) GetLatestRoot(ctx context.Context, project int32) ([]*pb.Object
 	return objects, nil
 }
 
-func (c *Client) UpdateObjects(ctx context.Context, project int32, paths []string) (int64, error) {
+func (c *Client) UpdateObjects(ctx context.Context, project int32, paths []string, prefix string) (int64, error) {
 	stream, err := c.fs.Update(ctx)
 	if err != nil {
 		return -1, fmt.Errorf("connect fs.Update: %w", err)
@@ -75,7 +75,7 @@ func (c *Client) UpdateObjects(ctx context.Context, project int32, paths []strin
 			continue
 		}
 
-		object, err := readFileObject(path)
+		object, err := readFileObject(path, prefix)
 		if err != nil {
 			return -1, fmt.Errorf("read file object: %w", err)
 		}
