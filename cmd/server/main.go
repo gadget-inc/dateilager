@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"net"
-	"os"
 
 	"go.uber.org/zap"
 
@@ -25,27 +26,38 @@ func (d *DbPoolConnector) Connect(ctx context.Context) (*pgx.Conn, api.CloseFunc
 	return conn.Conn(), func() { conn.Release() }, nil
 }
 
+type ServerArgs struct {
+	port  int
+	dbUri string
+}
+
+func parseArgs(log *zap.Logger) ServerArgs {
+	port := flag.Int("port", 5051, "GRPC server port")
+	dbUri := flag.String("dburi", "127.0.0.1:5432", "Postgres URI")
+
+	flag.Parse()
+
+	return ServerArgs{
+		port:  *port,
+		dbUri: *dbUri,
+	}
+}
+
 func main() {
 	ctx := context.Background()
-
 	log, _ := zap.NewDevelopment()
 	defer log.Sync()
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		log.Fatal("missing PORT env variable")
+	args := parseArgs(log)
+
+	listen, err := net.Listen("tcp", fmt.Sprintf(":%d", args.port))
+	if err != nil {
+		log.Fatal("failed to listen", zap.String("protocol", "tcp"), zap.Int("port", args.port))
 	}
 
-	dbUri := os.Getenv("DB_URI")
-
-	listen, err := net.Listen("tcp", port)
+	pool, err := pgxpool.Connect(ctx, args.dbUri)
 	if err != nil {
-		log.Fatal("failed to listen", zap.String("protocol", "tcp"), zap.String("port", port))
-	}
-
-	pool, err := pgxpool.Connect(ctx, dbUri)
-	if err != nil {
-		log.Fatal("cannot connect to DB", zap.String("uri", dbUri))
+		log.Fatal("cannot connect to DB", zap.String("dburi", args.dbUri))
 	}
 	defer pool.Close()
 
@@ -59,7 +71,7 @@ func main() {
 	}
 	s.RegisterFs(ctx, fs)
 
-	log.Info("start server", zap.String("port", port))
+	log.Info("start server", zap.Int("port", args.port))
 	if err := s.Serve(listen); err != nil {
 		log.Fatal("failed to serve", zap.Error(err))
 	}

@@ -8,15 +8,12 @@ spec:
   containers:
   - name: server
     image: localhost/dateilager:server
+    command: ["./server"]
+    args: ["-port=5051", "-dburi=postgres://postgres@10.1.1.3:5432/dl"]
     ports:
       - name: api
         containerPort: 5051
         protocol: TCP
-    env:
-      - name: PORT
-        value: ":5051"
-      - name: DB_URI
-        value: "postgres://postgres@10.1.1.3:5432/dl"
     readinessProbe:
       exec:
         command: ["/bin/grpc_health_probe", "-addr=:5051", "-service=dateilager.server"]

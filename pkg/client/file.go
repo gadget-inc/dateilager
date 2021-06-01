@@ -3,7 +3,7 @@ package client
 import (
 	"os"
 
-	"github.com/angelini/dateilager/pkg/pb"
+	"github.com/angelini/dateilager/internal/pb"
 )
 
 func readFileObject(path string) (*pb.Object, error) {

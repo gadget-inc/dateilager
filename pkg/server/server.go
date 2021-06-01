@@ -5,8 +5,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/angelini/dateilager/internal/pb"
 	"github.com/angelini/dateilager/pkg/api"
-	"github.com/angelini/dateilager/pkg/pb"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"

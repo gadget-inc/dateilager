@@ -1,6 +1,5 @@
 DB_HOST ?= 127.0.0.1
 DB_URI := postgres://postgres@$(DB_HOST):5432/dl
-export DB_URI
 
 PKG_GO_FILES := $(shell find pkg/ -type f -name '*.go')
 MIGRATE_DIR := ./migrations
@@ -16,24 +15,23 @@ install:
 	go install github.com/grpc-ecosystem/grpc-health-probe
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate
 
-test: DB_URI = postgres://postgres@$(DB_HOST):5432/dl_tests
+test: export DB_URI = postgres://postgres@$(DB_HOST):5432/dl_tests
 test: migrate
 	cd test && go test
 
-pkg/pb/%.pb.go: pkg/pb/%.proto
+internal/pb/%.pb.go: pkg/pb/%.proto
 	protoc --experimental_allow_proto3_optional --go_out=. --go_opt=paths=source_relative $^
 
-pkg/pb/%_grpc.pb.go: pkg/pb/%.proto
+internal/pb/%_grpc.pb.go: pkg/pb/%.proto
 	protoc --experimental_allow_proto3_optional --go-grpc_out=. --go-grpc_opt=paths=source_relative $^
 
 bin/%: cmd/%/main.go $(PKG_GO_FILES)
 	go build -o $@ $<
 
-build: pkg/pb/fs.pb.go pkg/pb/fs_grpc.pb.go bin/server bin/client
+build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client
 
-server: export PORT=:5051
 server:
-	go run cmd/server/main.go
+	go run cmd/server/main.go -dburi $(DB_URI) -port 5051
 
 client-update:
 	go run cmd/client/main.go -project 1 -server localhost:5051 update $(file)

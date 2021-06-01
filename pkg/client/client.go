@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/angelini/dateilager/pkg/pb"
+	"github.com/angelini/dateilager/internal/pb"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -35,9 +35,8 @@ func (c *Client) GetLatestRoot(ctx context.Context, project int32) ([]*pb.Object
 	var objects []*pb.Object
 
 	query := &pb.ObjectQuery{
-		Path:        "/",
-		IsPrefix:    true,
-		WithContent: true,
+		Path:     "",
+		IsPrefix: true,
 	}
 
 	request := &pb.GetRequest{
