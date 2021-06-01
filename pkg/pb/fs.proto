@@ -10,17 +10,17 @@ service Fs {
     rpc Update(stream UpdateRequest) returns (UpdateResponse);
 }
 
-message ObjectQuery {
-    string path = 1;
-    bool is_prefix = 2;
-    bool with_content = 3;
-}
-
 message Object {
     string path = 1;
     int32 mode = 2;
     int32 size = 3;
     optional bytes contents = 5;
+}
+
+message ObjectQuery {
+    string path = 1;
+    bool is_prefix = 2;
+    bool with_content = 3;
 }
 
 message GetRequest {
@@ -37,6 +37,7 @@ message GetResponse {
 message UpdateRequest {
     int32 project = 1;
     Object object = 2;
+    bool delete = 3;
 }
 
 message UpdateResponse {

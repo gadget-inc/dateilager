@@ -26,7 +26,7 @@ func newDbTestConnector(ctx context.Context, uri string) (*DbTestConnector, erro
 	return &DbTestConnector{conn: conn, tx: tx}, nil
 }
 
-func (d *DbTestConnector) Connect(ctx context.Context) (*pgx.Conn, api.CancelFunc, error) {
+func (d *DbTestConnector) Connect(ctx context.Context) (*pgx.Conn, api.CloseFunc, error) {
 	return d.conn, func() {}, nil
 }
 

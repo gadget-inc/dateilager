@@ -64,3 +64,37 @@ func (c *Client) GetLatestRoot(ctx context.Context, project int32) ([]*pb.Object
 
 	return objects, nil
 }
+
+func (c *Client) UpdateObjects(ctx context.Context, project int32, paths []string) (int64, error) {
+	stream, err := c.fs.Update(ctx)
+	if err != nil {
+		return -1, fmt.Errorf("connect fs.Update: %w", err)
+	}
+
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+
+		object, err := readFileObject(path)
+		if err != nil {
+			return -1, fmt.Errorf("read file object: %w", err)
+		}
+
+		err = stream.Send(&pb.UpdateRequest{
+			Project: project,
+			Object:  object,
+			Delete:  false,
+		})
+		if err != nil {
+			return -1, fmt.Errorf("send fs.Update: %w", err)
+		}
+	}
+
+	response, err := stream.CloseAndRecv()
+	if err != nil {
+		return -1, fmt.Errorf("close fs.Update: %w", err)
+	}
+
+	return response.Version, nil
+}

@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"io"
 
 	"go.uber.org/zap"
@@ -9,6 +11,11 @@ import (
 	"github.com/angelini/dateilager/pkg/pb"
 	"github.com/jackc/pgx/v4"
 )
+
+func hashContents(data []byte) ([]byte, []byte) {
+	sha := sha256.Sum256(data)
+	return sha[0:16], sha[16:]
+}
 
 type Fs struct {
 	pb.UnimplementedFsServer
@@ -25,7 +32,7 @@ func (f *Fs) getLatestVersion(ctx context.Context, conn *pgx.Conn, project int32
 		FROM dl.projects WHERE id = $1
 		`, project).Scan(&latest_version)
 	if err != nil {
-		return -1, err
+		return -1, fmt.Errorf("FS get latest version: %w", err)
 	}
 
 	return latest_version, nil
@@ -86,7 +93,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	for _, query := range req.Queries {
 		objects, err := f.getObjects(ctx, conn, req.Project, version, query)
 		if err != nil {
-			return err
+			return fmt.Errorf("FS get objects: %w", err)
 		}
 
 		for {
@@ -105,6 +112,121 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	return nil
 }
 
-func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
+func (f *Fs) deleteObject(ctx context.Context, conn *pgx.Conn, project int32, version int64, object *pb.Object) error {
+	_, err := conn.Exec(ctx, `
+		UPDATE dl.objects
+		SET stop_version = $1
+		WHERE project = $2
+		  AND path = $3
+		  AND stop_version IS NULL
+		`, version, project, object.Path)
+	if err != nil {
+		return fmt.Errorf("update deleted object: %w", err)
+	}
+
 	return nil
+}
+
+func (f *Fs) updateObject(ctx context.Context, conn *pgx.Conn, project int32, version int64, object *pb.Object) error {
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("FS update object create transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, `
+		UPDATE dl.objects SET stop_version = $1
+		WHERE project = $2
+		  AND path = $3
+		  AND stop_version IS NULL
+		`, version, project, object.Path)
+	if err != nil {
+		return fmt.Errorf("FS update latest version: %w", err)
+	}
+
+	contents := object.Contents
+	if contents == nil {
+		contents = []byte("")
+	}
+	h1, h2 := hashContents(contents)
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size)
+		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7)
+		`, project, version, object.Path, h1, h2, object.Mode, object.Size)
+	if err != nil {
+		return fmt.Errorf("FS insert new object version: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
+	ctx := stream.Context()
+
+	conn, cancel, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// We only receive a project ID after the first streamed update
+	project := int32(-1)
+	version := int64(-1)
+
+	for {
+		request, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("FS receive update request: %w", err)
+		}
+
+		if project == -1 {
+			project = request.Project
+
+			latest_version, err := f.getLatestVersion(ctx, conn, project)
+			if err != nil {
+				return err
+			}
+
+			version = latest_version + 1
+			f.Log.Info("project update", zap.Int32("project", project), zap.Int64("version", version))
+		}
+
+		if project != request.Project {
+			return fmt.Errorf("multiple projects in one update call: %v %v", project, request.Project)
+		}
+
+		if request.Delete {
+			err = f.deleteObject(ctx, conn, project, version, request.Object)
+		} else {
+			err = f.updateObject(ctx, conn, project, version, request.Object)
+		}
+
+		if err != nil {
+			f.Log.Error("FS update", zap.Error(err))
+			return fmt.Errorf("FS update: %w", err)
+		}
+	}
+
+	tx.Exec(ctx, `
+		UPDATE dl.projects
+		SET latest_version = $1
+		WHERE id = $2
+		`, version, project)
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("FS update commit tx: %w", err)
+	}
+
+	return stream.SendAndClose(&pb.UpdateResponse{Version: version})
 }

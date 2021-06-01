@@ -16,7 +16,7 @@ spec:
       - name: PORT
         value: ":5051"
       - name: DB_URI
-        value: "postgres://postgres@10.1.1.3:5432/files"
+        value: "postgres://postgres@10.1.1.3:5432/dl"
     readinessProbe:
       exec:
         command: ["/bin/grpc_health_probe", "-addr=:5051", "-service=dateilager.server"]

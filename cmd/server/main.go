@@ -17,7 +17,7 @@ type DbPoolConnector struct {
 	pool *pgxpool.Pool
 }
 
-func (d *DbPoolConnector) Connect(ctx context.Context) (*pgx.Conn, api.CancelFunc, error) {
+func (d *DbPoolConnector) Connect(ctx context.Context) (*pgx.Conn, api.CloseFunc, error) {
 	conn, err := d.pool.Acquire(ctx)
 	if err != nil {
 		return nil, nil, err

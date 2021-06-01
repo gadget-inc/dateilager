@@ -6,8 +6,8 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
-type CancelFunc func()
+type CloseFunc func()
 
 type DbConnector interface {
-	Connect(context.Context) (*pgx.Conn, CancelFunc, error)
+	Connect(context.Context) (*pgx.Conn, CloseFunc, error)
 }

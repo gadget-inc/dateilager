@@ -6,8 +6,8 @@ PKG_GO_FILES := $(shell find pkg/ -type f -name '*.go')
 MIGRATE_DIR := ./migrations
 SERVICE := dateilager.server
 
-.PHONY: install test build server client health
-.PHONY: k8s-clear k8s-build k8s-deploy k8s-client k8s-health
+.PHONY: install test build server client-update client-get health
+.PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-health
 .PHONY: migrate migrate-create
 
 install:
@@ -35,9 +35,11 @@ server: export PORT=:5051
 server:
 	go run cmd/server/main.go
 
-client: export SERVER=localhost:5051
-client:
-	go run cmd/client/main.go
+client-update:
+	go run cmd/client/main.go -project 1 -server localhost:5051 update $(file)
+
+client-get:
+	go run cmd/client/main.go -project 1 -server localhost:5051 get
 
 health: export SERVER=localhost:5051
 health:
@@ -53,17 +55,21 @@ k8s-build: build
 	podman save -o /tmp/dateilager_server.tar --format oci-archive "dateilager:server"
 	sudo ctr -n k8s.io images import /tmp/dateilager_server.tar
 
-k8s-deploy: clear-k8s build-k8s
+k8s-deploy: k8s-build
 	kubectl apply -f k8s/pod.yaml
 	kubectl apply -f k8s/service.yaml
 
-k8s: clear-k8s build-k8s deploy-k8s
+k8s: k8s-clear k8s-build k8s-deploy
 
-k8s-client: export SERVER=$(shell kubectl get service server -o custom-columns=IP:.spec.clusterIP --no-headers):5051
-k8s-client:
-	go run cmd/client/main.go
+k8s-client-get: SERVER=$(shell kubectl get service server -o custom-columns=IP:.spec.clusterIP --no-headers):5051
+k8s-client-get:
+	go run cmd/client/main.go -project 1 -server $(SERVER) get
 
-k8s-health: export SERVER=$(shell kubectl get service server -o custom-columns=IP:.spec.clusterIP --no-headers):5051
+k8s-client-update: SERVER=$(shell kubectl get service server -o custom-columns=IP:.spec.clusterIP --no-headers):5051
+k8s-client-update:
+	go run cmd/client/main.go -project 1 -server $(SERVER) update $(file)
+
+k8s-health: SERVER=$(shell kubectl get service server -o custom-columns=IP:.spec.clusterIP --no-headers):5051
 k8s-health:
 	grpc-health-probe -addr $(SERVER)
 	grpc-health-probe -addr $(SERVER) -service $(SERVICE)
