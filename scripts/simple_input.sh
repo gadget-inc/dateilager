@@ -36,29 +36,39 @@ v3() {
 
     cp -r "${v2}" "${dir}"
     echo "d" > "${dir}"/a
-    echo "e" > "${dir}"/b
+    rm "${dir}/b"
 
     log "wrote v3"
 }
 
 list_all_files() {
-    local dir="${1#$ROOT_DIR/}"
+    local dir="${1}"
     local output="${2}"
 
     (
         cd "${ROOT_DIR}"
-        find "${dir}" -type f > "${output}"
+        find "${dir}" -type f \
+            | sed "s_^${dir}__" \
+            > "${output}"
     )
 }
 
 list_diff_files() {
-    local before="${1#$ROOT_DIR/}"
-    local after="${2#$ROOT_DIR/}"
+    local before="${1}"
+    local after="${2}"
     local output="${3}"
 
     (
         cd "${ROOT_DIR}"
-        git diff --name-only --no-index --diff-filter=d -l0 "${before}" "${after}" > "${output}" || true
+        # everything except files deleted in $after
+        git diff --name-only --no-index --diff-filter=d -l0 "${before}" "${after}" \
+            | sed "s_^${after}__" \
+            > "${output}" || true
+
+        # only deleted files
+        git diff --name-only --no-index --diff-filter=A -l0 "${after}" "${before}" \
+            | sed "s_^${before}__" \
+            >> "${output}" || true
     )
 }
 

@@ -1,34 +1,44 @@
 package client
 
 import (
+	"errors"
 	"io/ioutil"
 	"os"
-	"strings"
 
 	"github.com/angelini/dateilager/internal/pb"
 )
 
-func readFileObject(path, prefix string) (*pb.Object, error) {
-	file, err := os.Open(path)
+func readFileObject(path, prefix string) (*pb.Object, bool, error) {
+	fullPath := prefix + path
+
+	file, err := os.Open(fullPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return &pb.Object{
+			Path:     path,
+			Mode:     0,
+			Size:     0,
+			Contents: nil,
+		}, true, nil
+	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	bytes, err := ioutil.ReadFile(path)
+	bytes, err := ioutil.ReadFile(fullPath)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	return &pb.Object{
-		Path:     strings.TrimPrefix(path, prefix),
+		Path:     path,
 		Mode:     int32(info.Mode()),
 		Size:     int32(info.Size()),
 		Contents: bytes,
-	}, nil
+	}, false, nil
 }

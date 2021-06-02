@@ -75,7 +75,7 @@ func (c *Client) UpdateObjects(ctx context.Context, project int32, paths []strin
 			continue
 		}
 
-		object, err := readFileObject(path, prefix)
+		object, deleted, err := readFileObject(path, prefix)
 		if err != nil {
 			return -1, fmt.Errorf("read file object: %w", err)
 		}
@@ -83,7 +83,7 @@ func (c *Client) UpdateObjects(ctx context.Context, project int32, paths []strin
 		err = stream.Send(&pb.UpdateRequest{
 			Project: project,
 			Object:  object,
-			Delete:  false,
+			Delete:  deleted,
 		})
 		if err != nil {
 			return -1, fmt.Errorf("send fs.Update: %w", err)
