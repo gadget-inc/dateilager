@@ -43,51 +43,29 @@ $ make test
 
 ## Local
 
-Set up a local project by inserting one into the `projects` table.
+Set up a local development environment by resetting the local database, and building an example dataset
+within the `input/` directory.
 
-```sql
-INSERT INTO dl.projects (id, latest_version)
-VALUES (1, 0);
+```bash
+$ make setup-local
 ```
 
-Launch the local server process.
+Then launch the server process, by default it will run on port 5051.
 
 ```
 $ make server
 ```
 
-For testing, we'll need 3 different local folders which are different versions of the same project.
+Our input directory contains 3 folders, all meant as different versions of the same project. There are also
+diff files listing which files have changed between them.
+
+We can now load these into the database.
 
 ```bash
-$ mkdir -p input/v1
-$ echo "a" > input/v1/a
-$ echo "b" > input/v1/b
-
-$ cp -r input/v1 input/v2
-$ echo "c" > input/v2/c
-
-$ cp -r input/v2 input/v3
-$ echo "d" > input/v3/a
-$ echo "e" > input/v3/b
+$ make client-update
 ```
 
-Create an initial list of files and diffs between versions.
-
-```bash
-$ find input/v1 -type f > input/initial.txt
-$ git diff --name-only --no-index --diff-filter=d -l0 input/v1 input/v2 > input/diff_v1_v2.txt
-$ git diff --name-only --no-index --diff-filter=d -l0 input/v2 input/v3 > input/diff_v2_v3.txt
-```
-
-We can use these diffs and the client application to load these 3 different versions.
-
-```bash
-$ make client-update file=input/initial.txt prefix=input/v1
-$ make client-update file=input/diff_v1_v2.txt prefix=input/v2
-$ make client-update file=input/diff_v2_v3.txt prefix=input/v3
-```
-
-And then use the client app to read the latest version.
+And then use the client app to read all files within the latest version.
 
 ```bash
 $ make client-get
