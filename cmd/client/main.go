@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"io/ioutil"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,8 +38,8 @@ func parseArgs(log *zap.Logger) ClientArgs {
 	}
 }
 
-func getLatest(ctx context.Context, log *zap.Logger, c *client.Client, project int32, prefix string) {
-	objects, err := c.GetLatest(ctx, project, prefix)
+func get(ctx context.Context, log *zap.Logger, c *client.Client, project int32, prefix string, version *int64) {
+	objects, err := c.Get(ctx, project, prefix, version)
 	if err != nil {
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
@@ -49,14 +50,14 @@ func getLatest(ctx context.Context, log *zap.Logger, c *client.Client, project i
 	}
 }
 
-func updateProject(ctx context.Context, log *zap.Logger, c *client.Client, project int32, diff, prefix string) {
+func update(ctx context.Context, log *zap.Logger, c *client.Client, project int32, diff, prefix string) {
 	content, err := ioutil.ReadFile(diff)
 	if err != nil {
 		log.Fatal("cannot read update file", zap.String("diff", diff), zap.Error(err))
 	}
 
 	filePaths := strings.Split(string(content), "\n")
-	version, err := c.UpdateObjects(ctx, project, filePaths, prefix)
+	version, err := c.Update(ctx, project, filePaths, prefix)
 	if err != nil {
 		log.Fatal("update objects", zap.Error(err))
 	}
@@ -80,18 +81,35 @@ func main() {
 	defer c.Close()
 
 	switch args.cmd {
-	case "get":
+	case "get-latest":
 		prefix := ""
 		if len(args.args) == 1 {
 			prefix = args.args[0]
 		}
-		getLatest(ctx, log, c, args.project, prefix)
+		get(ctx, log, c, args.project, prefix, nil)
+
+	case "get-version":
+		if len(args.args) == 0 || len(args.args) > 2 {
+			log.Fatal("invalid get-version args", zap.Any("args", args.args))
+		}
+
+		version, err := strconv.ParseInt(args.args[0], 10, 64)
+		if err != nil {
+			log.Fatal("invalid version", zap.String("version", args.args[0]))
+		}
+
+		prefix := ""
+		if len(args.args) == 2 {
+			prefix = args.args[1]
+		}
+
+		get(ctx, log, c, args.project, prefix, &version)
 
 	case "update":
 		if len(args.args) != 2 {
 			log.Fatal("invalid update args", zap.Any("args", args.args))
 		}
-		updateProject(ctx, log, c, args.project, args.args[0], args.args[1])
+		update(ctx, log, c, args.project, args.args[0], args.args[1])
 
 	default:
 		log.Fatal("unknown command", zap.String("command", args.cmd))

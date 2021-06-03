@@ -35,7 +35,7 @@ func (c *Client) Close() {
 	c.conn.Close()
 }
 
-func (c *Client) GetLatest(ctx context.Context, project int32, prefix string) ([]*pb.Object, error) {
+func (c *Client) Get(ctx context.Context, project int32, prefix string, version *int64) ([]*pb.Object, error) {
 	var objects []*pb.Object
 
 	query := &pb.ObjectQuery{
@@ -45,6 +45,7 @@ func (c *Client) GetLatest(ctx context.Context, project int32, prefix string) ([
 
 	request := &pb.GetRequest{
 		Project: project,
+		Version: version,
 		Queries: []*pb.ObjectQuery{query},
 	}
 
@@ -68,7 +69,7 @@ func (c *Client) GetLatest(ctx context.Context, project int32, prefix string) ([
 	return objects, nil
 }
 
-func (c *Client) UpdateObjects(ctx context.Context, project int32, paths []string, prefix string) (int64, error) {
+func (c *Client) Update(ctx context.Context, project int32, paths []string, prefix string) (int64, error) {
 	stream, err := c.fs.Update(ctx)
 	if err != nil {
 		return -1, fmt.Errorf("connect fs.Update: %w", err)

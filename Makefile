@@ -9,7 +9,7 @@ MIGRATE_DIR := ./migrations
 SERVICE := dateilager.server
 
 .PHONY: install migrate migrate-create build test
-.PHONY: reset-db setup-local server client-update client-get health
+.PHONY: reset-db setup-local server client-update client-get-latest client-get-version health
 .PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-health
 
 install:
@@ -54,8 +54,11 @@ client-update:
 	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) update input/diff_v1_v2.txt input/v2
 	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) update input/diff_v2_v3.txt input/v3
 
-client-get:
-	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) get $(prefix)
+client-get-latest:
+	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) get-latest $(prefix)
+
+client-get-version:
+	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) get-version $(version) $(prefix)
 
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)

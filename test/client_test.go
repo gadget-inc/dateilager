@@ -68,7 +68,7 @@ func TestGetLatestEmpty(t *testing.T) {
 	c, close := createTestServer(tc, tc.FsApi())
 	defer close()
 
-	objects, err := c.GetLatest(tc.Context(), 1, "")
+	objects, err := c.Get(tc.Context(), 1, "", nil)
 	if err != nil {
 		t.Fatalf("client.GetLatest empty: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestGetLatest(t *testing.T) {
 	c, close := createTestServer(tc, tc.FsApi())
 	defer close()
 
-	objects, err := c.GetLatest(tc.Context(), 1, "")
+	objects, err := c.Get(tc.Context(), 1, "", nil)
 	if err != nil {
 		t.Fatalf("client.GetLatest with results: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestGetLatest(t *testing.T) {
 		t.Errorf("expected object (/c, 'c v2'), got: %v", objectC)
 	}
 
-	objects, err = c.GetLatest(tc.Context(), 1, "/c")
+	objects, err = c.Get(tc.Context(), 1, "/c", nil)
 	if err != nil {
 		t.Fatalf("client.GetLatest with results: %v", err)
 	}
@@ -113,6 +113,64 @@ func TestGetLatest(t *testing.T) {
 	objectC = objects[0]
 	if objectC.Path != "/c" || string(objectC.Contents) != "c v2" {
 		t.Errorf("expected object (/c, 'c v2'), got: %v", objectC)
+	}
+}
+
+func TestGetVersion(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 3)
+	writeObject(tc, 1, 1, i(2), "/a", "a v1")
+	writeObject(tc, 1, 1, nil, "/b", "b v1")
+	writeObject(tc, 1, 2, nil, "/c", "c v2")
+	writeObject(tc, 1, 3, nil, "/d", "d v3")
+
+	c, close := createTestServer(tc, tc.FsApi())
+	defer close()
+
+	objects, err := c.Get(tc.Context(), 1, "", i(1))
+	if err != nil {
+		t.Fatalf("client.GetLatest with results: %v", err)
+	}
+
+	objectA := objects[0]
+	if objectA.Path != "/a" || string(objectA.Contents) != "a v1" {
+		t.Errorf("expected object (/a, 'a v1'), got: %v", objectA)
+	}
+
+	objectB := objects[1]
+	if objectB.Path != "/b" || string(objectB.Contents) != "b v1" {
+		t.Errorf("expected object (/b, 'b v1'), got: %v", objectB)
+	}
+
+	objects, err = c.Get(tc.Context(), 1, "", i(2))
+	if err != nil {
+		t.Fatalf("client.GetLatest with results: %v", err)
+	}
+
+	objectB = objects[0]
+	if objectB.Path != "/b" || string(objectB.Contents) != "b v1" {
+		t.Errorf("expected object (/b, 'b v1'), got: %v", objectB)
+	}
+
+	objectC := objects[1]
+	if objectC.Path != "/c" || string(objectC.Contents) != "c v2" {
+		t.Errorf("expected object (/c, 'c v2'), got: %v", objectC)
+	}
+
+	objects, err = c.Get(tc.Context(), 1, "/b", i(2))
+	if err != nil {
+		t.Fatalf("client.GetLatest with results: %v", err)
+	}
+
+	if len(objects) != 1 {
+		t.Errorf("expected 1 result, got: %v", objects)
+	}
+
+	objectB = objects[0]
+	if objectB.Path != "/b" || string(objectB.Contents) != "b v1" {
+		t.Errorf("expected object (/b, 'b v1'), got: %v", objectB)
 	}
 }
 
@@ -134,7 +192,7 @@ func TestUpdateObjects(t *testing.T) {
 	c, close := createTestServer(tc, tc.FsApi())
 	defer close()
 
-	version, err := c.UpdateObjects(tc.Context(), 1, []string{"/a", "/c"}, tmpDir)
+	version, err := c.Update(tc.Context(), 1, []string{"/a", "/c"}, tmpDir)
 	if err != nil {
 		t.Fatalf("client.UpdateObjects: %v", err)
 	}
@@ -143,7 +201,7 @@ func TestUpdateObjects(t *testing.T) {
 		t.Fatalf("expected version to increment to 2, got: %v", version)
 	}
 
-	objects, err := c.GetLatest(tc.Context(), 1, "")
+	objects, err := c.Get(tc.Context(), 1, "", nil)
 	if err != nil {
 		t.Fatalf("client.GetLatest after update: %v", err)
 	}

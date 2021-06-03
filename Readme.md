@@ -68,13 +68,19 @@ $ make client-update
 And then use the client app to read all files within the latest version.
 
 ```bash
-$ make client-get
+$ make client-get-latest
 ```
 
 You can also filter the results with a prefix search.
 
 ```bash
-$ make client-get prefix=/a
+$ make client-get-latest prefix=/a
+```
+
+Or filter for a specific version.
+
+```bash
+$ make client-get-version version=1
 ```
 
 ## K8S
