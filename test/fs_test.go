@@ -56,7 +56,7 @@ func TestGetEmpty(t *testing.T) {
 
 	writeProject(tc, 1, 1)
 
-	fs := tc.FsApi(log)
+	fs := tc.FsApi()
 	stream := &mockGetServer{ctx: tc.Context()}
 
 	err := fs.Get(&pb.GetRequest{Project: 1, Version: nil}, stream)
@@ -77,7 +77,7 @@ func TestGetExactlyOne(t *testing.T) {
 	writeObject(tc, 1, 1, nil, "/a")
 	writeObject(tc, 1, 1, nil, "/b")
 
-	fs := tc.FsApi(log)
+	fs := tc.FsApi()
 	stream := &mockGetServer{ctx: tc.Context()}
 
 	err := fs.Get(exactQuery(1, nil, "/a"), stream)
@@ -105,7 +105,7 @@ func TestGetPrefix(t *testing.T) {
 	writeObject(tc, 1, 1, nil, "/b/a")
 	writeObject(tc, 1, 1, nil, "/b/b")
 
-	fs := tc.FsApi(log)
+	fs := tc.FsApi()
 	stream := &mockGetServer{ctx: tc.Context()}
 
 	err := fs.Get(prefixQuery(1, nil, "/a"), stream)
@@ -132,7 +132,7 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 	writeObject(tc, 1, 2, i(3), "/a", "v2")
 	writeObject(tc, 1, 3, nil, "/a", "v3")
 
-	fs := tc.FsApi(log)
+	fs := tc.FsApi()
 	stream := &mockGetServer{ctx: tc.Context()}
 
 	err := fs.Get(exactQuery(1, i(1), "/a"), stream)

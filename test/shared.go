@@ -3,11 +3,6 @@ package test
 import (
 	util "github.com/angelini/dateilager/internal/testutil"
 	"github.com/angelini/dateilager/pkg/api"
-	"go.uber.org/zap"
-)
-
-var (
-	log, _ = zap.NewDevelopment()
 )
 
 func i(i int64) *int64 {

@@ -4,12 +4,13 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"github.com/angelini/dateilager/internal/pb"
 )
 
 func readFileObject(path, prefix string) (*pb.Object, bool, error) {
-	fullPath := prefix + path
+	fullPath := filepath.Join(prefix, path)
 
 	file, err := os.Open(fullPath)
 	if errors.Is(err, os.ErrNotExist) {

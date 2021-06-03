@@ -18,12 +18,18 @@ type DbPoolConnector struct {
 	pool *pgxpool.Pool
 }
 
-func (d *DbPoolConnector) Connect(ctx context.Context) (*pgx.Conn, api.CloseFunc, error) {
+func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, api.CloseFunc, error) {
 	conn, err := d.pool.Acquire(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-	return conn.Conn(), func() { conn.Release() }, nil
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return tx, func() { tx.Rollback(ctx); conn.Release() }, nil
 }
 
 type ServerArgs struct {

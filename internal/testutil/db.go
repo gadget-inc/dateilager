@@ -26,8 +26,12 @@ func newDbTestConnector(ctx context.Context, uri string) (*DbTestConnector, erro
 	return &DbTestConnector{conn: conn, tx: tx}, nil
 }
 
-func (d *DbTestConnector) Connect(ctx context.Context) (*pgx.Conn, api.CloseFunc, error) {
-	return d.conn, func() {}, nil
+func (d *DbTestConnector) Connect(ctx context.Context) (pgx.Tx, api.CloseFunc, error) {
+	innerTx, err := d.tx.Begin(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return innerTx, func() { innerTx.Rollback(ctx) }, nil
 }
 
 func (d *DbTestConnector) close(ctx context.Context) {

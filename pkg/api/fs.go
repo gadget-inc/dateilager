@@ -18,10 +18,10 @@ type Fs struct {
 	DbConn DbConnector
 }
 
-func (f *Fs) getLatestVersion(ctx context.Context, conn *pgx.Conn, project int32) (int64, error) {
+func (f *Fs) getLatestVersion(ctx context.Context, tx pgx.Tx, project int32) (int64, error) {
 	var latest_version int64
 
-	err := conn.QueryRow(ctx, `
+	err := tx.QueryRow(ctx, `
 		SELECT latest_version
 		FROM dl.projects WHERE id = $1
 	`, project).Scan(&latest_version)
@@ -34,7 +34,7 @@ func (f *Fs) getLatestVersion(ctx context.Context, conn *pgx.Conn, project int32
 
 type objectStream func() (*pb.Object, error)
 
-func (f *Fs) getObjects(ctx context.Context, conn *pgx.Conn, project int32, version int64, query *pb.ObjectQuery) (objectStream, error) {
+func (f *Fs) getObjects(ctx context.Context, tx pgx.Tx, project int32, version int64, query *pb.ObjectQuery) (objectStream, error) {
 	sql := `
 		SELECT o.path, o.mode, o.size, c.bytes
 		FROM dl.objects o
@@ -47,14 +47,22 @@ func (f *Fs) getObjects(ctx context.Context, conn *pgx.Conn, project int32, vers
 
 	var path string
 	if query.IsPrefix {
-		sql = sql + `AND o.path LIKE $3`
+		sql = sql + `
+			AND o.path LIKE $3
+		`
 		path = fmt.Sprintf("%s%%", query.Path)
 	} else {
-		sql = sql + `AND o.path = $3`
+		sql = sql + `
+			AND o.path = $3
+		`
 		path = query.Path
 	}
 
-	rows, err := conn.Query(ctx, sql, project, version, path)
+	sql = sql + `
+		ORDER BY o.path
+	`
+
+	rows, err := tx.Query(ctx, sql, project, version, path)
 	if err != nil {
 		return nil, err
 	}
@@ -125,8 +133,8 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	return nil
 }
 
-func (f *Fs) deleteObject(ctx context.Context, conn *pgx.Conn, project int32, version int64, object *pb.Object) error {
-	_, err := conn.Exec(ctx, `
+func (f *Fs) deleteObject(ctx context.Context, tx pgx.Tx, project int32, version int64, object *pb.Object) error {
+	_, err := tx.Exec(ctx, `
 		UPDATE dl.objects
 		SET stop_version = $1
 		WHERE project = $2
@@ -140,14 +148,8 @@ func (f *Fs) deleteObject(ctx context.Context, conn *pgx.Conn, project int32, ve
 	return nil
 }
 
-func (f *Fs) updateObject(ctx context.Context, conn *pgx.Conn, project int32, version int64, object *pb.Object) error {
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("FS update object create transaction: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	_, err = tx.Exec(ctx, `
+func (f *Fs) updateObject(ctx context.Context, tx pgx.Tx, project int32, version int64, object *pb.Object) error {
+	_, err := tx.Exec(ctx, `
 		UPDATE dl.objects SET stop_version = $1
 		WHERE project = $2
 		  AND path = $3
@@ -181,23 +183,17 @@ func (f *Fs) updateObject(ctx context.Context, conn *pgx.Conn, project int32, ve
 		return fmt.Errorf("FS insert contents: %w", err)
 	}
 
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	ctx := stream.Context()
 
-	conn, cancel, err := f.DbConn.Connect(ctx)
+	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer cancel()
-
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
+	defer close()
 
 	// We only receive a project ID after the first streamed update
 	project := int32(-1)
@@ -215,7 +211,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		if project == -1 {
 			project = request.Project
 
-			latest_version, err := f.getLatestVersion(ctx, conn, project)
+			latest_version, err := f.getLatestVersion(ctx, tx, project)
 			if err != nil {
 				return err
 			}
@@ -229,9 +225,9 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		}
 
 		if request.Delete {
-			err = f.deleteObject(ctx, conn, project, version, request.Object)
+			err = f.deleteObject(ctx, tx, project, version, request.Object)
 		} else {
-			err = f.updateObject(ctx, conn, project, version, request.Object)
+			err = f.updateObject(ctx, tx, project, version, request.Object)
 		}
 
 		if err != nil {

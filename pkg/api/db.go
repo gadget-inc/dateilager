@@ -15,5 +15,5 @@ func HashContents(data []byte) ([]byte, []byte) {
 type CloseFunc func()
 
 type DbConnector interface {
-	Connect(context.Context) (*pgx.Conn, CloseFunc, error)
+	Connect(context.Context) (pgx.Tx, CloseFunc, error)
 }
