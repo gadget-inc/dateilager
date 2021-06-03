@@ -16,6 +16,10 @@ type Client struct {
 	fs   pb.FsClient
 }
 
+func NewClientConn(ctx context.Context, log *zap.Logger, conn *grpc.ClientConn) *Client {
+	return &Client{log: log, conn: conn, fs: pb.NewFsClient(conn)}
+}
+
 func NewClient(ctx context.Context, server string) (*Client, error) {
 	log, _ := zap.NewDevelopment()
 
@@ -24,18 +28,18 @@ func NewClient(ctx context.Context, server string) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{log: log, conn: conn, fs: pb.NewFsClient(conn)}, nil
+	return NewClientConn(ctx, log, conn), nil
 }
 
 func (c *Client) Close() {
 	c.conn.Close()
 }
 
-func (c *Client) GetLatestRoot(ctx context.Context, project int32) ([]*pb.Object, error) {
+func (c *Client) GetLatest(ctx context.Context, project int32, prefix string) ([]*pb.Object, error) {
 	var objects []*pb.Object
 
 	query := &pb.ObjectQuery{
-		Path:     "",
+		Path:     prefix,
 		IsPrefix: true,
 	}
 

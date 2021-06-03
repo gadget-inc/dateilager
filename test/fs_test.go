@@ -6,59 +6,8 @@ import (
 
 	"github.com/angelini/dateilager/internal/pb"
 	util "github.com/angelini/dateilager/internal/testutil"
-	"github.com/angelini/dateilager/pkg/api"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
-
-var (
-	log, _ = zap.NewDevelopment()
-)
-
-func i(i int64) *int64 {
-	return &i
-}
-
-func writeProject(tc util.TestCtx, id int32, latest_version int64) {
-	conn := tc.Connect()
-	_, err := conn.Exec(tc.Context(), `
-		INSERT INTO dl.projects (id, latest_version)
-		VALUES ($1, $2)
-	`, id, latest_version)
-	if err != nil {
-		tc.Fatalf("insert project: %v", err)
-	}
-}
-
-func writeObject(tc util.TestCtx, project int32, start int64, stop *int64, path string, contents ...string) {
-	conn := tc.Connect()
-
-	var content string
-	if len(contents) == 0 {
-		content = ""
-	} else {
-		content = contents[0]
-	}
-	h1, h2 := api.HashContents([]byte(content))
-
-	_, err := conn.Exec(tc.Context(), `
-		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size)
-		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8)
-	`, project, start, stop, path, h1, h2, 0, 0)
-	if err != nil {
-		tc.Fatalf("insert object: %v", err)
-	}
-
-	_, err = conn.Exec(tc.Context(), `
-		INSERT INTO dl.contents (hash, bytes)
-		VALUES (($1, $2), $3)
-		ON CONFLICT
-		   DO NOTHING
-	`, h1, h2, content)
-	if err != nil {
-		tc.Fatalf("insert contents: %v", err)
-	}
-}
 
 type mockGetServer struct {
 	grpc.ServerStream
@@ -73,28 +22,6 @@ func (m *mockGetServer) Context() context.Context {
 func (m *mockGetServer) Send(resp *pb.GetResponse) error {
 	m.results = append(m.results, resp.Object)
 	return nil
-}
-
-func TestGetEmpty(t *testing.T) {
-	tc := util.NewTestCtx(t)
-	defer tc.Close()
-
-	fs := api.Fs{
-		Log:    log,
-		DbConn: tc.Connector(),
-	}
-
-	writeProject(tc, 1, 1)
-
-	stream := &mockGetServer{ctx: tc.Context()}
-	err := fs.Get(&pb.GetRequest{Project: 1, Version: nil}, stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
-
-	if len(stream.results) != 0 {
-		t.Fatalf("stream results should be empty: %v", stream.results)
-	}
 }
 
 func exactQuery(project int32, version *int64, path string) *pb.GetRequest {
@@ -123,20 +50,36 @@ func prefixQuery(project int32, version *int64, path string) *pb.GetRequest {
 	}
 }
 
-func TestGetExactlyOne(t *testing.T) {
+func TestGetEmpty(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 
-	fs := api.Fs{
-		Log:    log,
-		DbConn: tc.Connector(),
+	writeProject(tc, 1, 1)
+
+	fs := tc.FsApi(log)
+	stream := &mockGetServer{ctx: tc.Context()}
+
+	err := fs.Get(&pb.GetRequest{Project: 1, Version: nil}, stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
 	}
+
+	if len(stream.results) != 0 {
+		t.Fatalf("stream results should be empty: %v", stream.results)
+	}
+}
+
+func TestGetExactlyOne(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
 
 	writeProject(tc, 1, 1)
 	writeObject(tc, 1, 1, nil, "/a")
 	writeObject(tc, 1, 1, nil, "/b")
 
+	fs := tc.FsApi(log)
 	stream := &mockGetServer{ctx: tc.Context()}
+
 	err := fs.Get(exactQuery(1, nil, "/a"), stream)
 	if err != nil {
 		t.Fatalf("fs.Get: %v", err)
@@ -156,18 +99,15 @@ func TestGetPrefix(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 
-	fs := api.Fs{
-		Log:    log,
-		DbConn: tc.Connector(),
-	}
-
 	writeProject(tc, 1, 1)
 	writeObject(tc, 1, 1, nil, "/a/a")
 	writeObject(tc, 1, 1, nil, "/a/b")
 	writeObject(tc, 1, 1, nil, "/b/a")
 	writeObject(tc, 1, 1, nil, "/b/b")
 
+	fs := tc.FsApi(log)
 	stream := &mockGetServer{ctx: tc.Context()}
+
 	err := fs.Get(prefixQuery(1, nil, "/a"), stream)
 	if err != nil {
 		t.Fatalf("fs.Get: %v", err)
@@ -178,7 +118,7 @@ func TestGetPrefix(t *testing.T) {
 	}
 
 	res := stream.results
-	if res[0].Path != "/a/a" && res[1].Path == "/a/b" {
+	if res[0].Path != "/a/a" || res[1].Path != "/a/b" {
 		t.Errorf("expected Paths (/a/a, /a/b), got: (%v, %v)", res[0].Path, res[1].Path)
 	}
 }
@@ -187,17 +127,14 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 
-	fs := api.Fs{
-		Log:    log,
-		DbConn: tc.Connector(),
-	}
-
 	writeProject(tc, 1, 1)
 	writeObject(tc, 1, 1, i(2), "/a", "v1")
 	writeObject(tc, 1, 2, i(3), "/a", "v2")
 	writeObject(tc, 1, 3, nil, "/a", "v3")
 
+	fs := tc.FsApi(log)
 	stream := &mockGetServer{ctx: tc.Context()}
+
 	err := fs.Get(exactQuery(1, i(1), "/a"), stream)
 	if err != nil {
 		t.Fatalf("fs.Get version 1: %v", err)

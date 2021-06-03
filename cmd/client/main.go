@@ -37,8 +37,8 @@ func parseArgs(log *zap.Logger) ClientArgs {
 	}
 }
 
-func getLatest(ctx context.Context, log *zap.Logger, c *client.Client, project int32) {
-	objects, err := c.GetLatestRoot(ctx, project)
+func getLatest(ctx context.Context, log *zap.Logger, c *client.Client, project int32, prefix string) {
+	objects, err := c.GetLatest(ctx, project, prefix)
 	if err != nil {
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
@@ -81,13 +81,18 @@ func main() {
 
 	switch args.cmd {
 	case "get":
-		getLatest(ctx, log, c, args.project)
+		prefix := ""
+		if len(args.args) == 1 {
+			prefix = args.args[0]
+		}
+		getLatest(ctx, log, c, args.project, prefix)
+
 	case "update":
 		if len(args.args) != 2 {
 			log.Fatal("invalid update args", zap.Any("args", args.args))
 		}
-
 		updateProject(ctx, log, c, args.project, args.args[0], args.args[1])
+
 	default:
 		log.Fatal("unknown command", zap.String("command", args.cmd))
 	}

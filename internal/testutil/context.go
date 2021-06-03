@@ -7,6 +7,7 @@ import (
 
 	"github.com/angelini/dateilager/pkg/api"
 	"github.com/jackc/pgx/v4"
+	"go.uber.org/zap"
 )
 
 type TestCtx struct {
@@ -52,4 +53,11 @@ func (tc *TestCtx) Context() context.Context {
 
 func (tc *TestCtx) Close() {
 	tc.dbConn.close(tc.ctx)
+}
+
+func (tc *TestCtx) FsApi(log *zap.Logger) *api.Fs {
+	return &api.Fs{
+		Log:    log,
+		DbConn: tc.Connector(),
+	}
 }

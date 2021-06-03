@@ -74,7 +74,7 @@ list_diff_files() {
 
 main() {
     log "writing simple inputs to ${INPUT_DIR}"
-    rm -rf "${INPUT_DIR:?}"
+    rm -rf "${INPUT_DIR:?}"/*
     mkdir -p "${INPUT_DIR}"
 
     local v1_dir="${INPUT_DIR}/v1"

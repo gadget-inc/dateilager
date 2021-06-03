@@ -71,6 +71,12 @@ And then use the client app to read all files within the latest version.
 $ make client-get
 ```
 
+You can also filter the results with a prefix search.
+
+```bash
+$ make client-get prefix=/a
+```
+
 ## K8S
 
 The K8S tools assume a local K8S install using Containerd and Podman.

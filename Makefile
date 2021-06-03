@@ -55,7 +55,7 @@ client-update:
 	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) update input/diff_v2_v3.txt input/v3
 
 client-get:
-	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) get
+	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) get $(prefix)
 
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)
