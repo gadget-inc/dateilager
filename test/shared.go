@@ -29,12 +29,14 @@ func writeObject(tc util.TestCtx, project int32, start int64, stop *int64, path 
 	} else {
 		content = contents[0]
 	}
-	h1, h2 := api.HashContents([]byte(content))
+
+	contentBytes := []byte(content)
+	h1, h2 := api.HashContents(contentBytes)
 
 	_, err := conn.Exec(tc.Context(), `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size)
 		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8)
-	`, project, start, stop, path, h1, h2, 0, 0)
+	`, project, start, stop, path, h1, h2, 0666, len(contentBytes))
 	if err != nil {
 		tc.Fatalf("insert object: %v", err)
 	}

@@ -83,6 +83,13 @@ Or filter for a specific version.
 $ make client-get-version version=1
 ```
 
+If you want to rebuild an entire project's directory locally, use the `rebuild` command.
+
+```bash
+$ mkdir ./rebuild
+$ make client-rebuild version=3 prefix=/ output=rebuild
+```
+
 ## K8S
 
 The K8S tools assume a local K8S install using Containerd and Podman.

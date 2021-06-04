@@ -1,6 +1,8 @@
 package api
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -30,6 +32,23 @@ func (f *Fs) getLatestVersion(ctx context.Context, tx pgx.Tx, project int32) (in
 	}
 
 	return latest_version, nil
+}
+
+func (f *Fs) getProjectSize(ctx context.Context, tx pgx.Tx, project int32, version int64) (int, error) {
+	var size int
+
+	err := tx.QueryRow(ctx, `
+		SELECT sum(size)
+		FROM dl.objects
+		WHERE project = $1
+		  AND start_version <= $2
+		  AND (stop_version IS NULL OR stop_version > $2)
+	`, project, version).Scan(&size)
+	if err != nil {
+		return -1, fmt.Errorf("FS get project size: %w", err)
+	}
+
+	return size, nil
 }
 
 type objectStream func() (*pb.Object, error)
@@ -95,24 +114,24 @@ func (f *Fs) getObjects(ctx context.Context, tx pgx.Tx, project int32, version i
 func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	ctx := stream.Context()
 
-	conn, cancel, err := f.DbConn.Connect(ctx)
+	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer cancel()
+	defer close()
 
 	var version int64
 	if req.Version != nil {
 		version = *req.Version
 	} else {
-		version, err = f.getLatestVersion(ctx, conn, req.Project)
+		version, err = f.getLatestVersion(ctx, tx, req.Project)
 		if err != nil {
 			return err
 		}
 	}
 
 	for _, query := range req.Queries {
-		objects, err := f.getObjects(ctx, conn, req.Project, version, query)
+		objects, err := f.getObjects(ctx, tx, req.Project, version, query)
 		if err != nil {
 			return fmt.Errorf("FS get objects: %w", err)
 		}
@@ -126,8 +145,120 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 				return err
 			}
 
-			stream.Send(&pb.GetResponse{Version: version, Object: object})
+			err = stream.Send(&pb.GetResponse{Version: version, Object: object})
+			if err != nil {
+				return fmt.Errorf("send GetResponse: %w", err)
+			}
 		}
+	}
+
+	return nil
+}
+
+func writeObjectToTar(tarWriter *tar.Writer, object *pb.Object) error {
+	header := &tar.Header{
+		Name: object.Path,
+		Mode: int64(object.Mode),
+		Size: int64(object.Size),
+	}
+
+	err := tarWriter.WriteHeader(header)
+	if err != nil {
+		return fmt.Errorf("write header to TAR %v: %w", object.Path, err)
+	}
+
+	_, err = tarWriter.Write(object.Contents)
+	if err != nil {
+		return fmt.Errorf("write contents to TAR %v: %w", object.Path, err)
+	}
+
+	return nil
+}
+
+func sendTar(tarWriter *tar.Writer, buffer *bytes.Buffer, stream pb.Fs_GetCompressServer) error {
+	err := tarWriter.Close()
+	if err != nil {
+		return fmt.Errorf("close TAR writer: %w", err)
+	}
+
+	err = stream.Send(&pb.GetCompressResponse{
+		Format: pb.GetCompressResponse_ZSTD_TAR,
+		Bytes:  buffer.Bytes(),
+	})
+	if err != nil {
+		return fmt.Errorf("send GetCompressResponse: %w", err)
+	}
+
+	return nil
+}
+
+func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressServer) error {
+	ctx := stream.Context()
+
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer close()
+
+	var version int64
+	if req.Version != nil {
+		version = *req.Version
+	} else {
+		version, err = f.getLatestVersion(ctx, tx, req.Project)
+		if err != nil {
+			return err
+		}
+	}
+
+	size, err := f.getProjectSize(ctx, tx, req.Project, version)
+	if err != nil {
+		return err
+	}
+
+	targetSize := size / int(req.ResponseCount)
+	currentSize := 0
+
+	var buffer bytes.Buffer
+	tarWriter := tar.NewWriter(&buffer)
+
+	for _, query := range req.Queries {
+		objects, err := f.getObjects(ctx, tx, req.Project, version, query)
+		if err != nil {
+			return fmt.Errorf("FS get objects: %w", err)
+		}
+
+		for {
+			object, err := objects()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return err
+			}
+
+			err = writeObjectToTar(tarWriter, object)
+			if err != nil {
+				return err
+			}
+
+			currentSize = currentSize + int(object.Size)
+			if currentSize > targetSize {
+				currentSize = 0
+
+				err = sendTar(tarWriter, &buffer, stream)
+				if err != nil {
+					return err
+				}
+
+				buffer.Truncate(0)
+				tarWriter = tar.NewWriter(&buffer)
+			}
+		}
+	}
+
+	if currentSize > 0 {
+		return sendTar(tarWriter, &buffer, stream)
 	}
 
 	return nil

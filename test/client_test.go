@@ -18,7 +18,7 @@ import (
 
 const bufSize = 1024 * 1024
 
-func createTestServer(tc util.TestCtx, fs *api.Fs) (*client.Client, api.CloseFunc) {
+func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, api.CloseFunc) {
 	lis := bufconn.Listen(bufSize)
 	s := grpc.NewServer()
 
@@ -65,7 +65,7 @@ func TestGetLatestEmpty(t *testing.T) {
 
 	writeProject(tc, 1, 1)
 
-	c, close := createTestServer(tc, tc.FsApi())
+	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
 
 	objects, err := c.Get(tc.Context(), 1, "", nil)
@@ -87,7 +87,7 @@ func TestGetLatest(t *testing.T) {
 	writeObject(tc, 1, 1, nil, "/b", "b v1")
 	writeObject(tc, 1, 2, nil, "/c", "c v2")
 
-	c, close := createTestServer(tc, tc.FsApi())
+	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
 
 	objects, err := c.Get(tc.Context(), 1, "", nil)
@@ -126,7 +126,7 @@ func TestGetVersion(t *testing.T) {
 	writeObject(tc, 1, 2, nil, "/c", "c v2")
 	writeObject(tc, 1, 3, nil, "/d", "d v3")
 
-	c, close := createTestServer(tc, tc.FsApi())
+	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
 
 	objects, err := c.Get(tc.Context(), 1, "", i(1))
@@ -174,6 +174,47 @@ func TestGetVersion(t *testing.T) {
 	}
 }
 
+func TestRebuild(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a", "a v1")
+	writeObject(tc, 1, 1, nil, "/b", "b v1")
+	writeObject(tc, 1, 1, nil, "/c", "c v1")
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	tmpDir, err := ioutil.TempDir("", "dateilager_tests")
+	if err != nil {
+		tc.Fatalf("create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	err = c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
+	if err != nil {
+		t.Fatalf("client.GetLatest with results: %v", err)
+	}
+
+	files, err := ioutil.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatalf("read tmpdir: %v", err)
+	}
+
+	if len(files) != 3 {
+		t.Errorf("expected 3 files, got: %v", len(files))
+	}
+
+	fileA, err := ioutil.ReadFile(filepath.Join(tmpDir, "/a"))
+	if err != nil {
+		t.Fatalf("read %v/a: %v", tmpDir, err)
+	}
+	if string(fileA) != "a v1" {
+		t.Errorf("expected /a to contain 'a v1', got: %v", string(fileA))
+	}
+}
+
 func TestUpdateObjects(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
@@ -189,7 +230,7 @@ func TestUpdateObjects(t *testing.T) {
 	})
 	defer os.RemoveAll(tmpDir)
 
-	c, close := createTestServer(tc, tc.FsApi())
+	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
 
 	version, err := c.Update(tc.Context(), 1, []string{"/a", "/c"}, tmpDir)

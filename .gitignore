@@ -1,4 +1,5 @@
 bin/
 input/
 input_old/
+rebuild/
 *.pb.go

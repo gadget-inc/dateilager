@@ -7,6 +7,8 @@ option go_package = "github.com/angelini/dateilager/pkg/pb";
 service Fs {
     rpc Get(GetRequest) returns (stream GetResponse);
 
+    rpc GetCompress(GetCompressRequest) returns (stream GetCompressResponse);
+
     rpc Update(stream UpdateRequest) returns (UpdateResponse);
 }
 
@@ -31,6 +33,21 @@ message GetRequest {
 message GetResponse {
     int64 version = 1;
     Object object = 2;
+}
+
+message GetCompressRequest {
+    int32 project = 1;
+    optional int64 version = 2;
+    int32 response_count = 3;
+    repeated ObjectQuery queries = 4;
+}
+
+message GetCompressResponse {
+    enum Format {
+        ZSTD_TAR = 0;
+    }
+    Format format = 1;
+    bytes bytes = 2;
 }
 
 message UpdateRequest {

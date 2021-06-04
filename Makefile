@@ -60,6 +60,9 @@ client-get-latest:
 client-get-version:
 	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) get-version $(version) $(prefix)
 
+client-rebuild:
+	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) rebuild $(version) $(prefix) $(output)
+
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)
 	grpc-health-probe -addr $(GRPC_SERVER) -service $(SERVICE)

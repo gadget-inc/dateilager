@@ -50,6 +50,15 @@ func get(ctx context.Context, log *zap.Logger, c *client.Client, project int32, 
 	}
 }
 
+func rebuild(ctx context.Context, log *zap.Logger, c *client.Client, project int32, prefix string, version *int64, output string) {
+	err := c.Rebuild(ctx, project, prefix, version, output)
+	if err != nil {
+		log.Fatal("could not fetch data", zap.Error(err))
+	}
+
+	log.Info("wrote files", zap.String("output", output))
+}
+
 func update(ctx context.Context, log *zap.Logger, c *client.Client, project int32, diff, prefix string) {
 	content, err := ioutil.ReadFile(diff)
 	if err != nil {
@@ -104,6 +113,21 @@ func main() {
 		}
 
 		get(ctx, log, c, args.project, prefix, &version)
+
+	case "rebuild":
+		if len(args.args) != 3 {
+			log.Fatal("invalid get-version args", zap.Any("args", args.args))
+		}
+
+		version, err := strconv.ParseInt(args.args[0], 10, 64)
+		if err != nil {
+			log.Fatal("invalid version", zap.String("version", args.args[0]))
+		}
+
+		prefix := args.args[1]
+		output := args.args[2]
+
+		rebuild(ctx, log, c, args.project, prefix, &version, output)
 
 	case "update":
 		if len(args.args) != 2 {

@@ -1,9 +1,13 @@
 package client
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 
 	"github.com/angelini/dateilager/internal/pb"
 	"go.uber.org/zap"
@@ -67,6 +71,72 @@ func (c *Client) Get(ctx context.Context, project int32, prefix string, version 
 	}
 
 	return objects, nil
+}
+
+func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, version *int64, output string) error {
+	query := &pb.ObjectQuery{
+		Path:     prefix,
+		IsPrefix: true,
+	}
+
+	request := &pb.GetCompressRequest{
+		Project:       project,
+		Version:       version,
+		ResponseCount: 8,
+		Queries:       []*pb.ObjectQuery{query},
+	}
+
+	stream, err := c.fs.GetCompress(ctx, request)
+	if err != nil {
+		return fmt.Errorf("connect fs.GetCompress: %w", err)
+	}
+
+	for {
+		response, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("receive fs.GetCompress: %w", err)
+		}
+
+		tarReader := tar.NewReader(bytes.NewBuffer(response.Bytes))
+
+		for {
+			header, err := tarReader.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("next TAR header: %w", err)
+			}
+
+			path := filepath.Join(output, header.Name)
+
+			switch header.Typeflag {
+			case tar.TypeReg:
+				err = os.MkdirAll(filepath.Dir(path), 0777)
+				if err != nil {
+					return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
+				}
+
+				file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
+				if err != nil {
+					return fmt.Errorf("open file %v: %w", path, err)
+				}
+
+				_, err = io.Copy(file, tarReader)
+				if err != nil {
+					return fmt.Errorf("write %v to disk: %w", path, err)
+				}
+
+			default:
+				c.log.Warn("skipping unhandled TAR type", zap.Any("flag", header.Typeflag))
+			}
+		}
+	}
+
+	return nil
 }
 
 func (c *Client) Update(ctx context.Context, project int32, paths []string, prefix string) (int64, error) {
