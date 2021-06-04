@@ -25,10 +25,10 @@ migrate-create:
 	mkdir -p $(MIGRATE_DIR)
 	migrate create -ext sql -dir $(MIGRATE_DIR) -seq $(name)
 
-internal/pb/%.pb.go: pkg/pb/%.proto
+internal/pb/%.pb.go: internal/pb/%.proto
 	protoc --experimental_allow_proto3_optional --go_out=. --go_opt=paths=source_relative $^
 
-internal/pb/%_grpc.pb.go: pkg/pb/%.proto
+internal/pb/%_grpc.pb.go: internal/pb/%.proto
 	protoc --experimental_allow_proto3_optional --go-grpc_out=. --go-grpc_opt=paths=source_relative $^
 
 bin/%: cmd/%/main.go $(PKG_GO_FILES)
