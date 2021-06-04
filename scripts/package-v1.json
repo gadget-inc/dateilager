@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "axios": "0.19.2",
+    "chalk": "2.3.1",
+    "commander": "6.2.1",
+    "express": "3.18.0",
+    "lodash": "2.2.1",
+    "moment": "1.6.1",
+    "react": "15.1.0",
+    "react-dom": "15.1.0",
+    "request": "2.85.0",
+    "tslib": "1.11.2"
+  }
+}

@@ -10,35 +10,46 @@ log() {
 readonly ROOT_DIR="$(realpath "$(dirname "$0")/..")"
 readonly INPUT_DIR="${ROOT_DIR}/input"
 
+build_node_modules() {
+    local package_json="${1}"
+    local output="${2}"
+    local tmpdir="$(mktemp -d -t dl-XXXXXXXXXX)"
+
+    cp "${package_json}" "${tmpdir}/package.json"
+    (
+        cd "${tmpdir}"
+        npm install &> /dev/null
+        cp -r ./node_modules/* "${output}"
+    )
+
+    rm -rf "${tmpdir:?}"
+}
+
 v1() {
     local dir="${1}"
 
     mkdir -p "${dir}"
-    echo "a" > "${dir}/a"
-    echo "b" > "${dir}/b"
+    build_node_modules "${ROOT_DIR}/scripts/package-v1.json" "${dir}"
 
     log "wrote v1 to ${dir}"
 }
 
 v2() {
-    local v1="${1}"
-    local dir="${2}"
+    local dir="${1}"
 
-    cp -r "${v1}" "${dir}"
-    echo "c" > "${dir}/c"
+    mkdir -p "${dir}"
+    build_node_modules "${ROOT_DIR}/scripts/package-v2.json" "${dir}"
 
-    log "wrote v2 to ${dir}"
+    log "wrote v1 to ${dir}"
 }
 
 v3() {
-    local v2="${1}"
-    local dir="${2}"
+    local dir="${1}"
 
-    cp -r "${v2}" "${dir}"
-    echo "d" > "${dir}"/a
-    rm "${dir}/b"
+    mkdir -p "${dir}"
+    build_node_modules "${ROOT_DIR}/scripts/package-v3.json" "${dir}"
 
-    log "wrote v3 to ${dir}"
+    log "wrote v1 to ${dir}"
 }
 
 list_all_files() {
@@ -73,7 +84,7 @@ list_diff_files() {
 }
 
 main() {
-    log "writing simple inputs to ${INPUT_DIR}"
+    log "writing complex inputs to ${INPUT_DIR}"
     rm -rf "${INPUT_DIR:?}"/*
     mkdir -p "${INPUT_DIR}"
 
@@ -82,8 +93,8 @@ main() {
     local v3_dir="${INPUT_DIR}/v3"
 
     v1 "${v1_dir}"
-    v2 "${v1_dir}" "${v2_dir}"
-    v3 "${v2_dir}" "${v3_dir}"
+    v2 "${v2_dir}"
+    v3 "${v3_dir}"
 
     list_all_files "${v1_dir}" "${INPUT_DIR}/initial.txt"
     list_diff_files "${v1_dir}" "${v2_dir}" "${INPUT_DIR}/diff_v1_v2.txt"
