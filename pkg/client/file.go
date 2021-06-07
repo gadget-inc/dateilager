@@ -9,8 +9,8 @@ import (
 	"github.com/angelini/dateilager/internal/pb"
 )
 
-func readFileObject(path, prefix string) (*pb.Object, bool, error) {
-	fullPath := filepath.Join(prefix, path)
+func readFileObject(directory, path string) (*pb.Object, bool, error) {
+	fullPath := filepath.Join(directory, path)
 
 	file, err := os.Open(fullPath)
 	if errors.Is(err, os.ErrNotExist) {

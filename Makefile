@@ -9,7 +9,7 @@ MIGRATE_DIR := ./migrations
 SERVICE := dateilager.server
 
 .PHONY: install migrate migrate-create build test
-.PHONY: reset-db setup-local server client-update client-get-latest client-get-version health
+.PHONY: reset-db setup-local server client-update client-get health
 .PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-health
 
 install:
@@ -50,18 +50,23 @@ server:
 	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT)
 
 client-update:
-	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) update input/initial.txt input/v1
-	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) update input/diff_v1_v2.txt input/v2
-	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) update input/diff_v2_v3.txt input/v3
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/initial.txt -directory input/v1
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/diff_v1_v2.txt -directory input/v2
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/diff_v2_v3.txt -directory input/v3
 
-client-get-latest:
-	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) get-latest $(prefix)
-
-client-get-version:
-	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) get-version $(version) $(prefix)
+client-get:
+ifndef version
+	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)"
+else
+	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -version $(version) -prefix "$(prefix)"
+endif
 
 client-rebuild:
-	go run cmd/client/main.go -project 1 -server $(GRPC_SERVER) rebuild $(version) $(prefix) $(output)
+ifndef version
+	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)" -output $(output)
+else
+	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -version $(version) -prefix "$(prefix)" -output $(output)
+endif
 
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)

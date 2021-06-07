@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"io/ioutil"
-	"strconv"
+	"os"
 	"strings"
 	"time"
 
@@ -13,129 +13,175 @@ import (
 	"go.uber.org/zap"
 )
 
-type ClientArgs struct {
+type Command interface {
+	run(context.Context, *zap.Logger, *client.Client)
+	serverAddr() string
+}
+
+type getArgs struct {
 	server  string
 	project int32
-	cmd     string
-	args    []string
+	version *int64
+	prefix  string
 }
 
-func parseArgs(log *zap.Logger) ClientArgs {
-	server := flag.String("server", "", "GRPC server address")
-	project := flag.Int("project", -1, "Project ID")
+func parseGetArgs(args []string) *getArgs {
+	set := flag.NewFlagSet("get", flag.ExitOnError)
 
-	flag.Parse()
+	server := set.String("server", "", "Server GRPC address")
+	project := set.Int("project", -1, "Project ID")
+	version := set.Int64("version", -1, "Version ID (optional)")
+	prefix := set.String("prefix", "", "Search prefix")
 
-	if *project == -1 {
-		log.Fatal("invalid project", zap.Int("project", *project))
+	set.Parse(args)
+
+	if *version == -1 {
+		version = nil
 	}
 
-	return ClientArgs{
+	return &getArgs{
 		server:  *server,
 		project: int32(*project),
-		cmd:     flag.Arg(0),
-		args:    flag.Args()[1:],
+		version: version,
+		prefix:  *prefix,
 	}
 }
 
-func get(ctx context.Context, log *zap.Logger, c *client.Client, project int32, prefix string, version *int64) {
-	objects, err := c.Get(ctx, project, prefix, version)
+func (a *getArgs) serverAddr() string {
+	return a.server
+}
+
+func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+	objects, err := c.Get(ctx, a.project, a.prefix, a.version)
 	if err != nil {
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
 
-	log.Info("listing objects in project", zap.Int32("project", project))
+	log.Info("listing objects in project", zap.Int32("project", a.project))
 	for _, object := range objects {
 		log.Info("object", zap.String("path", object.Path), zap.String("contents", string(object.Contents)))
 	}
 }
 
-func rebuild(ctx context.Context, log *zap.Logger, c *client.Client, project int32, prefix string, version *int64, output string) {
-	err := c.Rebuild(ctx, project, prefix, version, output)
+type rebuildArgs struct {
+	server  string
+	project int32
+	version *int64
+	prefix  string
+	output  string
+}
+
+func parseRebuildArgs(args []string) *rebuildArgs {
+	set := flag.NewFlagSet("rebuild", flag.ExitOnError)
+
+	server := set.String("server", "", "Server GRPC address")
+	project := set.Int("project", -1, "Project ID")
+	version := set.Int64("version", -1, "Version ID (optional)")
+	prefix := set.String("prefix", "", "Search prefix")
+	output := set.String("output", "", "Output directory")
+
+	set.Parse(args)
+
+	if *version == -1 {
+		version = nil
+	}
+
+	return &rebuildArgs{
+		server:  *server,
+		project: int32(*project),
+		version: version,
+		prefix:  *prefix,
+		output:  *output,
+	}
+}
+
+func (a *rebuildArgs) serverAddr() string {
+	return a.server
+}
+
+func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+	err := c.Rebuild(ctx, a.project, a.prefix, a.version, a.output)
 	if err != nil {
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
 
-	log.Info("wrote files", zap.String("output", output))
+	log.Info("wrote files", zap.String("output", a.output))
 }
 
-func update(ctx context.Context, log *zap.Logger, c *client.Client, project int32, diff, prefix string) {
-	content, err := ioutil.ReadFile(diff)
+type updateArgs struct {
+	server    string
+	project   int32
+	diff      string
+	directory string
+}
+
+func parseUpdateArgs(args []string) *updateArgs {
+	set := flag.NewFlagSet("update", flag.ExitOnError)
+
+	server := set.String("server", "", "Server GRPC address")
+	project := set.Int("project", -1, "Project ID")
+	diff := set.String("diff", "", "Diff file listing changed file names")
+	directory := set.String("directory", "", "Directory containing updated files")
+
+	set.Parse(args)
+
+	return &updateArgs{
+		server:    *server,
+		project:   int32(*project),
+		diff:      *diff,
+		directory: *directory,
+	}
+}
+
+func (a *updateArgs) serverAddr() string {
+	return a.server
+}
+
+func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+	content, err := ioutil.ReadFile(a.diff)
 	if err != nil {
-		log.Fatal("cannot read update file", zap.String("diff", diff), zap.Error(err))
+		log.Fatal("cannot read update file", zap.String("diff", a.diff), zap.Error(err))
 	}
 
 	filePaths := strings.Split(string(content), "\n")
-	version, err := c.Update(ctx, project, filePaths, prefix)
+	version, err := c.Update(ctx, a.project, filePaths, a.directory)
 	if err != nil {
 		log.Fatal("update objects", zap.Error(err))
 	}
 
 	log.Info("updated objects", zap.Int("count", len(filePaths)), zap.Int64("version", version))
+
 }
 
 func main() {
 	log, _ := zap.NewDevelopment()
 	defer log.Sync()
 
-	args := parseArgs(log)
+	if len(os.Args) < 2 {
+		log.Fatal("requires a subcommand: [get, rebuild, update]")
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	var cmd Command
+
+	switch os.Args[1] {
+	case "get":
+		cmd = parseGetArgs(os.Args[2:])
+	case "rebuild":
+		cmd = parseRebuildArgs(os.Args[2:])
+	case "update":
+		cmd = parseUpdateArgs(os.Args[2:])
+	default:
+		log.Fatal("requires a subcommand: [get, rebuild, update]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	c, err := client.NewClient(ctx, args.server)
+	c, err := client.NewClient(ctx, cmd.serverAddr())
 	if err != nil {
-		log.Fatal("could not connect to server", zap.String("server", args.server))
+		log.Fatal("could not connect to server", zap.String("server", cmd.serverAddr()))
 	}
 	defer c.Close()
 
-	switch args.cmd {
-	case "get-latest":
-		prefix := ""
-		if len(args.args) == 1 {
-			prefix = args.args[0]
-		}
-		get(ctx, log, c, args.project, prefix, nil)
-
-	case "get-version":
-		if len(args.args) == 0 || len(args.args) > 2 {
-			log.Fatal("invalid get-version args", zap.Any("args", args.args))
-		}
-
-		version, err := strconv.ParseInt(args.args[0], 10, 64)
-		if err != nil {
-			log.Fatal("invalid version", zap.String("version", args.args[0]))
-		}
-
-		prefix := ""
-		if len(args.args) == 2 {
-			prefix = args.args[1]
-		}
-
-		get(ctx, log, c, args.project, prefix, &version)
-
-	case "rebuild":
-		if len(args.args) != 3 {
-			log.Fatal("invalid get-version args", zap.Any("args", args.args))
-		}
-
-		version, err := strconv.ParseInt(args.args[0], 10, 64)
-		if err != nil {
-			log.Fatal("invalid version", zap.String("version", args.args[0]))
-		}
-
-		prefix := args.args[1]
-		output := args.args[2]
-
-		rebuild(ctx, log, c, args.project, prefix, &version, output)
-
-	case "update":
-		if len(args.args) != 2 {
-			log.Fatal("invalid update args", zap.Any("args", args.args))
-		}
-		update(ctx, log, c, args.project, args.args[0], args.args[1])
-
-	default:
-		log.Fatal("unknown command", zap.String("command", args.cmd))
-	}
+	cmd.run(ctx, log, c)
 }

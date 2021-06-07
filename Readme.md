@@ -68,19 +68,19 @@ $ make client-update
 And then use the client app to read all files within the latest version.
 
 ```bash
-$ make client-get-latest
+$ make client-get
 ```
 
 You can also filter the results with a prefix search.
 
 ```bash
-$ make client-get-latest prefix=/a
+$ make client-get prefix=/a
 ```
 
 Or filter for a specific version.
 
 ```bash
-$ make client-get-version version=1
+$ make client-get version=1
 ```
 
 If you want to rebuild an entire project's directory locally, use the `rebuild` command.

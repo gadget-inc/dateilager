@@ -139,7 +139,7 @@ func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vers
 	return nil
 }
 
-func (c *Client) Update(ctx context.Context, project int32, paths []string, prefix string) (int64, error) {
+func (c *Client) Update(ctx context.Context, project int32, paths []string, directory string) (int64, error) {
 	stream, err := c.fs.Update(ctx)
 	if err != nil {
 		return -1, fmt.Errorf("connect fs.Update: %w", err)
@@ -150,7 +150,7 @@ func (c *Client) Update(ctx context.Context, project int32, paths []string, pref
 			continue
 		}
 
-		object, deleted, err := readFileObject(path, prefix)
+		object, deleted, err := readFileObject(directory, path)
 		if err != nil {
 			return -1, fmt.Errorf("read file object: %w", err)
 		}
