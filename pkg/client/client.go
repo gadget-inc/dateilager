@@ -48,9 +48,10 @@ func (c *Client) Get(ctx context.Context, project int32, prefix string, version 
 	}
 
 	request := &pb.GetRequest{
-		Project: project,
-		Version: version,
-		Queries: []*pb.ObjectQuery{query},
+		Project:     project,
+		FromVersion: nil,
+		ToVersion:   version,
+		Queries:     []*pb.ObjectQuery{query},
 	}
 
 	stream, err := c.fs.Get(ctx, request)
@@ -81,7 +82,8 @@ func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vers
 
 	request := &pb.GetCompressRequest{
 		Project:       project,
-		Version:       version,
+		FromVersion:   nil,
+		ToVersion:     version,
 		ResponseCount: 8,
 		Queries:       []*pb.ObjectQuery{query},
 	}

@@ -31,9 +31,10 @@ func exactQuery(project int32, version *int64, path string) *pb.GetRequest {
 	}
 
 	return &pb.GetRequest{
-		Project: project,
-		Version: version,
-		Queries: []*pb.ObjectQuery{query},
+		Project:     project,
+		FromVersion: nil,
+		ToVersion:   version,
+		Queries:     []*pb.ObjectQuery{query},
 	}
 }
 
@@ -44,9 +45,24 @@ func prefixQuery(project int32, version *int64, path string) *pb.GetRequest {
 	}
 
 	return &pb.GetRequest{
-		Project: project,
-		Version: version,
-		Queries: []*pb.ObjectQuery{query},
+		Project:     project,
+		FromVersion: nil,
+		ToVersion:   version,
+		Queries:     []*pb.ObjectQuery{query},
+	}
+}
+
+func rangeQuery(project int32, fromVersion, toVersion *int64, path string) *pb.GetRequest {
+	query := &pb.ObjectQuery{
+		Path:     path,
+		IsPrefix: true,
+	}
+
+	return &pb.GetRequest{
+		Project:     project,
+		FromVersion: fromVersion,
+		ToVersion:   toVersion,
+		Queries:     []*pb.ObjectQuery{query},
 	}
 }
 
@@ -59,7 +75,7 @@ func TestGetEmpty(t *testing.T) {
 	fs := tc.FsApi()
 	stream := &mockGetServer{ctx: tc.Context()}
 
-	err := fs.Get(&pb.GetRequest{Project: 1, Version: nil}, stream)
+	err := fs.Get(&pb.GetRequest{Project: 1}, stream)
 	if err != nil {
 		t.Fatalf("fs.Get: %v", err)
 	}
@@ -123,6 +139,107 @@ func TestGetPrefix(t *testing.T) {
 	}
 }
 
+func TestGetRange(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 4)
+	writeObject(tc, 1, 1, i(3), "/a")
+	writeObject(tc, 1, 2, i(3), "/b", "b v2")
+	writeObject(tc, 1, 3, nil, "/b", "b v3")
+	writeObject(tc, 1, 3, nil, "/c")
+	writeObject(tc, 1, 4, nil, "/d")
+
+	fs := tc.FsApi()
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err := fs.Get(rangeQuery(1, i(1), i(2), ""), stream)
+	if err != nil {
+		t.Fatalf("fs.Get 1 to 2: %v", err)
+	}
+
+	if len(stream.results) != 1 {
+		t.Errorf("expected 1 result, got: %v", len(stream.results))
+	}
+
+	res := stream.results
+	if res[0].Path != "/b" {
+		t.Errorf("expected /b, got: %v", res[0])
+	}
+
+	stream = &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(rangeQuery(1, i(1), i(3), ""), stream)
+	if err != nil {
+		t.Fatalf("fs.Get 1 to 3: %v", err)
+	}
+
+	if len(stream.results) != 3 {
+		t.Errorf("expected 3 results, got: %v", len(stream.results))
+	}
+
+	res = stream.results
+	if res[0].Path != "/a" || !res[0].Deleted {
+		t.Errorf("expected (/a, deleted), got: %v", res[0])
+	}
+}
+
+func TestDeleteAll(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 3)
+	writeObject(tc, 1, 1, i(2), "/a")
+	writeObject(tc, 1, 1, i(3), "/b")
+	writeObject(tc, 1, 1, i(3), "/c")
+
+	fs := tc.FsApi()
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err := fs.Get(rangeQuery(1, i(1), i(2), ""), stream)
+	if err != nil {
+		t.Fatalf("fs.Get 1 to 2: %v", err)
+	}
+
+	if len(stream.results) != 1 {
+		t.Errorf("expected 1 results, got: %v", len(stream.results))
+	}
+
+	res := stream.results
+	if !res[0].Deleted {
+		t.Errorf("expected deleted /a, got: %v", res[0])
+	}
+
+	stream = &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(rangeQuery(1, i(1), i(3), ""), stream)
+	if err != nil {
+		t.Fatalf("fs.Get 1 to 3: %v", err)
+	}
+
+	if len(stream.results) != 3 {
+		t.Errorf("expected 3 results, got: %v", len(stream.results))
+	}
+
+	res = stream.results
+	if !res[0].Deleted || !res[1].Deleted || !res[2].Deleted {
+		t.Errorf("expected all deleted, got: %v", res)
+	}
+
+	stream = &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(rangeQuery(1, i(2), i(3), ""), stream)
+	if err != nil {
+		t.Fatalf("fs.Get 2 to 3: %v", err)
+	}
+
+	if len(stream.results) != 2 {
+		t.Errorf("expected 2 results, got: %v", len(stream.results))
+	}
+
+	res = stream.results
+	if !res[0].Deleted || !res[1].Deleted {
+		t.Errorf("expected all deleted, got: %v", res)
+	}
+}
+
 func TestGetExactlyOneVersioned(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
@@ -133,8 +250,8 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 	writeObject(tc, 1, 3, nil, "/a", "v3")
 
 	fs := tc.FsApi()
-	stream := &mockGetServer{ctx: tc.Context()}
 
+	stream := &mockGetServer{ctx: tc.Context()}
 	err := fs.Get(exactQuery(1, i(1), "/a"), stream)
 	if err != nil {
 		t.Fatalf("fs.Get version 1: %v", err)

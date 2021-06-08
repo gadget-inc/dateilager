@@ -16,6 +16,7 @@ message Object {
     string path = 1;
     int32 mode = 2;
     int32 size = 3;
+    bool deleted = 4;
     optional bytes contents = 5;
 }
 
@@ -26,8 +27,9 @@ message ObjectQuery {
 
 message GetRequest {
     int32 project = 1;
-    optional int64 version = 2;
-    repeated ObjectQuery queries = 3;
+    optional int64 from_version = 2;
+    optional int64 to_version = 3;
+    repeated ObjectQuery queries = 4;
 }
 
 message GetResponse {
@@ -37,23 +39,25 @@ message GetResponse {
 
 message GetCompressRequest {
     int32 project = 1;
-    optional int64 version = 2;
-    int32 response_count = 3;
-    repeated ObjectQuery queries = 4;
+    optional int64 from_version = 2;
+    optional int64 to_version = 3;
+    int32 response_count = 4;
+    repeated ObjectQuery queries = 5;
 }
 
 message GetCompressResponse {
     enum Format {
         ZSTD_TAR = 0;
     }
-    Format format = 1;
-    bytes bytes = 2;
+    int64 version = 1;
+    Format format = 2;
+    bytes bytes = 3;
 }
 
 message UpdateRequest {
     int32 project = 1;
     Object object = 2;
-    bool delete = 3;
+    bool delete = 3; // FIXME: Remove
 }
 
 message UpdateResponse {

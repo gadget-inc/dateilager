@@ -40,7 +40,7 @@ v2() {
     mkdir -p "${dir}"
     build_node_modules "${ROOT_DIR}/scripts/package-v2.json" "${dir}"
 
-    log "wrote v1 to ${dir}"
+    log "wrote v2 to ${dir}"
 }
 
 v3() {
@@ -49,7 +49,7 @@ v3() {
     mkdir -p "${dir}"
     build_node_modules "${ROOT_DIR}/scripts/package-v3.json" "${dir}"
 
-    log "wrote v1 to ${dir}"
+    log "wrote v3 to ${dir}"
 }
 
 list_all_files() {

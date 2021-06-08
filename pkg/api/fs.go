@@ -13,6 +13,11 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
+type versionRange struct {
+	from int64
+	to   int64
+}
+
 type Fs struct {
 	pb.UnimplementedFsServer
 
@@ -34,6 +39,28 @@ func (f *Fs) getLatestVersion(ctx context.Context, tx pgx.Tx, project int32) (in
 	return latest_version, nil
 }
 
+func (f *Fs) buildVersionRange(ctx context.Context, tx pgx.Tx, project int32, from *int64, to *int64) (versionRange, error) {
+	vrange := versionRange{}
+
+	if from == nil {
+		vrange.from = 0
+	} else {
+		vrange.from = *from
+	}
+
+	if to == nil {
+		latest, err := f.getLatestVersion(ctx, tx, project)
+		if err != nil {
+			return vrange, err
+		}
+		vrange.to = latest
+	} else {
+		vrange.to = *to
+	}
+
+	return vrange, nil
+}
+
 func (f *Fs) getProjectSize(ctx context.Context, tx pgx.Tx, project int32, version int64) (int, error) {
 	var size int
 
@@ -53,35 +80,53 @@ func (f *Fs) getProjectSize(ctx context.Context, tx pgx.Tx, project int32, versi
 
 type objectStream func() (*pb.Object, error)
 
-func (f *Fs) getObjects(ctx context.Context, tx pgx.Tx, project int32, version int64, query *pb.ObjectQuery) (objectStream, error) {
-	sql := `
-		SELECT o.path, o.mode, o.size, c.bytes
-		FROM dl.objects o
-		JOIN dl.contents c
-		  ON o.hash = c.hash
-		WHERE o.project = $1
-		  AND o.start_version <= $2
-		  AND (o.stop_version IS NULL OR o.stop_version > $2)
-	`
-
-	var path string
+func (f *Fs) getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange, query *pb.ObjectQuery) (objectStream, error) {
+	path := query.Path
+	pathPredicate := "o.path = $4"
 	if query.IsPrefix {
-		sql = sql + `
-			AND o.path LIKE $3
-		`
 		path = fmt.Sprintf("%s%%", query.Path)
-	} else {
-		sql = sql + `
-			AND o.path = $3
-		`
-		path = query.Path
+		pathPredicate = "o.path LIKE $4"
 	}
 
-	sql = sql + `
-		ORDER BY o.path
+	fetchDeleted := `
+		UNION
+		SELECT path, mode, size, bytes, deleted
+		FROM removed_files
+	`
+	if vrange.from == 0 {
+		fetchDeleted = ""
+	}
+
+	sqlTemplate := `
+		WITH updated_files AS (
+			SELECT o.path, o.mode, o.size, c.bytes, false AS deleted
+			FROM dl.objects o
+			JOIN dl.contents c
+			  ON o.hash = c.hash
+			WHERE o.project = $1
+			  AND o.start_version > $2
+			  AND o.start_version <= $3
+			  AND (o.stop_version IS NULL OR o.stop_version > $3)
+			  AND %s
+			ORDER BY o.path
+		), removed_files AS (
+			SELECT o.path, o.mode, 0 AS size, ''::bytea AS bytes, true AS deleted
+			FROM dl.objects o
+			WHERE o.project = $1
+			  AND o.start_version <= $3
+			  AND o.stop_version > $2
+			  AND o.stop_version <= $3
+			  AND o.path not in (SELECT path FROM updated_files)
+			ORDER BY o.path
+		)
+		SELECT path, mode, size, bytes, deleted
+		FROM updated_files
+		%s;
 	`
 
-	rows, err := tx.Query(ctx, sql, project, version, path)
+	sql := fmt.Sprintf(sqlTemplate, pathPredicate, fetchDeleted)
+
+	rows, err := tx.Query(ctx, sql, project, vrange.from, vrange.to, path)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +141,9 @@ func (f *Fs) getObjects(ctx context.Context, tx pgx.Tx, project int32, version i
 		var mode int32
 		var size int32
 		var bytes []byte
+		var deleted bool
 
-		err := rows.Scan(&path, &mode, &size, &bytes)
+		err := rows.Scan(&path, &mode, &size, &bytes, &deleted)
 		if err != nil {
 			return nil, err
 		}
@@ -106,6 +152,7 @@ func (f *Fs) getObjects(ctx context.Context, tx pgx.Tx, project int32, version i
 			Path:     path,
 			Mode:     mode,
 			Size:     size,
+			Deleted:  deleted,
 			Contents: bytes,
 		}, nil
 	}, nil
@@ -120,18 +167,13 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	}
 	defer close()
 
-	var version int64
-	if req.Version != nil {
-		version = *req.Version
-	} else {
-		version, err = f.getLatestVersion(ctx, tx, req.Project)
-		if err != nil {
-			return err
-		}
+	vrange, err := f.buildVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
+	if err != nil {
+		return err
 	}
 
 	for _, query := range req.Queries {
-		objects, err := f.getObjects(ctx, tx, req.Project, version, query)
+		objects, err := f.getObjects(ctx, tx, req.Project, vrange, query)
 		if err != nil {
 			return fmt.Errorf("FS get objects: %w", err)
 		}
@@ -145,7 +187,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 				return err
 			}
 
-			err = stream.Send(&pb.GetResponse{Version: version, Object: object})
+			err = stream.Send(&pb.GetResponse{Version: vrange.to, Object: object})
 			if err != nil {
 				return fmt.Errorf("send GetResponse: %w", err)
 			}
@@ -175,15 +217,16 @@ func writeObjectToTar(tarWriter *tar.Writer, object *pb.Object) error {
 	return nil
 }
 
-func sendTar(tarWriter *tar.Writer, buffer *bytes.Buffer, stream pb.Fs_GetCompressServer) error {
+func sendTar(tarWriter *tar.Writer, buffer *bytes.Buffer, stream pb.Fs_GetCompressServer, version int64) error {
 	err := tarWriter.Close()
 	if err != nil {
 		return fmt.Errorf("close TAR writer: %w", err)
 	}
 
 	err = stream.Send(&pb.GetCompressResponse{
-		Format: pb.GetCompressResponse_ZSTD_TAR,
-		Bytes:  buffer.Bytes(),
+		Version: version,
+		Format:  pb.GetCompressResponse_ZSTD_TAR,
+		Bytes:   buffer.Bytes(),
 	})
 	if err != nil {
 		return fmt.Errorf("send GetCompressResponse: %w", err)
@@ -201,17 +244,12 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	}
 	defer close()
 
-	var version int64
-	if req.Version != nil {
-		version = *req.Version
-	} else {
-		version, err = f.getLatestVersion(ctx, tx, req.Project)
-		if err != nil {
-			return err
-		}
+	vrange, err := f.buildVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
+	if err != nil {
+		return err
 	}
 
-	size, err := f.getProjectSize(ctx, tx, req.Project, version)
+	size, err := f.getProjectSize(ctx, tx, req.Project, vrange.to)
 	if err != nil {
 		return err
 	}
@@ -223,7 +261,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	tarWriter := tar.NewWriter(&buffer)
 
 	for _, query := range req.Queries {
-		objects, err := f.getObjects(ctx, tx, req.Project, version, query)
+		objects, err := f.getObjects(ctx, tx, req.Project, vrange, query)
 		if err != nil {
 			return fmt.Errorf("FS get objects: %w", err)
 		}
@@ -246,7 +284,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			if currentSize > targetSize {
 				currentSize = 0
 
-				err = sendTar(tarWriter, &buffer, stream)
+				err = sendTar(tarWriter, &buffer, stream, vrange.to)
 				if err != nil {
 					return err
 				}
@@ -258,7 +296,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	}
 
 	if currentSize > 0 {
-		return sendTar(tarWriter, &buffer, stream)
+		return sendTar(tarWriter, &buffer, stream, vrange.to)
 	}
 
 	return nil
