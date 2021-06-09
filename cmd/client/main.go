@@ -21,28 +21,36 @@ type Command interface {
 type getArgs struct {
 	server  string
 	project int32
-	version *int64
+	vrange  client.VersionRange
 	prefix  string
 }
 
-func parseGetArgs(args []string) *getArgs {
+func parseGetArgs(log *zap.Logger, args []string) *getArgs {
 	set := flag.NewFlagSet("get", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
-	project := set.Int("project", -1, "Project ID")
-	version := set.Int64("version", -1, "Version ID (optional)")
+	project := set.Int("project", -1, "Project ID (required)")
+	from := set.Int64("from", -1, "From version ID (optional)")
+	to := set.Int64("version", -1, "To version ID (optional)")
 	prefix := set.String("prefix", "", "Search prefix")
 
 	set.Parse(args)
 
-	if *version == -1 {
-		version = nil
+	if *project == -1 {
+		log.Fatal("--project required")
+	}
+
+	if *from == -1 {
+		from = nil
+	}
+	if *to == -1 {
+		to = nil
 	}
 
 	return &getArgs{
 		server:  *server,
 		project: int32(*project),
-		version: version,
+		vrange:  client.VersionRange{From: from, To: to},
 		prefix:  *prefix,
 	}
 }
@@ -52,7 +60,7 @@ func (a *getArgs) serverAddr() string {
 }
 
 func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
-	objects, err := c.Get(ctx, a.project, a.prefix, a.version)
+	objects, err := c.Get(ctx, a.project, a.prefix, a.vrange)
 	if err != nil {
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
@@ -66,30 +74,38 @@ func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
 type rebuildArgs struct {
 	server  string
 	project int32
-	version *int64
+	vrange  client.VersionRange
 	prefix  string
 	output  string
 }
 
-func parseRebuildArgs(args []string) *rebuildArgs {
+func parseRebuildArgs(log *zap.Logger, args []string) *rebuildArgs {
 	set := flag.NewFlagSet("rebuild", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
-	project := set.Int("project", -1, "Project ID")
-	version := set.Int64("version", -1, "Version ID (optional)")
+	project := set.Int("project", -1, "Project ID (required)")
+	from := set.Int64("version", -1, "From version ID (optional)")
+	to := set.Int64("version", -1, "To version ID (optional)")
 	prefix := set.String("prefix", "", "Search prefix")
 	output := set.String("output", "", "Output directory")
 
 	set.Parse(args)
 
-	if *version == -1 {
-		version = nil
+	if *project == -1 {
+		log.Fatal("--project required")
+	}
+
+	if *from == -1 {
+		from = nil
+	}
+	if *to == -1 {
+		to = nil
 	}
 
 	return &rebuildArgs{
 		server:  *server,
 		project: int32(*project),
-		version: version,
+		vrange:  client.VersionRange{From: from, To: to},
 		prefix:  *prefix,
 		output:  *output,
 	}
@@ -100,7 +116,7 @@ func (a *rebuildArgs) serverAddr() string {
 }
 
 func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
-	err := c.Rebuild(ctx, a.project, a.prefix, a.version, a.output)
+	err := c.Rebuild(ctx, a.project, a.prefix, a.vrange, a.output)
 	if err != nil {
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
@@ -115,15 +131,19 @@ type updateArgs struct {
 	directory string
 }
 
-func parseUpdateArgs(args []string) *updateArgs {
+func parseUpdateArgs(log *zap.Logger, args []string) *updateArgs {
 	set := flag.NewFlagSet("update", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
-	project := set.Int("project", -1, "Project ID")
+	project := set.Int("project", -1, "Project ID (required)")
 	diff := set.String("diff", "", "Diff file listing changed file names")
 	directory := set.String("directory", "", "Directory containing updated files")
 
 	set.Parse(args)
+
+	if *project == -1 {
+		log.Fatal("--project required")
+	}
 
 	return &updateArgs{
 		server:    *server,
@@ -165,11 +185,11 @@ func main() {
 
 	switch os.Args[1] {
 	case "get":
-		cmd = parseGetArgs(os.Args[2:])
+		cmd = parseGetArgs(log, os.Args[2:])
 	case "rebuild":
-		cmd = parseRebuildArgs(os.Args[2:])
+		cmd = parseRebuildArgs(log, os.Args[2:])
 	case "update":
-		cmd = parseUpdateArgs(os.Args[2:])
+		cmd = parseUpdateArgs(log, os.Args[2:])
 	default:
 		log.Fatal("requires a subcommand: [get, rebuild, update]")
 	}

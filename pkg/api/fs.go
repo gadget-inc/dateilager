@@ -198,10 +198,18 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 }
 
 func writeObjectToTar(tarWriter *tar.Writer, object *pb.Object) error {
+	typeFlag := tar.TypeReg
+	if object.Deleted {
+		// Custom dateilager type flag to represent deleted files
+		typeFlag = 'D'
+	}
+
 	header := &tar.Header{
-		Name: object.Path,
-		Mode: int64(object.Mode),
-		Size: int64(object.Size),
+		Name:     object.Path,
+		Mode:     int64(object.Mode),
+		Size:     int64(object.Size),
+		Format:   tar.FormatPAX,
+		Typeflag: byte(typeFlag),
 	}
 
 	err := tarWriter.WriteHeader(header)
@@ -393,7 +401,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			return fmt.Errorf("multiple projects in one update call: %v %v", project, request.Project)
 		}
 
-		if request.Delete {
+		if request.Object.Deleted {
 			err = f.deleteObject(ctx, tx, project, version, request.Object)
 		} else {
 			err = f.updateObject(ctx, tx, project, version, request.Object)

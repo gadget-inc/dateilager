@@ -49,13 +49,17 @@ func (tc *TestCtx) Context() context.Context {
 func (tc *TestCtx) Connect() pgx.Tx {
 	tx, _, err := tc.dbConn.Connect(tc.ctx)
 	if err != nil {
-		tc.Fatalf("connecting to db: %w", err)
+		tc.Fatalf("connecting to db: %v", err)
 	}
 	return tx
 }
 
-func (tc *TestCtx) Fatalf(format string, args ...interface{}) {
+func (tc *TestCtx) Errorf(format string, args ...interface{}) {
 	tc.t.Errorf(format, args...)
+}
+
+func (tc *TestCtx) Fatalf(format string, args ...interface{}) {
+	tc.t.Fatalf(format, args...)
 }
 
 func (tc *TestCtx) Close() {

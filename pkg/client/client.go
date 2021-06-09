@@ -14,6 +14,11 @@ import (
 	"google.golang.org/grpc"
 )
 
+type VersionRange struct {
+	From *int64
+	To   *int64
+}
+
 type Client struct {
 	log  *zap.Logger
 	conn *grpc.ClientConn
@@ -39,7 +44,7 @@ func (c *Client) Close() {
 	c.conn.Close()
 }
 
-func (c *Client) Get(ctx context.Context, project int32, prefix string, version *int64) ([]*pb.Object, error) {
+func (c *Client) Get(ctx context.Context, project int32, prefix string, vrange VersionRange) ([]*pb.Object, error) {
 	var objects []*pb.Object
 
 	query := &pb.ObjectQuery{
@@ -49,8 +54,8 @@ func (c *Client) Get(ctx context.Context, project int32, prefix string, version 
 
 	request := &pb.GetRequest{
 		Project:     project,
-		FromVersion: nil,
-		ToVersion:   version,
+		FromVersion: vrange.From,
+		ToVersion:   vrange.To,
 		Queries:     []*pb.ObjectQuery{query},
 	}
 
@@ -74,7 +79,7 @@ func (c *Client) Get(ctx context.Context, project int32, prefix string, version 
 	return objects, nil
 }
 
-func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, version *int64, output string) error {
+func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vrange VersionRange, output string) error {
 	query := &pb.ObjectQuery{
 		Path:     prefix,
 		IsPrefix: true,
@@ -82,8 +87,8 @@ func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vers
 
 	request := &pb.GetCompressRequest{
 		Project:       project,
-		FromVersion:   nil,
-		ToVersion:     version,
+		FromVersion:   vrange.From,
+		ToVersion:     vrange.To,
 		ResponseCount: 8,
 		Queries:       []*pb.ObjectQuery{query},
 	}
@@ -132,6 +137,12 @@ func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vers
 					return fmt.Errorf("write %v to disk: %w", path, err)
 				}
 
+			case 'D':
+				err = os.Remove(path)
+				if err != nil {
+					return fmt.Errorf("remove %v from disk: %w", path, err)
+				}
+
 			default:
 				c.log.Warn("skipping unhandled TAR type", zap.Any("flag", header.Typeflag))
 			}
@@ -152,7 +163,7 @@ func (c *Client) Update(ctx context.Context, project int32, paths []string, dire
 			continue
 		}
 
-		object, deleted, err := readFileObject(directory, path)
+		object, err := readFileObject(directory, path)
 		if err != nil {
 			return -1, fmt.Errorf("read file object: %w", err)
 		}
@@ -160,7 +171,6 @@ func (c *Client) Update(ctx context.Context, project int32, paths []string, dire
 		err = stream.Send(&pb.UpdateRequest{
 			Project: project,
 			Object:  object,
-			Delete:  deleted,
 		})
 		if err != nil {
 			return -1, fmt.Errorf("send fs.Update: %w", err)

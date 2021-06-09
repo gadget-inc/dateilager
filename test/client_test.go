@@ -16,7 +16,21 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-const bufSize = 1024 * 1024
+const (
+	bufSize = 1024 * 1024
+)
+
+var (
+	emptyVersionRange = client.VersionRange{From: nil, To: nil}
+)
+
+func toVersion(to int64) client.VersionRange {
+	return client.VersionRange{From: nil, To: &to}
+}
+
+func fromVersion(from int64) client.VersionRange {
+	return client.VersionRange{From: &from, To: nil}
+}
 
 func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, api.CloseFunc) {
 	lis := bufconn.Listen(bufSize)
@@ -43,8 +57,25 @@ func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, api.CloseFun
 	return c, func() { c.Close(); s.Stop() }
 }
 
+func verifyObjects(tc util.TestCtx, objects []*pb.Object, expected map[string]string) {
+	if len(expected) != len(objects) {
+		tc.Errorf("expected %v objects, got: %v", len(expected), len(objects))
+	}
+
+	for _, object := range objects {
+		content, ok := expected[object.Path]
+		if !ok {
+			tc.Fatalf("object path %v not in expected objects", object.Path)
+		}
+
+		if string(object.Contents) != content {
+			tc.Errorf("content mismatch for %v expected '%v', got '%v'", object.Path, content, string(object.Contents))
+		}
+	}
+}
+
 func writeTmpFiles(tc util.TestCtx, files map[string]string) string {
-	dir, err := ioutil.TempDir("", "dateilager_tests")
+	dir, err := ioutil.TempDir("", "dateilager_tests_")
 	if err != nil {
 		tc.Fatalf("create temp dir: %v", err)
 	}
@@ -59,6 +90,29 @@ func writeTmpFiles(tc util.TestCtx, files map[string]string) string {
 	return dir
 }
 
+func verifyDir(tc util.TestCtx, dir string, files map[string]string) {
+	dirFileInfos, err := ioutil.ReadDir(dir)
+	if err != nil {
+		tc.Fatalf("read directory %v: %v", dir, err)
+	}
+
+	if len(dirFileInfos) != len(files) {
+		tc.Errorf("expected %v files in %v, got: %v", len(files), dir, len(dirFileInfos))
+	}
+
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		bytes, err := ioutil.ReadFile(path)
+		if err != nil {
+			tc.Fatalf("read file %v: %v", path, err)
+		}
+
+		if string(bytes) != content {
+			tc.Errorf("content mismatch in %v expected: '%v', got: '%v'", name, content, string(bytes))
+		}
+	}
+}
+
 func TestGetLatestEmpty(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
@@ -68,7 +122,7 @@ func TestGetLatestEmpty(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
 
-	objects, err := c.Get(tc.Context(), 1, "", nil)
+	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
 	if err != nil {
 		t.Fatalf("client.GetLatest empty: %v", err)
 	}
@@ -90,30 +144,24 @@ func TestGetLatest(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
 
-	objects, err := c.Get(tc.Context(), 1, "", nil)
+	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
 	if err != nil {
 		t.Fatalf("client.GetLatest with results: %v", err)
 	}
 
-	objectB := objects[0]
-	if objectB.Path != "/b" || string(objectB.Contents) != "b v1" {
-		t.Errorf("expected object (/b, 'b v1'), got: %v", objectB)
-	}
+	verifyObjects(tc, objects, map[string]string{
+		"/b": "b v1",
+		"/c": "c v2",
+	})
 
-	objectC := objects[1]
-	if objectC.Path != "/c" || string(objectC.Contents) != "c v2" {
-		t.Errorf("expected object (/c, 'c v2'), got: %v", objectC)
-	}
-
-	objects, err = c.Get(tc.Context(), 1, "/c", nil)
+	objects, err = c.Get(tc.Context(), 1, "/c", emptyVersionRange)
 	if err != nil {
 		t.Fatalf("client.GetLatest with results: %v", err)
 	}
 
-	objectC = objects[0]
-	if objectC.Path != "/c" || string(objectC.Contents) != "c v2" {
-		t.Errorf("expected object (/c, 'c v2'), got: %v", objectC)
-	}
+	verifyObjects(tc, objects, map[string]string{
+		"/c": "c v2",
+	})
 }
 
 func TestGetVersion(t *testing.T) {
@@ -129,49 +177,34 @@ func TestGetVersion(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
 
-	objects, err := c.Get(tc.Context(), 1, "", i(1))
+	objects, err := c.Get(tc.Context(), 1, "", toVersion(1))
 	if err != nil {
 		t.Fatalf("client.GetLatest with results: %v", err)
 	}
 
-	objectA := objects[0]
-	if objectA.Path != "/a" || string(objectA.Contents) != "a v1" {
-		t.Errorf("expected object (/a, 'a v1'), got: %v", objectA)
-	}
+	verifyObjects(tc, objects, map[string]string{
+		"/a": "a v1",
+		"/b": "b v1",
+	})
 
-	objectB := objects[1]
-	if objectB.Path != "/b" || string(objectB.Contents) != "b v1" {
-		t.Errorf("expected object (/b, 'b v1'), got: %v", objectB)
-	}
-
-	objects, err = c.Get(tc.Context(), 1, "", i(2))
+	objects, err = c.Get(tc.Context(), 1, "", toVersion(2))
 	if err != nil {
 		t.Fatalf("client.GetLatest with results: %v", err)
 	}
 
-	objectB = objects[0]
-	if objectB.Path != "/b" || string(objectB.Contents) != "b v1" {
-		t.Errorf("expected object (/b, 'b v1'), got: %v", objectB)
-	}
+	verifyObjects(tc, objects, map[string]string{
+		"/b": "b v1",
+		"/c": "c v2",
+	})
 
-	objectC := objects[1]
-	if objectC.Path != "/c" || string(objectC.Contents) != "c v2" {
-		t.Errorf("expected object (/c, 'c v2'), got: %v", objectC)
-	}
-
-	objects, err = c.Get(tc.Context(), 1, "/b", i(2))
+	objects, err = c.Get(tc.Context(), 1, "/b", toVersion(2))
 	if err != nil {
 		t.Fatalf("client.GetLatest with results: %v", err)
 	}
 
-	if len(objects) != 1 {
-		t.Errorf("expected 1 result, got: %v", objects)
-	}
-
-	objectB = objects[0]
-	if objectB.Path != "/b" || string(objectB.Contents) != "b v1" {
-		t.Errorf("expected object (/b, 'b v1'), got: %v", objectB)
-	}
+	verifyObjects(tc, objects, map[string]string{
+		"/b": "b v1",
+	})
 }
 
 func TestRebuild(t *testing.T) {
@@ -186,33 +219,52 @@ func TestRebuild(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
 
-	tmpDir, err := ioutil.TempDir("", "dateilager_tests")
-	if err != nil {
-		tc.Fatalf("create temp dir: %v", err)
-	}
+	tmpDir := writeTmpFiles(tc, map[string]string{})
 	defer os.RemoveAll(tmpDir)
 
-	err = c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
+	err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
 	if err != nil {
-		t.Fatalf("client.GetLatest with results: %v", err)
+		t.Fatalf("client.Rebuild: %v", err)
 	}
 
-	files, err := ioutil.ReadDir(tmpDir)
+	verifyDir(tc, tmpDir, map[string]string{
+		"/a": "a v1",
+		"/b": "b v1",
+		"/c": "c v1",
+	})
+}
+
+func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2)
+	writeObject(tc, 1, 1, i(2), "/a", "a v1")
+	writeObject(tc, 1, 1, i(2), "/b", "b v1")
+	writeObject(tc, 1, 1, nil, "/c", "c v1")
+	writeObject(tc, 1, 2, nil, "/a", "a v2")
+	writeObject(tc, 1, 2, nil, "/d", "d v2")
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	tmpDir := writeTmpFiles(tc, map[string]string{
+		"/a": "a v1",
+		"/b": "b v1",
+		"/c": "c v1",
+	})
+	defer os.RemoveAll(tmpDir)
+
+	err := c.Rebuild(tc.Context(), 1, "", fromVersion(1), tmpDir)
 	if err != nil {
-		t.Fatalf("read tmpdir: %v", err)
+		t.Fatalf("client.Rebuild with overwrites and deletes: %v", err)
 	}
 
-	if len(files) != 3 {
-		t.Errorf("expected 3 files, got: %v", len(files))
-	}
-
-	fileA, err := ioutil.ReadFile(filepath.Join(tmpDir, "/a"))
-	if err != nil {
-		t.Fatalf("read %v/a: %v", tmpDir, err)
-	}
-	if string(fileA) != "a v1" {
-		t.Errorf("expected /a to contain 'a v1', got: %v", string(fileA))
-	}
+	verifyDir(tc, tmpDir, map[string]string{
+		"/a": "a v2",
+		"/c": "c v1",
+		"/d": "d v2",
+	})
 }
 
 func TestUpdateObjects(t *testing.T) {
@@ -242,7 +294,7 @@ func TestUpdateObjects(t *testing.T) {
 		t.Fatalf("expected version to increment to 2, got: %v", version)
 	}
 
-	objects, err := c.Get(tc.Context(), 1, "", nil)
+	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
 	if err != nil {
 		t.Fatalf("client.GetLatest after update: %v", err)
 	}

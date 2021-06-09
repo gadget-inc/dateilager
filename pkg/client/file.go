@@ -9,7 +9,7 @@ import (
 	"github.com/angelini/dateilager/internal/pb"
 )
 
-func readFileObject(directory, path string) (*pb.Object, bool, error) {
+func readFileObject(directory, path string) (*pb.Object, error) {
 	fullPath := filepath.Join(directory, path)
 
 	file, err := os.Open(fullPath)
@@ -18,28 +18,30 @@ func readFileObject(directory, path string) (*pb.Object, bool, error) {
 			Path:     path,
 			Mode:     0,
 			Size:     0,
+			Deleted:  true,
 			Contents: nil,
-		}, true, nil
+		}, nil
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	bytes, err := ioutil.ReadFile(fullPath)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	return &pb.Object{
 		Path:     path,
 		Mode:     int32(info.Mode()),
 		Size:     int32(info.Size()),
+		Deleted:  false,
 		Contents: bytes,
-	}, false, nil
+	}, nil
 }
