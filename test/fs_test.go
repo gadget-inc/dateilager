@@ -24,38 +24,11 @@ func (m *mockGetServer) Send(resp *pb.GetResponse) error {
 	return nil
 }
 
-func exactQuery(project int32, version *int64, path string) *pb.GetRequest {
+func buildRequest(project int32, fromVersion, toVersion *int64, path string, prefix, content bool) *pb.GetRequest {
 	query := &pb.ObjectQuery{
-		Path:     path,
-		IsPrefix: false,
-	}
-
-	return &pb.GetRequest{
-		Project:     project,
-		FromVersion: nil,
-		ToVersion:   version,
-		Queries:     []*pb.ObjectQuery{query},
-	}
-}
-
-func prefixQuery(project int32, version *int64, path string) *pb.GetRequest {
-	query := &pb.ObjectQuery{
-		Path:     path,
-		IsPrefix: true,
-	}
-
-	return &pb.GetRequest{
-		Project:     project,
-		FromVersion: nil,
-		ToVersion:   version,
-		Queries:     []*pb.ObjectQuery{query},
-	}
-}
-
-func rangeQuery(project int32, fromVersion, toVersion *int64, path string) *pb.GetRequest {
-	query := &pb.ObjectQuery{
-		Path:     path,
-		IsPrefix: true,
+		Path:        path,
+		IsPrefix:    prefix,
+		WithContent: content,
 	}
 
 	return &pb.GetRequest{
@@ -64,6 +37,22 @@ func rangeQuery(project int32, fromVersion, toVersion *int64, path string) *pb.G
 		ToVersion:   toVersion,
 		Queries:     []*pb.ObjectQuery{query},
 	}
+}
+
+func exactQuery(project int32, version *int64, path string) *pb.GetRequest {
+	return buildRequest(project, nil, version, path, false, true)
+}
+
+func prefixQuery(project int32, version *int64, path string) *pb.GetRequest {
+	return buildRequest(project, nil, version, path, true, true)
+}
+
+func noContentQuery(project int32, version *int64, path string) *pb.GetRequest {
+	return buildRequest(project, nil, version, path, true, false)
+}
+
+func rangeQuery(project int32, fromVersion, toVersion *int64, path string) *pb.GetRequest {
+	return buildRequest(project, fromVersion, toVersion, path, true, true)
 }
 
 type expectedObject struct {
@@ -213,11 +202,11 @@ func TestGetRange(t *testing.T) {
 	})
 }
 
-func TestDeleteAll(t *testing.T) {
+func TestGetDeleteAll(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 
-	writeProject(tc, 1, 3)
+	writeProject(tc, 1, 1)
 	writeObject(tc, 1, 1, i(2), "/a")
 	writeObject(tc, 1, 1, i(3), "/b")
 	writeObject(tc, 1, 1, i(3), "/c")
@@ -280,7 +269,7 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 
-	writeProject(tc, 1, 1)
+	writeProject(tc, 1, 3)
 	writeObject(tc, 1, 1, i(2), "/a", "v1")
 	writeObject(tc, 1, 2, i(3), "/a", "v2")
 	writeObject(tc, 1, 3, nil, "/a", "v3")
@@ -322,6 +311,39 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 	verifyStreamResults(tc, stream.results, map[string]expectedObject{
 		"/a": {
 			content: "v3",
+			deleted: false,
+		},
+	})
+}
+
+func TestGetWithoutContent(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 3)
+	writeObject(tc, 1, 1, nil, "/a", "a v1")
+	writeObject(tc, 1, 2, nil, "/b", "b v2")
+	writeObject(tc, 1, 3, nil, "/c", "c v3")
+
+	fs := tc.FsApi()
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err := fs.Get(noContentQuery(1, nil, ""), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a": {
+			content: "",
+			deleted: false,
+		},
+		"/b": {
+			content: "",
+			deleted: false,
+		},
+		"/c": {
+			content: "",
 			deleted: false,
 		},
 	})

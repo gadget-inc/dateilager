@@ -48,8 +48,9 @@ func (c *Client) Get(ctx context.Context, project int32, prefix string, vrange V
 	var objects []*pb.Object
 
 	query := &pb.ObjectQuery{
-		Path:     prefix,
-		IsPrefix: true,
+		Path:        prefix,
+		IsPrefix:    true,
+		WithContent: true,
 	}
 
 	request := &pb.GetRequest{
@@ -81,8 +82,9 @@ func (c *Client) Get(ctx context.Context, project int32, prefix string, vrange V
 
 func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vrange VersionRange, output string) error {
 	query := &pb.ObjectQuery{
-		Path:     prefix,
-		IsPrefix: true,
+		Path:        prefix,
+		IsPrefix:    true,
+		WithContent: true,
 	}
 
 	request := &pb.GetCompressRequest{

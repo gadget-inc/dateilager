@@ -81,6 +81,16 @@ func (f *Fs) getProjectSize(ctx context.Context, tx pgx.Tx, project int32, versi
 type objectStream func() (*pb.Object, error)
 
 func (f *Fs) getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange, query *pb.ObjectQuery) (objectStream, error) {
+	bytesSelector := "c.bytes"
+	joinClause := `
+		JOIN dl.contents c
+		  ON o.hash = c.hash
+	`
+	if !query.WithContent {
+		bytesSelector = "''::bytea AS bytes"
+		joinClause = ""
+	}
+
 	path := query.Path
 	pathPredicate := "o.path = $4"
 	if query.IsPrefix {
@@ -99,10 +109,9 @@ func (f *Fs) getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange ve
 
 	sqlTemplate := `
 		WITH updated_files AS (
-			SELECT o.path, o.mode, o.size, c.bytes, false AS deleted
+			SELECT o.path, o.mode, o.size, %s, false AS deleted
 			FROM dl.objects o
-			JOIN dl.contents c
-			  ON o.hash = c.hash
+			%s
 			WHERE o.project = $1
 			  AND o.start_version > $2
 			  AND o.start_version <= $3
@@ -124,7 +133,7 @@ func (f *Fs) getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange ve
 		%s;
 	`
 
-	sql := fmt.Sprintf(sqlTemplate, pathPredicate, fetchDeleted)
+	sql := fmt.Sprintf(sqlTemplate, bytesSelector, joinClause, pathPredicate, fetchDeleted)
 
 	rows, err := tx.Query(ctx, sql, project, vrange.from, vrange.to, path)
 	if err != nil {
@@ -138,8 +147,7 @@ func (f *Fs) getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange ve
 		}
 
 		var path string
-		var mode int32
-		var size int32
+		var mode, size int32
 		var bytes []byte
 		var deleted bool
 
