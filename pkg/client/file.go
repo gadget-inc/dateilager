@@ -15,11 +15,11 @@ func readFileObject(directory, path string) (*pb.Object, error) {
 	file, err := os.Open(fullPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return &pb.Object{
-			Path:     path,
-			Mode:     0,
-			Size:     0,
-			Deleted:  true,
-			Contents: nil,
+			Path:    path,
+			Mode:    0,
+			Size:    0,
+			Deleted: true,
+			Content: nil,
 		}, nil
 	}
 	if err != nil {
@@ -38,10 +38,10 @@ func readFileObject(directory, path string) (*pb.Object, error) {
 	}
 
 	return &pb.Object{
-		Path:     path,
-		Mode:     int32(info.Mode()),
-		Size:     int32(info.Size()),
-		Deleted:  false,
-		Contents: bytes,
+		Path:    path,
+		Mode:    int32(info.Mode()),
+		Size:    int32(info.Size()),
+		Deleted: false,
+		Content: bytes,
 	}, nil
 }

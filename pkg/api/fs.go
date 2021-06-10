@@ -149,11 +149,11 @@ func (f *Fs) getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange ve
 		}
 
 		return &pb.Object{
-			Path:     path,
-			Mode:     mode,
-			Size:     size,
-			Deleted:  deleted,
-			Contents: bytes,
+			Path:    path,
+			Mode:    mode,
+			Size:    size,
+			Deleted: deleted,
+			Content: bytes,
 		}, nil
 	}, nil
 }
@@ -217,9 +217,9 @@ func writeObjectToTar(tarWriter *tar.Writer, object *pb.Object) error {
 		return fmt.Errorf("write header to TAR %v: %w", object.Path, err)
 	}
 
-	_, err = tarWriter.Write(object.Contents)
+	_, err = tarWriter.Write(object.Content)
 	if err != nil {
-		return fmt.Errorf("write contents to TAR %v: %w", object.Path, err)
+		return fmt.Errorf("write content to TAR %v: %w", object.Path, err)
 	}
 
 	return nil
@@ -336,11 +336,11 @@ func (f *Fs) updateObject(ctx context.Context, tx pgx.Tx, project int32, version
 		return fmt.Errorf("FS update latest version: %w", err)
 	}
 
-	contents := object.Contents
-	if contents == nil {
-		contents = []byte("")
+	content := object.Content
+	if content == nil {
+		content = []byte("")
 	}
-	h1, h2 := HashContents(contents)
+	h1, h2 := HashContent(content)
 
 	_, err = tx.Exec(ctx, `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size)
@@ -355,9 +355,9 @@ func (f *Fs) updateObject(ctx context.Context, tx pgx.Tx, project int32, version
 		VALUES (($1, $2), $3)
 		ON CONFLICT
 		   DO NOTHING
-	`, h1, h2, object.Contents)
+	`, h1, h2, object.Content)
 	if err != nil {
-		return fmt.Errorf("FS insert contents: %w", err)
+		return fmt.Errorf("FS insert content: %w", err)
 	}
 
 	return nil

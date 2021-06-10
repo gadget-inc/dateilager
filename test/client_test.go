@@ -68,8 +68,8 @@ func verifyObjects(tc util.TestCtx, objects []*pb.Object, expected map[string]st
 			tc.Fatalf("object path %v not in expected objects", object.Path)
 		}
 
-		if string(object.Contents) != content {
-			tc.Errorf("content mismatch for %v expected '%v', got '%v'", object.Path, content, string(object.Contents))
+		if string(object.Content) != content {
+			tc.Errorf("content mismatch for %v expected '%v', got '%v'", object.Path, content, string(object.Content))
 		}
 	}
 }
@@ -299,18 +299,9 @@ func TestUpdateObjects(t *testing.T) {
 		t.Fatalf("client.GetLatest after update: %v", err)
 	}
 
-	objectA := objects[0]
-	if objectA.Path != "/a" || string(objectA.Contents) != "a v2" {
-		t.Errorf("expected object (/a, 'a v2'), got: %v", objectA)
-	}
-
-	objectB := objects[1]
-	if objectB.Path != "/b" || string(objectB.Contents) != "b v1" {
-		t.Errorf("expected object (/b, 'b v1'), got: %v", objectB)
-	}
-
-	objectC := objects[2]
-	if objectC.Path != "/c" || string(objectC.Contents) != "c v2" {
-		t.Errorf("expected object (/c, 'c v2'), got: %v", objectC)
-	}
+	verifyObjects(tc, objects, map[string]string{
+		"/a": "a v2",
+		"/b": "b v1",
+		"/c": "c v2",
+	})
 }

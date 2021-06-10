@@ -66,6 +66,32 @@ func rangeQuery(project int32, fromVersion, toVersion *int64, path string) *pb.G
 	}
 }
 
+type expectedObject struct {
+	deleted bool
+	content string
+}
+
+func verifyStreamResults(tc util.TestCtx, results []*pb.Object, expected map[string]expectedObject) {
+	if len(results) != len(expected) {
+		tc.Errorf("expected %v objects, got: %v", len(expected), len(results))
+	}
+
+	for _, result := range results {
+		object, ok := expected[result.Path]
+		if !ok {
+			tc.Fatalf("missing %v in stream results", result.Path)
+		}
+
+		if string(result.Content) != object.content {
+			tc.Errorf("mismatch content for %v expected '%v', got '%v'", result.Path, object.content, string(result.Content))
+		}
+
+		if result.Deleted != object.deleted {
+			tc.Errorf("mismatch deleted flag for %v expected %v, got %v", result.Path, object.deleted, result.Deleted)
+		}
+	}
+}
+
 func TestGetEmpty(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
@@ -101,14 +127,12 @@ func TestGetExactlyOne(t *testing.T) {
 		t.Fatalf("fs.Get: %v", err)
 	}
 
-	if len(stream.results) != 1 {
-		t.Errorf("expected exactly 1 result, got: %v", len(stream.results))
-	}
-
-	result := stream.results[0]
-	if result.Path != "/a" {
-		t.Errorf("expected Path /a, got: %v", result.Path)
-	}
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a": {
+			content: "",
+			deleted: false,
+		},
+	})
 }
 
 func TestGetPrefix(t *testing.T) {
@@ -129,14 +153,16 @@ func TestGetPrefix(t *testing.T) {
 		t.Fatalf("fs.Get: %v", err)
 	}
 
-	if len(stream.results) != 2 {
-		t.Errorf("expected 2 results, got: %v", len(stream.results))
-	}
-
-	res := stream.results
-	if res[0].Path != "/a/a" || res[1].Path != "/a/b" {
-		t.Errorf("expected Paths (/a/a, /a/b), got: (%v, %v)", res[0].Path, res[1].Path)
-	}
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a/a": {
+			content: "",
+			deleted: false,
+		},
+		"/a/b": {
+			content: "",
+			deleted: false,
+		},
+	})
 }
 
 func TestGetRange(t *testing.T) {
@@ -158,14 +184,12 @@ func TestGetRange(t *testing.T) {
 		t.Fatalf("fs.Get 1 to 2: %v", err)
 	}
 
-	if len(stream.results) != 1 {
-		t.Errorf("expected 1 result, got: %v", len(stream.results))
-	}
-
-	res := stream.results
-	if res[0].Path != "/b" {
-		t.Errorf("expected /b, got: %v", res[0])
-	}
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/b": {
+			content: "b v2",
+			deleted: false,
+		},
+	})
 
 	stream = &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(rangeQuery(1, i(1), i(3), ""), stream)
@@ -173,14 +197,20 @@ func TestGetRange(t *testing.T) {
 		t.Fatalf("fs.Get 1 to 3: %v", err)
 	}
 
-	if len(stream.results) != 3 {
-		t.Errorf("expected 3 results, got: %v", len(stream.results))
-	}
-
-	res = stream.results
-	if res[0].Path != "/a" || !res[0].Deleted {
-		t.Errorf("expected (/a, deleted), got: %v", res[0])
-	}
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a": {
+			content: "",
+			deleted: true,
+		},
+		"/b": {
+			content: "b v3",
+			deleted: false,
+		},
+		"/c": {
+			content: "",
+			deleted: false,
+		},
+	})
 }
 
 func TestDeleteAll(t *testing.T) {
@@ -200,14 +230,12 @@ func TestDeleteAll(t *testing.T) {
 		t.Fatalf("fs.Get 1 to 2: %v", err)
 	}
 
-	if len(stream.results) != 1 {
-		t.Errorf("expected 1 results, got: %v", len(stream.results))
-	}
-
-	res := stream.results
-	if !res[0].Deleted {
-		t.Errorf("expected deleted /a, got: %v", res[0])
-	}
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a": {
+			content: "",
+			deleted: true,
+		},
+	})
 
 	stream = &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(rangeQuery(1, i(1), i(3), ""), stream)
@@ -215,14 +243,20 @@ func TestDeleteAll(t *testing.T) {
 		t.Fatalf("fs.Get 1 to 3: %v", err)
 	}
 
-	if len(stream.results) != 3 {
-		t.Errorf("expected 3 results, got: %v", len(stream.results))
-	}
-
-	res = stream.results
-	if !res[0].Deleted || !res[1].Deleted || !res[2].Deleted {
-		t.Errorf("expected all deleted, got: %v", res)
-	}
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a": {
+			content: "",
+			deleted: true,
+		},
+		"/b": {
+			content: "",
+			deleted: true,
+		},
+		"/c": {
+			content: "",
+			deleted: true,
+		},
+	})
 
 	stream = &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(rangeQuery(1, i(2), i(3), ""), stream)
@@ -230,14 +264,16 @@ func TestDeleteAll(t *testing.T) {
 		t.Fatalf("fs.Get 2 to 3: %v", err)
 	}
 
-	if len(stream.results) != 2 {
-		t.Errorf("expected 2 results, got: %v", len(stream.results))
-	}
-
-	res = stream.results
-	if !res[0].Deleted || !res[1].Deleted {
-		t.Errorf("expected all deleted, got: %v", res)
-	}
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/b": {
+			content: "",
+			deleted: true,
+		},
+		"/c": {
+			content: "",
+			deleted: true,
+		},
+	})
 }
 
 func TestGetExactlyOneVersioned(t *testing.T) {
@@ -257,10 +293,12 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 		t.Fatalf("fs.Get version 1: %v", err)
 	}
 
-	contents := string(stream.results[0].Contents)
-	if contents != "v1" {
-		t.Errorf("expected Contents v1, got: %v", contents)
-	}
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a": {
+			content: "v1",
+			deleted: false,
+		},
+	})
 
 	stream = &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, i(2), "/a"), stream)
@@ -268,10 +306,12 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 		t.Fatalf("fs.Get version 2: %v", err)
 	}
 
-	contents = string(stream.results[0].Contents)
-	if contents != "v2" {
-		t.Errorf("expected Contents v2, got: %v", contents)
-	}
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a": {
+			content: "v2",
+			deleted: false,
+		},
+	})
 
 	stream = &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, i(3), "/a"), stream)
@@ -279,8 +319,10 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 		t.Fatalf("fs.Get version 3: %v", err)
 	}
 
-	contents = string(stream.results[0].Contents)
-	if contents != "v3" {
-		t.Errorf("expected Contents v3, got: %v", contents)
-	}
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a": {
+			content: "v3",
+			deleted: false,
+		},
+	})
 }

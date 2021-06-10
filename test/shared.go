@@ -31,7 +31,7 @@ func writeObject(tc util.TestCtx, project int32, start int64, stop *int64, path 
 	}
 
 	contentBytes := []byte(content)
-	h1, h2 := api.HashContents(contentBytes)
+	h1, h2 := api.HashContent(contentBytes)
 
 	_, err := conn.Exec(tc.Context(), `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size)

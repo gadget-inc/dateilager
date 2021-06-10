@@ -17,7 +17,7 @@ message Object {
     int32 mode = 2;
     int32 size = 3;
     bool deleted = 4;
-    optional bytes contents = 5;
+    optional bytes content = 5;
 }
 
 message ObjectQuery {

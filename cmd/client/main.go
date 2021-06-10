@@ -67,7 +67,7 @@ func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
 
 	log.Info("listing objects in project", zap.Int32("project", a.project))
 	for _, object := range objects {
-		log.Info("object", zap.String("path", object.Path), zap.String("contents", string(object.Contents)))
+		log.Info("object", zap.String("path", object.Path), zap.String("content", string(object.Content)))
 	}
 }
 
