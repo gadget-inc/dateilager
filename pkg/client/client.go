@@ -88,11 +88,10 @@ func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vran
 	}
 
 	request := &pb.GetCompressRequest{
-		Project:       project,
-		FromVersion:   vrange.From,
-		ToVersion:     vrange.To,
-		ResponseCount: 8,
-		Queries:       []*pb.ObjectQuery{query},
+		Project:     project,
+		FromVersion: vrange.From,
+		ToVersion:   vrange.To,
+		Queries:     []*pb.ObjectQuery{query},
 	}
 
 	stream, err := c.fs.GetCompress(ctx, request)

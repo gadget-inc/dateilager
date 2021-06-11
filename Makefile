@@ -62,14 +62,14 @@ client-get:
 ifndef version
 	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)"
 else
-	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -version $(version) -prefix "$(prefix)"
+	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -to $(version) -prefix "$(prefix)"
 endif
 
 client-rebuild:
 ifndef version
 	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)" -output $(output)
 else
-	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -version $(version) -prefix "$(prefix)" -output $(output)
+	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -to $(version) -prefix "$(prefix)" -output $(output)
 endif
 
 health:

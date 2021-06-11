@@ -42,7 +42,6 @@ message GetCompressRequest {
     int32 project = 1;
     optional int64 from_version = 2;
     optional int64 to_version = 3;
-    int32 response_count = 4;
     repeated ObjectQuery queries = 5;
 }
 

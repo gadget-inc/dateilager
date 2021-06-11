@@ -31,7 +31,7 @@ func parseGetArgs(log *zap.Logger, args []string) *getArgs {
 	server := set.String("server", "", "Server GRPC address")
 	project := set.Int("project", -1, "Project ID (required)")
 	from := set.Int64("from", -1, "From version ID (optional)")
-	to := set.Int64("version", -1, "To version ID (optional)")
+	to := set.Int64("to", -1, "To version ID (optional)")
 	prefix := set.String("prefix", "", "Search prefix")
 
 	set.Parse(args)
@@ -84,8 +84,8 @@ func parseRebuildArgs(log *zap.Logger, args []string) *rebuildArgs {
 
 	server := set.String("server", "", "Server GRPC address")
 	project := set.Int("project", -1, "Project ID (required)")
-	from := set.Int64("version", -1, "From version ID (optional)")
-	to := set.Int64("version", -1, "To version ID (optional)")
+	from := set.Int64("from", -1, "From version ID (optional)")
+	to := set.Int64("to", -1, "To version ID (optional)")
 	prefix := set.String("prefix", "", "Search prefix")
 	output := set.String("output", "", "Output directory")
 

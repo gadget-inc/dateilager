@@ -13,6 +13,10 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
+const (
+	TargetTarSize = 512 * 1024
+)
+
 type versionRange struct {
 	from int64
 	to   int64
@@ -59,23 +63,6 @@ func (f *Fs) buildVersionRange(ctx context.Context, tx pgx.Tx, project int32, fr
 	}
 
 	return vrange, nil
-}
-
-func (f *Fs) getProjectSize(ctx context.Context, tx pgx.Tx, project int32, version int64) (int, error) {
-	var size int
-
-	err := tx.QueryRow(ctx, `
-		SELECT sum(size)
-		FROM dl.objects
-		WHERE project = $1
-		  AND start_version <= $2
-		  AND (stop_version IS NULL OR stop_version > $2)
-	`, project, version).Scan(&size)
-	if err != nil {
-		return -1, fmt.Errorf("FS get project size: %w", err)
-	}
-
-	return size, nil
 }
 
 type objectStream func() (*pb.Object, error)
@@ -265,12 +252,6 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 		return err
 	}
 
-	size, err := f.getProjectSize(ctx, tx, req.Project, vrange.to)
-	if err != nil {
-		return err
-	}
-
-	targetSize := size / int(req.ResponseCount)
 	currentSize := 0
 
 	var buffer bytes.Buffer
@@ -297,7 +278,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			}
 
 			currentSize = currentSize + int(object.Size)
-			if currentSize > targetSize {
+			if currentSize > TargetTarSize {
 				currentSize = 0
 
 				err = sendTar(tarWriter, &buffer, stream, vrange.to)
