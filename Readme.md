@@ -102,7 +102,7 @@ The K8S tools assume a local K8S install using Containerd and Podman.
 
 ### Build
 
-This is meant for local development, it will **delete existing services and pods**.
+This is meant for local development, it will reset the `dateilager` namespace.
 
 ```bash
 $ make k8s
@@ -110,10 +110,11 @@ $ make k8s
 
 ### Client
 
-Execute the client locally and have it connect to a server in K8S.
+Execute the client locally and have it connect to a server in K8S. All of the same `client-*` make commands are supported
+but they require a `k8s-` prefix.
 
 ```bash
-$ make client-k8s
+$ make k8s-client-get
 ```
 
 ## References

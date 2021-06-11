@@ -1,12 +1,16 @@
+PROJECT := dateilager
+
 DB_HOST ?= 127.0.0.1
 DB_URI := postgres://postgres@$(DB_HOST):5432/dl
 
 GRPC_PORT ?= 5051
-GRPC_SERVER := localhost:$(GRPC_PORT)
+GRPC_SERVER ?= localhost:$(GRPC_PORT)
 
 PKG_GO_FILES := $(shell find pkg/ -type f -name '*.go')
+INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
+
 MIGRATE_DIR := ./migrations
-SERVICE := dateilager.server
+SERVICE := $(PROJECT).server
 
 .PHONY: install migrate migrate-create build test
 .PHONY: reset-db setup-local server client-update client-get health
@@ -31,7 +35,7 @@ internal/pb/%.pb.go: internal/pb/%.proto
 internal/pb/%_grpc.pb.go: internal/pb/%.proto
 	protoc --experimental_allow_proto3_optional --go-grpc_out=. --go-grpc_opt=paths=source_relative $^
 
-bin/%: cmd/%/main.go $(PKG_GO_FILES)
+bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES)
 	go build -o $@ $<
 
 build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client
@@ -73,29 +77,34 @@ health:
 	grpc-health-probe -addr $(GRPC_SERVER) -service $(SERVICE)
 
 k8s-clear:
-	kubectl delete --all service
-	kubectl delete --all pod --grace-period 0 --force
+	kubectl -n $(PROJECT) delete --all service
+	kubectl -n $(PROJECT) delete --all pod --grace-period 0 --force
+	kubectl -n $(PROJECT) delete --all configmap
+	kubectl delete ns $(PROJECT)
 
 k8s-build: build
-	podman build -f Dockerfile -t "dateilager:server"
-	podman save -o /tmp/dateilager_server.tar --format oci-archive "dateilager:server"
-	sudo ctr -n k8s.io images import /tmp/dateilager_server.tar
+	podman build -f Dockerfile -t "$(PROJECT):server"
+	podman save -o /tmp/$(PROJECT)_server.tar --format oci-archive "$(PROJECT):server"
+	sudo ctr -n k8s.io images import /tmp/$(PROJECT)_server.tar
 
 k8s-deploy: k8s-build
-	kubectl apply -f k8s/pod.yaml
-	kubectl apply -f k8s/service.yaml
+	kubectl create -f k8s/namespace.yaml
+	kubectl -n $(PROJECT) create configmap server-config --from-env-file=k8s/server.properties
+	kubectl -n $(PROJECT) apply -f k8s/pod.yaml
+	kubectl -n $(PROJECT) apply -f k8s/service.yaml
 
 k8s: k8s-clear k8s-build k8s-deploy
 
-k8s-client-get: SERVER = $(shell kubectl get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
-k8s-client-get:
-	go run cmd/client/main.go -project 1 -server $(SERVER) get
+k8s-client-update: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
+k8s-client-update: client-update
 
-k8s-client-update: SERVER = $(shell kubectl get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
-k8s-client-update:
-	go run cmd/client/main.go -project 1 -server $(SERVER) update $(file)
+k8s-client-get: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
+k8s-client-get: client-get
 
-k8s-health: SERVER = $(shell kubectl get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
+k8s-client-update: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
+k8s-client-rebuild: client-rebuild
+
+k8s-health: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
 k8s-health:
-	grpc-health-probe -addr $(SERVER)
-	grpc-health-probe -addr $(SERVER) -service $(SERVICE)
+	grpc-health-probe -addr $(GRPC_SERVER)
+	grpc-health-probe -addr $(GRPC_SERVER) -service $(SERVICE)

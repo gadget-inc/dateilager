@@ -8,8 +8,19 @@ spec:
   containers:
   - name: server
     image: localhost/dateilager:server
+    env:
+      - name: PORT
+        valueFrom:
+          configMapKeyRef:
+            name: server-config
+            key: port
+      - name: DBURI
+        valueFrom:
+          configMapKeyRef:
+            name: server-config
+            key: dburi
     command: ["./server"]
-    args: ["-port=5051", "-dburi=postgres://postgres@10.1.1.3:5432/dl"]
+    args: ["-port=$(PORT)", "-dburi=$(DBURI)"]
     ports:
       - name: api
         containerPort: 5051
