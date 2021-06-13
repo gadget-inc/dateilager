@@ -37,10 +37,38 @@ func (f *Fs) getLatestVersion(ctx context.Context, tx pgx.Tx, project int32) (in
 		FROM dl.projects WHERE id = $1
 	`, project).Scan(&latest_version)
 	if err != nil {
-		return -1, fmt.Errorf("FS get latest version: %w", err)
+		return -1, fmt.Errorf("FS get latest version, project %v: %w", project, err)
 	}
 
 	return latest_version, nil
+}
+
+func (f *Fs) lockLatestVersion(ctx context.Context, tx pgx.Tx, project int32) (int64, error) {
+	var latest_version int64
+
+	err := tx.QueryRow(ctx, `
+		SELECT latest_version
+		FROM dl.projects WHERE id = $1
+		FOR UPDATE
+	`, project).Scan(&latest_version)
+	if err != nil {
+		return -1, fmt.Errorf("FS lock latest version, project %v: %w", project, err)
+	}
+
+	return latest_version, nil
+}
+
+func (f *Fs) updateLatestVersion(ctx context.Context, tx pgx.Tx, project int32, version int64) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE dl.projects
+		SET latest_version = $1
+		WHERE id = $2
+	`, version, project)
+	if err != nil {
+		return fmt.Errorf("FS update latest version, project %v version %v: %w", project, version, err)
+	}
+
+	return nil
 }
 
 func (f *Fs) buildVersionRange(ctx context.Context, tx pgx.Tx, project int32, from *int64, to *int64) (versionRange, error) {
@@ -377,7 +405,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		if project == -1 {
 			project = request.Project
 
-			latest_version, err := f.getLatestVersion(ctx, tx, project)
+			latest_version, err := f.lockLatestVersion(ctx, tx, project)
 			if err != nil {
 				return err
 			}
@@ -402,11 +430,10 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		}
 	}
 
-	tx.Exec(ctx, `
-		UPDATE dl.projects
-		SET latest_version = $1
-		WHERE id = $2
-	`, version, project)
+	err = f.updateLatestVersion(ctx, tx, project, version)
+	if err != nil {
+		return err
+	}
 
 	err = tx.Commit(ctx)
 	if err != nil {

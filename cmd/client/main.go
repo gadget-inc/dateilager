@@ -65,7 +65,7 @@ func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
 
-	log.Info("listing objects in project", zap.Int32("project", a.project))
+	log.Info("listing objects in project", zap.Int32("project", a.project), zap.Int("count", len(objects)))
 	for _, object := range objects {
 		log.Info("object", zap.String("path", object.Path), zap.String("content", string(object.Content)))
 	}
