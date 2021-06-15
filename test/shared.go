@@ -34,9 +34,9 @@ func writeObject(tc util.TestCtx, project int32, start int64, stop *int64, path 
 	h1, h2 := api.HashContent(contentBytes)
 
 	_, err := conn.Exec(tc.Context(), `
-		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size)
-		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8)
-	`, project, start, stop, path, h1, h2, 0666, len(contentBytes))
+		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
+		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
+	`, project, start, stop, path, h1, h2, 0666, len(contentBytes), false)
 	if err != nil {
 		tc.Fatalf("insert object: %v", err)
 	}

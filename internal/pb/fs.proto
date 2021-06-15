@@ -10,6 +10,8 @@ service Fs {
     rpc GetCompress(GetCompressRequest) returns (stream GetCompressResponse);
 
     rpc Update(stream UpdateRequest) returns (UpdateResponse);
+
+    rpc Pack(PackRequest) returns (PackResponse);
 }
 
 message Object {
@@ -60,5 +62,14 @@ message UpdateRequest {
 }
 
 message UpdateResponse {
+    int64 version = 1;
+}
+
+message PackRequest {
+    int32 project = 1;
+    string path = 2;
+}
+
+message PackResponse {
     int64 version = 1;
 }

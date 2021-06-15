@@ -9,7 +9,8 @@ CREATE TABLE dl.objects (
     path          text,
     hash          hash,
     mode          integer,
-    size          integer
+    size          integer,
+    packed        boolean
 );
 
 CREATE UNIQUE INDEX objects_idx ON dl.objects
