@@ -185,3 +185,16 @@ func (c *Client) Update(ctx context.Context, project int32, paths []string, dire
 
 	return response.Version, nil
 }
+
+func (c *Client) Pack(ctx context.Context, project int32, path string) (int64, error) {
+	response, err := c.fs.Pack(ctx, &pb.PackRequest{
+		Project: project,
+		Path:    path,
+	})
+
+	if err != nil {
+		return -1, fmt.Errorf("pack path %v in project %v: %w", path, project, err)
+	}
+
+	return response.Version, nil
+}

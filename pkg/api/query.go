@@ -17,9 +17,14 @@ func buildQuery(project int32, vrange versionRange, objectQuery *pb.ObjectQuery)
 		JOIN dl.contents c
 		  ON o.hash = c.hash
 	`
+
 	if !objectQuery.WithContent {
-		bytesSelector = "''::bytea AS bytes"
-		joinClause = ""
+		bytesSelector = "c.names_tar as bytes"
+		joinClause = `
+			LEFT JOIN dl.contents c
+			       ON o.hash = c.hash
+				  AND o.packed IS true
+		`
 	}
 
 	path := objectQuery.Path
@@ -50,7 +55,7 @@ func buildQuery(project int32, vrange versionRange, objectQuery *pb.ObjectQuery)
 			  AND %s
 			ORDER BY o.path
 		), removed_files AS (
-			SELECT o.path, o.mode, 0 AS size, ''::bytea AS bytes, o.packed, true AS deleted
+			SELECT o.path, o.mode, 0 AS size, ''::bytea as bytes, o.packed, true AS deleted
 			FROM dl.objects o
 			WHERE o.project = $1
 			  AND o.start_version <= $3
@@ -118,8 +123,7 @@ func getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange versionRan
 			return object, nil
 		}
 
-		remaining := rows.Next()
-		if !remaining {
+		if !rows.Next() {
 			return nil, io.EOF
 		}
 
@@ -155,34 +159,6 @@ func getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange versionRan
 	}, nil
 }
 
-func writeObjectToTar(tarWriter *tar.Writer, object *pb.Object) error {
-	typeFlag := tar.TypeReg
-	if object.Deleted {
-		// Custom dateilager type flag to represent deleted files
-		typeFlag = 'D'
-	}
-
-	header := &tar.Header{
-		Name:     object.Path,
-		Mode:     int64(object.Mode),
-		Size:     int64(object.Size),
-		Format:   tar.FormatPAX,
-		Typeflag: byte(typeFlag),
-	}
-
-	err := tarWriter.WriteHeader(header)
-	if err != nil {
-		return fmt.Errorf("write header to TAR %v: %w", object.Path, err)
-	}
-
-	_, err = tarWriter.Write(object.Content)
-	if err != nil {
-		return fmt.Errorf("write content to TAR %v: %w", object.Path, err)
-	}
-
-	return nil
-}
-
 type tarStream func() ([]byte, error)
 
 func getTars(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
@@ -192,21 +168,12 @@ func getTars(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange,
 		return nil, fmt.Errorf("getObjects query, project %v vrange %v: %w", project, vrange, err)
 	}
 
-	var buffer bytes.Buffer
-	tarWriter := tar.NewWriter(&buffer)
-	currentSize := 0
+	tarWriter := NewTarWriter()
 
 	return func() ([]byte, error) {
-		remaining := rows.Next()
-		if !remaining {
-			if currentSize > 0 {
-				err = tarWriter.Close()
-				if err != nil {
-					return nil, fmt.Errorf("close tar writer: %w", err)
-				}
-
-				currentSize = 0
-				return buffer.Bytes(), nil
+		if !rows.Next() {
+			if tarWriter.Len() > 0 {
+				return tarWriter.BytesAndReset()
 			}
 
 			return nil, io.EOF
@@ -235,25 +202,13 @@ func getTars(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange,
 			Content: content,
 		}
 
-		err = writeObjectToTar(tarWriter, &object)
+		err = tarWriter.WriteObject(&object, true)
 		if err != nil {
 			return nil, err
 		}
 
-		currentSize = currentSize + int(object.Size)
-		if currentSize > TargetTarSize {
-			err = tarWriter.Close()
-			if err != nil {
-				return nil, fmt.Errorf("close tar writer: %w", err)
-			}
-
-			output := buffer.Bytes()
-
-			currentSize = 0
-			buffer.Truncate(0)
-			tarWriter = tar.NewWriter(&buffer)
-
-			return output, nil
+		if tarWriter.Len() > TargetTarSize {
+			return tarWriter.BytesAndReset()
 		}
 
 		return nil, nil

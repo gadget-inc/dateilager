@@ -121,7 +121,7 @@ func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
 
-	log.Info("wrote files", zap.String("output", a.output))
+	log.Info("wrote files", zap.Int32("project", a.project), zap.String("output", a.output))
 }
 
 type updateArgs struct {
@@ -169,8 +169,46 @@ func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client)
 		log.Fatal("update objects", zap.Error(err))
 	}
 
-	log.Info("updated objects", zap.Int("count", len(filePaths)), zap.Int64("version", version))
+	log.Info("updated objects", zap.Int32("project", a.project), zap.Int64("version", version), zap.Int("count", len(filePaths)))
+}
 
+type packArgs struct {
+	server  string
+	project int32
+	path    string
+}
+
+func parsePackArgs(log *zap.Logger, args []string) *packArgs {
+	set := flag.NewFlagSet("update", flag.ExitOnError)
+
+	server := set.String("server", "", "Server GRPC address")
+	project := set.Int("project", -1, "Project ID (required)")
+	path := set.String("path", "", "Root of the object path to pack")
+
+	set.Parse(args)
+
+	if *project == -1 {
+		log.Fatal("--project required")
+	}
+
+	return &packArgs{
+		server:  *server,
+		project: int32(*project),
+		path:    *path,
+	}
+}
+
+func (a *packArgs) serverAddr() string {
+	return a.server
+}
+
+func (a *packArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+	version, err := c.Pack(ctx, a.project, a.path)
+	if err != nil {
+		log.Fatal("pack objects", zap.Int32("project", a.project), zap.String("path", a.path), zap.Error(err))
+	}
+
+	log.Info("packed objects", zap.Int32("project", a.project), zap.String("path", a.path), zap.Int64("version", version))
 }
 
 func main() {
@@ -190,6 +228,8 @@ func main() {
 		cmd = parseRebuildArgs(log, os.Args[2:])
 	case "update":
 		cmd = parseUpdateArgs(log, os.Args[2:])
+	case "pack":
+		cmd = parsePackArgs(log, os.Args[2:])
 	default:
 		log.Fatal("requires a subcommand: [get, rebuild, update]")
 	}

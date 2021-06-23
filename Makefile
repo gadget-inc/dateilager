@@ -13,8 +13,8 @@ MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
 .PHONY: install migrate migrate-create build test
-.PHONY: reset-db setup-local server client-update client-get health
-.PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-health
+.PHONY: reset-db setup-local server client-update client-get client-rebuild client-pack health
+.PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-client-rebuild k8s-client-pack k8s-health
 
 install:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go
@@ -72,6 +72,9 @@ else
 	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -to $(version) -prefix "$(prefix)" -output $(output)
 endif
 
+client-pack:
+	go run cmd/client/main.go pack -project 1 -server $(GRPC_SERVER) -path $(path)
+
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)
 	grpc-health-probe -addr $(GRPC_SERVER) -service $(SERVICE)
@@ -101,8 +104,11 @@ k8s-client-update: client-update
 k8s-client-get: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
 k8s-client-get: client-get
 
-k8s-client-update: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
+k8s-client-rebuild: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
 k8s-client-rebuild: client-rebuild
+
+k8s-client-pack: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
+k8s-client-pack: client-rebuild
 
 k8s-health: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
 k8s-health:

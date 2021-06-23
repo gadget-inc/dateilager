@@ -1,8 +1,6 @@
 package api
 
 import (
-	"archive/tar"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -216,8 +214,8 @@ func (f *Fs) updateObject(ctx context.Context, tx pgx.Tx, project int32, version
 	}
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO dl.contents (hash, bytes)
-		VALUES (($1, $2), $3)
+		INSERT INTO dl.contents (hash, bytes, names_tar)
+		VALUES (($1, $2), $3, NULL)
 		ON CONFLICT
 		   DO NOTHING
 	`, h1, h2, content)
@@ -298,31 +296,32 @@ func (f *Fs) deleteObjects(ctx context.Context, tx pgx.Tx, project int32, versio
 		WHERE project = $2
 		  AND path LIKE $3
 		  AND stop_version IS NULL
+		RETURNING path;
 	`, version, project, fmt.Sprintf("%s%%", path))
 	if err != nil {
-		return fmt.Errorf("delete objects: %w", err)
+		return fmt.Errorf("FS delete objects: %w", err)
 	}
 
 	return nil
 }
 
-func (f *Fs) insertPackedObject(ctx context.Context, tx pgx.Tx, project int32, version int64, path string, content []byte) error {
-	h1, h2 := HashContent(content)
+func (f *Fs) insertPackedObject(ctx context.Context, tx pgx.Tx, project int32, version int64, path string, contentTar, namesTar []byte) error {
+	h1, h2 := HashContent(contentTar)
 
 	_, err := tx.Exec(ctx, `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
-	`, project, version, path, h1, h2, 0, len(content), true)
+	`, project, version, path, h1, h2, 0, len(contentTar), true)
 	if err != nil {
 		return fmt.Errorf("FS insert new packed object: %w", err)
 	}
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO dl.contents (hash, bytes)
-		VALUES (($1, $2), $3)
+		INSERT INTO dl.contents (hash, bytes, names_tar)
+		VALUES (($1, $2), $3, $4)
 		ON CONFLICT
 		DO NOTHING
-	`, h1, h2, content)
+	`, h1, h2, contentTar, namesTar)
 	if err != nil {
 		return fmt.Errorf("FS insert content: %w", err)
 	}
@@ -349,30 +348,17 @@ func (f *Fs) Pack(ctx context.Context, request *pb.PackRequest) (*pb.PackRespons
 		WithContent: true,
 	}
 
-	var buffer bytes.Buffer
-	tarWriter := tar.NewWriter(&buffer)
-
 	objects, err := getObjects(ctx, tx, request.Project, vrange, &query)
 	if err != nil {
 		return nil, err
 	}
 
-	for {
-		object, err := objects()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		err = writeObjectToTar(tarWriter, object)
-		if err != nil {
-			return nil, err
-		}
+	fullTar, namesTar, err := packObjects(objects)
+	if err == ErrEmptyPack {
+		return &pb.PackResponse{
+			Version: latest_version,
+		}, nil
 	}
-
-	err = tarWriter.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +370,7 @@ func (f *Fs) Pack(ctx context.Context, request *pb.PackRequest) (*pb.PackRespons
 		return nil, err
 	}
 
-	err = f.insertPackedObject(ctx, tx, request.Project, version, request.Path, buffer.Bytes())
+	err = f.insertPackedObject(ctx, tx, request.Project, version, request.Path, fullTar, namesTar)
 	if err != nil {
 		return nil, err
 	}
@@ -392,6 +378,11 @@ func (f *Fs) Pack(ctx context.Context, request *pb.PackRequest) (*pb.PackRespons
 	err = f.updateLatestVersion(ctx, tx, request.Project, version)
 	if err != nil {
 		return nil, err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("FS pack commit tx: %w", err)
 	}
 
 	return &pb.PackResponse{
