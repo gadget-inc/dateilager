@@ -86,6 +86,9 @@ func packObjects(objects objectStream) ([]byte, []byte, error) {
 
 	for {
 		object, err := objects()
+		if err == SKIP {
+			continue
+		}
 		if err == io.EOF {
 			break
 		}

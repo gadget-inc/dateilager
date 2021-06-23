@@ -113,6 +113,9 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 
 		for {
 			object, err := objects()
+			if err == SKIP {
+				continue
+			}
 			if err == io.EOF {
 				break
 			}

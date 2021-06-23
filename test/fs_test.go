@@ -495,3 +495,40 @@ func TestGetPackedObjectsWithoutContent(t *testing.T) {
 		},
 	})
 }
+
+func TestGetObjectWithinPack(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a/b", "a/b v1")
+	writeObject(tc, 1, 1, nil, "/a/c", "a/c v1")
+
+	fs := tc.FsApi()
+
+	request := pb.PackRequest{
+		Project: 1,
+		Path:    "/a/",
+	}
+	response, err := fs.Pack(tc.Context(), &request)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	if response.Version != 2 {
+		t.Errorf("expected version 2, got: %v", response.Version)
+	}
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(exactQuery(1, nil, "/a/b"), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a/b": {
+			content: "a/b v1",
+			deleted: false,
+		},
+	})
+}
