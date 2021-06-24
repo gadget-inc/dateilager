@@ -17,6 +17,7 @@ const (
 )
 
 var (
+	//lint:ignore ST1012 All caps name to mimic io.EOF
 	SKIP = errors.New("Skip")
 )
 
@@ -242,7 +243,7 @@ func getTars(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange,
 			return tarWriter.BytesAndReset()
 		}
 
-		return nil, nil
+		return nil, SKIP
 	}, nil
 }
 

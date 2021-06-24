@@ -154,6 +154,9 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			if err == io.EOF {
 				break
 			}
+			if err == SKIP {
+				continue
+			}
 			if err != nil {
 				return err
 			}
