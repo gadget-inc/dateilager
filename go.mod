@@ -5,6 +5,7 @@ go 1.15
 require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/jackc/pgx/v4 v4.11.0
+	github.com/klauspost/compress v1.13.1
 	github.com/lib/pq v1.8.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	go.uber.org/zap v1.16.0

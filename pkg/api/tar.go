@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/angelini/dateilager/internal/pb"
+	"github.com/klauspost/compress/zstd"
 )
 
 var (
@@ -15,33 +16,51 @@ var (
 )
 
 type TarWriter struct {
-	buffer *bytes.Buffer
-	writer *tar.Writer
+	size       int
+	buffer     *bytes.Buffer
+	zstdWriter *zstd.Encoder
+	tarWriter  *tar.Writer
 }
 
 func NewTarWriter() *TarWriter {
 	var buffer bytes.Buffer
+
+	zstdWriter, err := zstd.NewWriter(&buffer)
+	if err != nil {
+		panic("assert not reached: invalid ZSTD writer options")
+	}
+
 	return &TarWriter{
-		buffer: &buffer,
-		writer: tar.NewWriter(&buffer),
+		size:       0,
+		buffer:     &buffer,
+		zstdWriter: zstdWriter,
+		tarWriter:  tar.NewWriter(zstdWriter),
 	}
 }
 
 func (t *TarWriter) BytesAndReset() ([]byte, error) {
-	err := t.writer.Close()
+	err := t.tarWriter.Close()
 	if err != nil {
-		return nil, fmt.Errorf("close TarWriter: %w", err)
+		return nil, fmt.Errorf("close TarWriter.tarWriter: %w", err)
+	}
+
+	err = t.zstdWriter.Close()
+	if err != nil {
+		return nil, fmt.Errorf("close TarWriter.zstdWriter: %w", err)
 	}
 
 	output := t.buffer.Bytes()
+
+	t.size = 0
 	t.buffer.Truncate(0)
-	t.writer = tar.NewWriter(t.buffer)
+	t.zstdWriter.Reset(t.buffer)
+	t.tarWriter = tar.NewWriter(t.zstdWriter)
 
 	return output, nil
 }
 
-func (t *TarWriter) Len() int {
-	return t.buffer.Len()
+func (t *TarWriter) Size() int {
+	return t.size
 }
 
 func (t *TarWriter) WriteObject(object *pb.Object, writeContent bool) error {
@@ -64,19 +83,61 @@ func (t *TarWriter) WriteObject(object *pb.Object, writeContent bool) error {
 		Typeflag: byte(typeFlag),
 	}
 
-	err := t.writer.WriteHeader(header)
+	err := t.tarWriter.WriteHeader(header)
 	if err != nil {
 		return fmt.Errorf("write header to TAR %v: %w", object.Path, err)
 	}
 
 	if writeContent {
-		_, err = t.writer.Write(object.Content)
+		_, err = t.tarWriter.Write(object.Content)
 		if err != nil {
 			return fmt.Errorf("write content to TAR %v: %w", object.Path, err)
 		}
 	}
 
+	t.size += int(size) + len(object.Path)
+
 	return nil
+}
+
+type TarReader struct {
+	zstdReader *zstd.Decoder
+	tarReader  *tar.Reader
+}
+
+func NewTarReader(content []byte) *TarReader {
+	zstdReader, err := zstd.NewReader(bytes.NewBuffer(content))
+	if err != nil {
+		panic("assert not reached: invalid ZSTD reader options")
+	}
+
+	return &TarReader{
+		zstdReader: zstdReader,
+		tarReader:  tar.NewReader(zstdReader),
+	}
+}
+
+func (t *TarReader) Next() (*tar.Header, error) {
+	return t.tarReader.Next()
+}
+
+func (t *TarReader) ReadContent() ([]byte, error) {
+	var buffer bytes.Buffer
+	_, err := io.Copy(&buffer, t.tarReader)
+	if err != nil {
+		return nil, fmt.Errorf("read content from TarReader: %w", err)
+	}
+
+	return buffer.Bytes(), nil
+}
+
+func (t *TarReader) CopyContent(buffer io.Writer) error {
+	_, err := io.Copy(buffer, t.tarReader)
+	return err
+}
+
+func (t *TarReader) Close() {
+	t.zstdReader.Close()
 }
 
 func packObjects(objects objectStream) ([]byte, []byte, error) {

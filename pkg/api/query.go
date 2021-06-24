@@ -1,8 +1,6 @@
 package api
 
 import (
-	"archive/tar"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -12,6 +10,10 @@ import (
 
 	"github.com/angelini/dateilager/internal/pb"
 	"github.com/jackc/pgx/v4"
+)
+
+const (
+	TargetTarSize = 512 * 1024
 )
 
 var (
@@ -85,7 +87,8 @@ func buildQuery(project int32, vrange versionRange, objectQuery *pb.ObjectQuery)
 
 func unpackObjects(content []byte) ([]*pb.Object, error) {
 	var objects []*pb.Object
-	tarReader := tar.NewReader(bytes.NewBuffer(content))
+	tarReader := NewTarReader(content)
+	defer tarReader.Close()
 
 	for {
 		header, err := tarReader.Next()
@@ -96,8 +99,7 @@ func unpackObjects(content []byte) ([]*pb.Object, error) {
 			return nil, fmt.Errorf("unpack objects from TAR: %w", err)
 		}
 
-		var buffer bytes.Buffer
-		_, err = io.Copy(&buffer, tarReader)
+		content, err := tarReader.ReadContent()
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +109,7 @@ func unpackObjects(content []byte) ([]*pb.Object, error) {
 			Mode:    int32(header.Mode),
 			Size:    int32(header.Size),
 			Deleted: false,
-			Content: buffer.Bytes(),
+			Content: content,
 		})
 	}
 }
@@ -201,7 +203,7 @@ func getTars(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange,
 
 	return func() ([]byte, error) {
 		if !rows.Next() {
-			if tarWriter.Len() > 0 {
+			if tarWriter.Size() > 0 {
 				return tarWriter.BytesAndReset()
 			}
 
@@ -236,7 +238,7 @@ func getTars(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange,
 			return nil, err
 		}
 
-		if tarWriter.Len() > TargetTarSize {
+		if tarWriter.Size() > TargetTarSize {
 			return tarWriter.BytesAndReset()
 		}
 
@@ -295,5 +297,6 @@ func isParentPacked(ctx context.Context, tx pgx.Tx, project int32, vrange versio
 	if err != nil {
 		return "", err
 	}
+
 	return path, nil
 }

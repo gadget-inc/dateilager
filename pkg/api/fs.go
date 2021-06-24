@@ -11,10 +11,6 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
-const (
-	TargetTarSize = 512 * 1024
-)
-
 type versionRange struct {
 	from int64
 	to   int64

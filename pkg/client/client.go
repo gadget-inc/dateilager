@@ -2,7 +2,6 @@ package client
 
 import (
 	"archive/tar"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -10,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/angelini/dateilager/internal/pb"
+	"github.com/angelini/dateilager/pkg/api"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -108,7 +108,8 @@ func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vran
 			return fmt.Errorf("receive fs.GetCompress: %w", err)
 		}
 
-		tarReader := tar.NewReader(bytes.NewBuffer(response.Bytes))
+		tarReader := api.NewTarReader(response.Bytes)
+		defer tarReader.Close()
 
 		for {
 			header, err := tarReader.Next()
@@ -133,7 +134,7 @@ func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vran
 					return fmt.Errorf("open file %v: %w", path, err)
 				}
 
-				_, err = io.Copy(file, tarReader)
+				err = tarReader.CopyContent(file)
 				if err != nil {
 					return fmt.Errorf("write %v to disk: %w", path, err)
 				}
