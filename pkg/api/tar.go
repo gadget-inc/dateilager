@@ -70,7 +70,7 @@ func (t *TarWriter) WriteObject(object *pb.Object, writeContent bool) error {
 		typeFlag = 'D'
 	}
 
-	size := int64(object.Size)
+	size := int64(len(object.Content))
 	if !writeContent {
 		size = 0
 	}

@@ -190,7 +190,7 @@ func (f *Fs) deleteObject(ctx context.Context, tx pgx.Tx, project int32, version
 	return nil
 }
 
-func (f *Fs) updateObject(ctx context.Context, tx pgx.Tx, project int32, version int64, object *pb.Object) error {
+func (f *Fs) updateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, project int32, version int64, object *pb.Object) error {
 	_, err := tx.Exec(ctx, `
 		UPDATE dl.objects SET stop_version = $1
 		WHERE project = $2
@@ -215,12 +215,17 @@ func (f *Fs) updateObject(ctx context.Context, tx pgx.Tx, project int32, version
 		return fmt.Errorf("FS insert new object version: %w", err)
 	}
 
+	encoded, err := encoder.Encode(content)
+	if err != nil {
+		return fmt.Errorf("FS update encode content: %w", err)
+	}
+
 	_, err = tx.Exec(ctx, `
 		INSERT INTO dl.contents (hash, bytes, names_tar)
 		VALUES (($1, $2), $3, NULL)
 		ON CONFLICT
 		   DO NOTHING
-	`, h1, h2, content)
+	`, h1, h2, encoded)
 	if err != nil {
 		return fmt.Errorf("FS insert content: %w", err)
 	}
@@ -236,6 +241,8 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return err
 	}
 	defer close()
+
+	contentEncoder := NewContentEncoder()
 
 	// We only receive a project ID after the first streamed update
 	project := int32(-1)
@@ -269,7 +276,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		if request.Object.Deleted {
 			err = f.deleteObject(ctx, tx, project, version, request.Object)
 		} else {
-			err = f.updateObject(ctx, tx, project, version, request.Object)
+			err = f.updateObject(ctx, tx, contentEncoder, project, version, request.Object)
 		}
 
 		if err != nil {

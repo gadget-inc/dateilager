@@ -41,12 +41,18 @@ func writeObject(tc util.TestCtx, project int32, start int64, stop *int64, path 
 		tc.Fatalf("insert object: %v", err)
 	}
 
+	contentEncoder := api.NewContentEncoder()
+	encoded, err := contentEncoder.Encode(contentBytes)
+	if err != nil {
+		tc.Fatalf("encode content: %v", err)
+	}
+
 	_, err = conn.Exec(tc.Context(), `
 		INSERT INTO dl.contents (hash, bytes)
 		VALUES (($1, $2), $3)
 		ON CONFLICT
 		   DO NOTHING
-	`, h1, h2, content)
+	`, h1, h2, encoded)
 	if err != nil {
 		tc.Fatalf("insert contents: %v", err)
 	}

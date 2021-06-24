@@ -147,6 +147,7 @@ func getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange versionRan
 	}
 
 	var buffer []*pb.Object
+	contentDecoder := NewContentDecoder()
 
 	return func() (*pb.Object, error) {
 		if len(buffer) > 0 {
@@ -161,17 +162,17 @@ func getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange versionRan
 
 		var path string
 		var mode, size int32
-		var content []byte
+		var encoded []byte
 		var packed bool
 		var deleted bool
 
-		err := rows.Scan(&path, &mode, &size, &content, &packed, &deleted)
+		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted)
 		if err != nil {
 			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: %w", project, vrange, err)
 		}
 
 		if packed {
-			buffer, err = unpackObjects(content)
+			buffer, err = unpackObjects(encoded)
 			if err != nil {
 				return nil, err
 			}
@@ -179,6 +180,11 @@ func getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange versionRan
 			object := buffer[0]
 			buffer = buffer[1:]
 			return filterObject(originalPath, objectQuery, object)
+		}
+
+		content, err := contentDecoder.Decoder(encoded)
+		if err != nil {
+			return nil, fmt.Errorf("getObjects decode content %v: %w", path, err)
 		}
 
 		return filterObject(originalPath, objectQuery, &pb.Object{
@@ -201,6 +207,7 @@ func getTars(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange,
 	}
 
 	tarWriter := NewTarWriter()
+	contentDecoder := NewContentDecoder()
 
 	return func() ([]byte, error) {
 		if !rows.Next() {
@@ -213,17 +220,22 @@ func getTars(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange,
 
 		var path string
 		var mode, size int32
-		var content []byte
+		var encoded []byte
 		var packed bool
 		var deleted bool
 
-		err := rows.Scan(&path, &mode, &size, &content, &packed, &deleted)
+		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted)
 		if err != nil {
 			return nil, fmt.Errorf("getTars scan, project %v vrange %v: %w", project, vrange, err)
 		}
 
 		if packed {
-			return content, nil
+			return encoded, nil
+		}
+
+		content, err := contentDecoder.Decoder(encoded)
+		if err != nil {
+			return nil, fmt.Errorf("getTars decode content %v: %w", path, err)
 		}
 
 		object := pb.Object{
