@@ -8,29 +8,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/angelini/dateilager/pkg/api"
-	"github.com/angelini/dateilager/pkg/server"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/gadget-inc/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/pkg/server"
 )
-
-type DbPoolConnector struct {
-	pool *pgxpool.Pool
-}
-
-func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, api.CloseFunc, error) {
-	conn, err := d.pool.Acquire(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return tx, func() { tx.Rollback(ctx); conn.Release() }, nil
-}
 
 type ServerArgs struct {
 	port  int
@@ -61,7 +41,7 @@ func main() {
 		log.Fatal("failed to listen", zap.String("protocol", "tcp"), zap.Int("port", args.port))
 	}
 
-	pool, err := pgxpool.Connect(ctx, args.dbUri)
+	pool, err := server.NewDbPoolConnector(ctx, args.dbUri)
 	if err != nil {
 		log.Fatal("cannot connect to DB", zap.String("dburi", args.dbUri))
 	}
@@ -73,7 +53,7 @@ func main() {
 	log.Info("register Fs")
 	fs := &api.Fs{
 		Log:    log,
-		DbConn: &DbPoolConnector{pool: pool},
+		DbConn: pool,
 	}
 	s.RegisterFs(ctx, fs)
 

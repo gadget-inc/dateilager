@@ -3,7 +3,7 @@ package testutil
 import (
 	"context"
 
-	"github.com/angelini/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/jackc/pgx/v4"
 )
 
@@ -26,7 +26,7 @@ func newDbTestConnector(ctx context.Context, uri string) (*DbTestConnector, erro
 	return &DbTestConnector{conn: conn, tx: tx}, nil
 }
 
-func (d *DbTestConnector) Connect(ctx context.Context) (pgx.Tx, api.CloseFunc, error) {
+func (d *DbTestConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, error) {
 	innerTx, err := d.tx.Begin(ctx)
 	if err != nil {
 		return nil, nil, err

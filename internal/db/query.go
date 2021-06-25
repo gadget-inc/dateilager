@@ -1,4 +1,4 @@
-package api
+package db
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/angelini/dateilager/internal/pb"
+	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/jackc/pgx/v4"
 )
 
@@ -21,7 +21,12 @@ var (
 	SKIP = errors.New("Skip")
 )
 
-func buildQuery(project int32, vrange versionRange, objectQuery *pb.ObjectQuery) (string, []interface{}) {
+type VersionRange struct {
+	From int64
+	To   int64
+}
+
+func buildQuery(project int32, vrange VersionRange, objectQuery *pb.ObjectQuery) (string, []interface{}) {
 	bytesSelector := "c.bytes"
 	joinClause := `
 		JOIN dl.contents c
@@ -49,7 +54,7 @@ func buildQuery(project int32, vrange versionRange, objectQuery *pb.ObjectQuery)
 		SELECT path, mode, size, bytes, packed, deleted
 		FROM removed_files
 	`
-	if vrange.from == 0 {
+	if vrange.From == 0 {
 		fetchDeleted = ""
 	}
 
@@ -82,7 +87,7 @@ func buildQuery(project int32, vrange versionRange, objectQuery *pb.ObjectQuery)
 	query := fmt.Sprintf(sqlTemplate, bytesSelector, joinClause, pathPredicate, fetchDeleted)
 
 	return query, []interface{}{
-		project, vrange.from, vrange.to, path,
+		project, vrange.From, vrange.To, path,
 	}
 }
 
@@ -115,7 +120,7 @@ func unpackObjects(content []byte) ([]*pb.Object, error) {
 	}
 }
 
-type objectStream func() (*pb.Object, error)
+type ObjectStream func() (*pb.Object, error)
 
 func filterObject(path string, objectQuery *pb.ObjectQuery, object *pb.Object) (*pb.Object, error) {
 	if objectQuery.IsPrefix && strings.HasPrefix(object.Path, path) {
@@ -129,7 +134,7 @@ func filterObject(path string, objectQuery *pb.ObjectQuery, object *pb.Object) (
 	return nil, SKIP
 }
 
-func getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange, objectQuery *pb.ObjectQuery) (objectStream, error) {
+func GetObjects(ctx context.Context, tx pgx.Tx, project int32, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, error) {
 	parent, err := isParentPacked(ctx, tx, project, vrange, objectQuery)
 	if err != nil {
 		return nil, fmt.Errorf("getObjects searching for packed parents, project %v vrange %v: %w", project, vrange, err)
@@ -199,7 +204,7 @@ func getObjects(ctx context.Context, tx pgx.Tx, project int32, vrange versionRan
 
 type tarStream func() ([]byte, error)
 
-func getTars(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
+func GetTars(ctx context.Context, tx pgx.Tx, project int32, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
 	sql, args := buildQuery(project, vrange, objectQuery)
 	rows, err := tx.Query(ctx, sql, args...)
 	if err != nil {
@@ -259,7 +264,7 @@ func getTars(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange,
 	}, nil
 }
 
-func isParentPacked(ctx context.Context, tx pgx.Tx, project int32, vrange versionRange, objectQuery *pb.ObjectQuery) (string, error) {
+func isParentPacked(ctx context.Context, tx pgx.Tx, project int32, vrange VersionRange, objectQuery *pb.ObjectQuery) (string, error) {
 	sql := `
 		SELECT o.path
 		FROM dl.objects o
@@ -289,7 +294,7 @@ func isParentPacked(ctx context.Context, tx pgx.Tx, project int32, vrange versio
 	}
 
 	args := []interface{}{
-		project, vrange.from, vrange.to,
+		project, vrange.From, vrange.To,
 	}
 
 	var predicate string

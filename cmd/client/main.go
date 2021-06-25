@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/angelini/dateilager/pkg/client"
+	"github.com/gadget-inc/dateilager/pkg/client"
 
 	"go.uber.org/zap"
 )

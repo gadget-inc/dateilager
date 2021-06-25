@@ -1,11 +1,17 @@
-package api
+package db
 
 import (
 	"bytes"
 	"io"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/minio/sha256-simd"
 )
+
+func HashContent(data []byte) ([]byte, []byte) {
+	sha := sha256.Sum256(data)
+	return sha[0:16], sha[16:]
+}
 
 type ContentEncoder struct {
 	buffer *bytes.Buffer

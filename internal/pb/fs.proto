@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package pb;
 
-option go_package = "github.com/angelini/dateilager/pkg/pb";
+option go_package = "github.com/gadget-inc/dateilager/pkg/pb";
 
 service Fs {
     rpc Get(GetRequest) returns (stream GetResponse);

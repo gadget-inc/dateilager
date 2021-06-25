@@ -5,17 +5,56 @@ import (
 	"net"
 	"time"
 
-	"github.com/angelini/dateilager/internal/pb"
-	"github.com/angelini/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/pb"
+	"github.com/gadget-inc/dateilager/pkg/api"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
+
+type DbPoolConnector struct {
+	pool *pgxpool.Pool
+}
+
+func NewDbPoolConnector(ctx context.Context, uri string) (*DbPoolConnector, error) {
+	pool, err := pgxpool.Connect(ctx, uri)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DbPoolConnector{
+		pool: pool,
+	}, nil
+}
+
+func (d *DbPoolConnector) Ping(ctx context.Context) error {
+	return d.pool.Ping(ctx)
+}
+
+func (d *DbPoolConnector) Close() {
+	d.pool.Close()
+}
+
+func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, error) {
+	conn, err := d.pool.Acquire(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return tx, func() { tx.Rollback(ctx); conn.Release() }, nil
+}
 
 type Server struct {
 	log    *zap.Logger
@@ -40,7 +79,7 @@ func NewServer(log *zap.Logger) *Server {
 	return &Server{log: log, Grpc: grpcServer, Health: healthServer}
 }
 
-func (s *Server) MonitorDbPool(ctx context.Context, pool *pgxpool.Pool) {
+func (s *Server) MonitorDbPool(ctx context.Context, pool *DbPoolConnector) {
 	ticker := time.NewTicker(time.Second)
 
 	go func() {

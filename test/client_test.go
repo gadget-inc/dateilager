@@ -8,10 +8,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/angelini/dateilager/internal/pb"
-	util "github.com/angelini/dateilager/internal/testutil"
-	"github.com/angelini/dateilager/pkg/api"
-	"github.com/angelini/dateilager/pkg/client"
+	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/pb"
+	util "github.com/gadget-inc/dateilager/internal/testutil"
+	"github.com/gadget-inc/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/pkg/client"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
 )
@@ -32,7 +33,7 @@ func fromVersion(from int64) client.VersionRange {
 	return client.VersionRange{From: &from, To: nil}
 }
 
-func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, api.CloseFunc) {
+func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, db.CloseFunc) {
 	lis := bufconn.Listen(bufSize)
 	s := grpc.NewServer()
 

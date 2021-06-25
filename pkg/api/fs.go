@@ -7,20 +7,16 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/angelini/dateilager/internal/pb"
+	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/jackc/pgx/v4"
 )
-
-type versionRange struct {
-	from int64
-	to   int64
-}
 
 type Fs struct {
 	pb.UnimplementedFsServer
 
 	Log    *zap.Logger
-	DbConn DbConnector
+	DbConn db.DbConnector
 }
 
 func (f *Fs) getLatestVersion(ctx context.Context, tx pgx.Tx, project int32) (int64, error) {
@@ -65,13 +61,13 @@ func (f *Fs) updateLatestVersion(ctx context.Context, tx pgx.Tx, project int32, 
 	return nil
 }
 
-func (f *Fs) buildVersionRange(ctx context.Context, tx pgx.Tx, project int32, from *int64, to *int64) (versionRange, error) {
-	vrange := versionRange{}
+func (f *Fs) buildVersionRange(ctx context.Context, tx pgx.Tx, project int32, from *int64, to *int64) (db.VersionRange, error) {
+	vrange := db.VersionRange{}
 
 	if from == nil {
-		vrange.from = 0
+		vrange.From = 0
 	} else {
-		vrange.from = *from
+		vrange.From = *from
 	}
 
 	if to == nil {
@@ -79,9 +75,9 @@ func (f *Fs) buildVersionRange(ctx context.Context, tx pgx.Tx, project int32, fr
 		if err != nil {
 			return vrange, err
 		}
-		vrange.to = latest
+		vrange.To = latest
 	} else {
-		vrange.to = *to
+		vrange.To = *to
 	}
 
 	return vrange, nil
@@ -102,14 +98,14 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	}
 
 	for _, query := range req.Queries {
-		objects, err := getObjects(ctx, tx, req.Project, vrange, query)
+		objects, err := db.GetObjects(ctx, tx, req.Project, vrange, query)
 		if err != nil {
 			return err
 		}
 
 		for {
 			object, err := objects()
-			if err == SKIP {
+			if err == db.SKIP {
 				continue
 			}
 			if err == io.EOF {
@@ -119,7 +115,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 				return err
 			}
 
-			err = stream.Send(&pb.GetResponse{Version: vrange.to, Object: object})
+			err = stream.Send(&pb.GetResponse{Version: vrange.To, Object: object})
 			if err != nil {
 				return fmt.Errorf("send GetResponse: %w", err)
 			}
@@ -144,7 +140,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	}
 
 	for _, query := range req.Queries {
-		tars, err := getTars(ctx, tx, req.Project, vrange, query)
+		tars, err := db.GetTars(ctx, tx, req.Project, vrange, query)
 		if err != nil {
 			return err
 		}
@@ -154,7 +150,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			if err == io.EOF {
 				break
 			}
-			if err == SKIP {
+			if err == db.SKIP {
 				continue
 			}
 			if err != nil {
@@ -162,7 +158,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			}
 
 			err = stream.Send(&pb.GetCompressResponse{
-				Version: vrange.to,
+				Version: vrange.To,
 				Format:  pb.GetCompressResponse_ZSTD_TAR,
 				Bytes:   tar,
 			})
@@ -190,7 +186,7 @@ func (f *Fs) deleteObject(ctx context.Context, tx pgx.Tx, project int32, version
 	return nil
 }
 
-func (f *Fs) updateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, project int32, version int64, object *pb.Object) error {
+func (f *Fs) updateObject(ctx context.Context, tx pgx.Tx, encoder *db.ContentEncoder, project int32, version int64, object *pb.Object) error {
 	_, err := tx.Exec(ctx, `
 		UPDATE dl.objects SET stop_version = $1
 		WHERE project = $2
@@ -205,7 +201,7 @@ func (f *Fs) updateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncode
 	if content == nil {
 		content = []byte("")
 	}
-	h1, h2 := HashContent(content)
+	h1, h2 := db.HashContent(content)
 
 	_, err = tx.Exec(ctx, `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
@@ -242,7 +238,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	}
 	defer close()
 
-	contentEncoder := NewContentEncoder()
+	contentEncoder := db.NewContentEncoder()
 
 	// We only receive a project ID after the first streamed update
 	project := int32(-1)
@@ -315,7 +311,7 @@ func (f *Fs) deleteObjects(ctx context.Context, tx pgx.Tx, project int32, versio
 }
 
 func (f *Fs) insertPackedObject(ctx context.Context, tx pgx.Tx, project int32, version int64, path string, contentTar, namesTar []byte) error {
-	h1, h2 := HashContent(contentTar)
+	h1, h2 := db.HashContent(contentTar)
 
 	_, err := tx.Exec(ctx, `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
@@ -350,20 +346,20 @@ func (f *Fs) Pack(ctx context.Context, request *pb.PackRequest) (*pb.PackRespons
 		return nil, err
 	}
 
-	vrange := versionRange{from: 0, to: latest_version}
+	vrange := db.VersionRange{From: 0, To: latest_version}
 	query := pb.ObjectQuery{
 		Path:        request.Path,
 		IsPrefix:    true,
 		WithContent: true,
 	}
 
-	objects, err := getObjects(ctx, tx, request.Project, vrange, &query)
+	objects, err := db.GetObjects(ctx, tx, request.Project, vrange, &query)
 	if err != nil {
 		return nil, err
 	}
 
-	fullTar, namesTar, err := packObjects(objects)
-	if err == ErrEmptyPack {
+	fullTar, namesTar, err := db.PackObjects(objects)
+	if err == db.ErrEmptyPack {
 		return &pb.PackResponse{
 			Version: latest_version,
 		}, nil

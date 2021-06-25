@@ -7,8 +7,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/angelini/dateilager/internal/pb"
-	util "github.com/angelini/dateilager/internal/testutil"
+	"github.com/gadget-inc/dateilager/internal/pb"
+	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/klauspost/compress/zstd"
 	"google.golang.org/grpc"
 )

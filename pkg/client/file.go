@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/angelini/dateilager/internal/pb"
+	"github.com/gadget-inc/dateilager/internal/pb"
 )
 
 func readFileObject(directory, path string) (*pb.Object, error) {

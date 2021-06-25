@@ -5,7 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/angelini/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/jackc/pgx/v4"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
@@ -38,7 +39,7 @@ func (tc *TestCtx) Logger() *zap.Logger {
 	return tc.log
 }
 
-func (tc *TestCtx) Connector() api.DbConnector {
+func (tc *TestCtx) Connector() db.DbConnector {
 	return tc.dbConn
 }
 

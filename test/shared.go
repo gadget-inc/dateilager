@@ -1,8 +1,8 @@
 package test
 
 import (
-	util "github.com/angelini/dateilager/internal/testutil"
-	"github.com/angelini/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/internal/db"
+	util "github.com/gadget-inc/dateilager/internal/testutil"
 )
 
 func i(i int64) *int64 {
@@ -31,7 +31,7 @@ func writeObject(tc util.TestCtx, project int32, start int64, stop *int64, path 
 	}
 
 	contentBytes := []byte(content)
-	h1, h2 := api.HashContent(contentBytes)
+	h1, h2 := db.HashContent(contentBytes)
 
 	_, err := conn.Exec(tc.Context(), `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
@@ -41,7 +41,7 @@ func writeObject(tc util.TestCtx, project int32, start int64, stop *int64, path 
 		tc.Fatalf("insert object: %v", err)
 	}
 
-	contentEncoder := api.NewContentEncoder()
+	contentEncoder := db.NewContentEncoder()
 	encoded, err := contentEncoder.Encode(contentBytes)
 	if err != nil {
 		tc.Fatalf("encode content: %v", err)

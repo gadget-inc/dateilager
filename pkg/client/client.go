@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/angelini/dateilager/internal/pb"
-	"github.com/angelini/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/pb"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -108,7 +108,7 @@ func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vran
 			return fmt.Errorf("receive fs.GetCompress: %w", err)
 		}
 
-		tarReader := api.NewTarReader(response.Bytes)
+		tarReader := db.NewTarReader(response.Bytes)
 		defer tarReader.Close()
 
 		for {

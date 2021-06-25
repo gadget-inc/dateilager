@@ -1,4 +1,4 @@
-package api
+package db
 
 import (
 	"archive/tar"
@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/angelini/dateilager/internal/pb"
+	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -140,7 +140,7 @@ func (t *TarReader) Close() {
 	t.zstdReader.Close()
 }
 
-func packObjects(objects objectStream) ([]byte, []byte, error) {
+func PackObjects(objects ObjectStream) ([]byte, []byte, error) {
 	contentWriter := NewTarWriter()
 	namesWriter := NewTarWriter()
 	empty := true
