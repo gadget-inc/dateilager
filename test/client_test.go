@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	fsdiff "github.com/angelini/fsdiff/pkg/diff"
+	fsdiff_pb "github.com/angelini/fsdiff/pkg/pb"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
@@ -89,6 +91,29 @@ func writeTmpFiles(tc util.TestCtx, files map[string]string) string {
 	}
 
 	return dir
+}
+
+func writeDiffFile(tc util.TestCtx, updates map[string]fsdiff_pb.Update_Action) string {
+	file, err := ioutil.TempFile("", "dateilager_tests_diff_")
+	if err != nil {
+		tc.Fatalf("create temp file: %v", err)
+	}
+	fileName := file.Name()
+
+	diff := &fsdiff_pb.Diff{CreatedAt: 0}
+	for path, action := range updates {
+		diff.Updates = append(diff.Updates, &fsdiff_pb.Update{
+			Path:   path,
+			Action: action,
+		})
+	}
+
+	err = fsdiff.WriteDiff(fileName, diff)
+	if err != nil {
+		tc.Fatalf("write diff file: %v", err)
+	}
+
+	return fileName
 }
 
 func verifyDir(tc util.TestCtx, dir string, files map[string]string) {
@@ -280,19 +305,31 @@ func TestUpdateObjects(t *testing.T) {
 	tmpDir := writeTmpFiles(tc, map[string]string{
 		"/a": "a v2",
 		"/c": "c v2",
+		"/d": "d v2",
 	})
 	defer os.RemoveAll(tmpDir)
+
+	diffPath := writeDiffFile(tc, map[string]fsdiff_pb.Update_Action{
+		"/a": fsdiff_pb.Update_CHANGE,
+		"/c": fsdiff_pb.Update_CHANGE,
+		"/d": fsdiff_pb.Update_ADD,
+	})
+	defer os.Remove(diffPath)
 
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
 
-	version, err := c.Update(tc.Context(), 1, []string{"/a", "/c"}, tmpDir)
+	version, count, err := c.Update(tc.Context(), 1, diffPath, tmpDir)
 	if err != nil {
 		t.Fatalf("client.UpdateObjects: %v", err)
 	}
 
 	if version != 2 {
-		t.Fatalf("expected version to increment to 2, got: %v", version)
+		t.Errorf("expected version to increment to 2, got: %v", version)
+	}
+
+	if count != 3 {
+		t.Errorf("expected count to be 3, got: %v", count)
 	}
 
 	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
@@ -304,5 +341,6 @@ func TestUpdateObjects(t *testing.T) {
 		"/a": "a v2",
 		"/b": "b v1",
 		"/c": "c v2",
+		"/d": "d v2",
 	})
 }

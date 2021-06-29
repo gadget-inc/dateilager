@@ -52,35 +52,12 @@ v3() {
     log "wrote v3 to ${dir}"
 }
 
-list_all_files() {
+generate_diff() {
     local dir="${1}"
-    local output="${2}"
+    local sum="${2}"
+    local out="${3}"
 
-    (
-        cd "${ROOT_DIR}"
-        find "${dir}" -type f \
-            | sed "s_^${dir}__" \
-            > "${output}"
-    )
-}
-
-list_diff_files() {
-    local before="${1}"
-    local after="${2}"
-    local output="${3}"
-
-    (
-        cd "${ROOT_DIR}"
-        # everything except files deleted in $after
-        git diff --name-only --no-index --diff-filter=d -l0 "${before}" "${after}" \
-            | sed "s_^${after}__" \
-            > "${output}" || true
-
-        # only deleted files
-        git diff --name-only --no-index --diff-filter=A -l0 "${after}" "${before}" \
-            | sed "s_^${before}__" \
-            >> "${output}" || true
-    )
+    fsdiff -dir "${dir}" -sum "${sum}" -out "${out}"
 }
 
 main() {
@@ -96,11 +73,11 @@ main() {
     v2 "${v2_dir}"
     v3 "${v3_dir}"
 
-    list_all_files "${v1_dir}" "${INPUT_DIR}/initial.txt"
-    list_diff_files "${v1_dir}" "${v2_dir}" "${INPUT_DIR}/diff_v1_v2.txt"
-    list_diff_files "${v2_dir}" "${v3_dir}" "${INPUT_DIR}/diff_v2_v3.txt"
+    generate_diff "${v1_dir}" "" "${v1_dir}_state"
+    generate_diff "${v2_dir}" "${v1_dir}_state/sum.zst" "${v2_dir}_state"
+    generate_diff "${v3_dir}" "${v2_dir}_state/sum.zst" "${v3_dir}_state"
 
-    log "wrote file and diff lists"
+    log "wrote files and diffs"
 }
 
 main "$@"

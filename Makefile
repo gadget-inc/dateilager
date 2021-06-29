@@ -17,10 +17,12 @@ SERVICE := $(PROJECT).server
 .PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-client-rebuild k8s-client-pack k8s-health
 
 install:
-	go install google.golang.org/protobuf/cmd/protoc-gen-go
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
-	go install github.com/grpc-ecosystem/grpc-health-probe
-	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate
+	go env -w GOPRIVATE=github.com/angelini/fsdiff
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.26
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.1
+	go install github.com/grpc-ecosystem/grpc-health-probe@v0.4
+	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.14
+	go install github.com/angelini/fsdiff/cmd/fsdiff@v0.1
 
 migrate:
 	migrate -database $(DB_URI)?sslmode=disable -path $(MIGRATE_DIR) up
@@ -54,9 +56,9 @@ server:
 	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT)
 
 client-update:
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/initial.txt -directory input/v1
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/diff_v1_v2.txt -directory input/v2
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/diff_v2_v3.txt -directory input/v3
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v1_state/diff.zst -directory input/v1
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v2_state/diff.zst -directory input/v2
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v3_state/diff.zst -directory input/v3
 
 client-get:
 ifndef version

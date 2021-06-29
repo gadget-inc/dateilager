@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"flag"
-	"io/ioutil"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/gadget-inc/dateilager/pkg/client"
@@ -158,18 +156,12 @@ func (a *updateArgs) serverAddr() string {
 }
 
 func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
-	content, err := ioutil.ReadFile(a.diff)
-	if err != nil {
-		log.Fatal("cannot read update file", zap.String("diff", a.diff), zap.Error(err))
-	}
-
-	filePaths := strings.Split(string(content), "\n")
-	version, err := c.Update(ctx, a.project, filePaths, a.directory)
+	version, count, err := c.Update(ctx, a.project, a.diff, a.directory)
 	if err != nil {
 		log.Fatal("update objects", zap.Error(err))
 	}
 
-	log.Info("updated objects", zap.Int32("project", a.project), zap.Int64("version", version), zap.Int("count", len(filePaths)))
+	log.Info("updated objects", zap.Int32("project", a.project), zap.Int64("version", version), zap.Int("count", count))
 }
 
 type packArgs struct {
