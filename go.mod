@@ -1,6 +1,6 @@
 module github.com/gadget-inc/dateilager
 
-go 1.15
+go 1.16
 
 require (
 	github.com/angelini/fsdiff v0.1.4

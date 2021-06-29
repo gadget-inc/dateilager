@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -78,13 +77,13 @@ func verifyObjects(tc util.TestCtx, objects []*pb.Object, expected map[string]st
 }
 
 func writeTmpFiles(tc util.TestCtx, files map[string]string) string {
-	dir, err := ioutil.TempDir("", "dateilager_tests_")
+	dir, err := os.MkdirTemp("", "dateilager_tests_")
 	if err != nil {
 		tc.Fatalf("create temp dir: %v", err)
 	}
 
 	for name, content := range files {
-		err = ioutil.WriteFile(filepath.Join(dir, name), []byte(content), 0666)
+		err = os.WriteFile(filepath.Join(dir, name), []byte(content), 0666)
 		if err != nil {
 			tc.Fatalf("write temp file: %v", err)
 		}
@@ -94,7 +93,7 @@ func writeTmpFiles(tc util.TestCtx, files map[string]string) string {
 }
 
 func writeDiffFile(tc util.TestCtx, updates map[string]fsdiff_pb.Update_Action) string {
-	file, err := ioutil.TempFile("", "dateilager_tests_diff_")
+	file, err := os.CreateTemp("", "dateilager_tests_diff_")
 	if err != nil {
 		tc.Fatalf("create temp file: %v", err)
 	}
@@ -117,18 +116,18 @@ func writeDiffFile(tc util.TestCtx, updates map[string]fsdiff_pb.Update_Action) 
 }
 
 func verifyDir(tc util.TestCtx, dir string, files map[string]string) {
-	dirFileInfos, err := ioutil.ReadDir(dir)
+	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
 		tc.Fatalf("read directory %v: %v", dir, err)
 	}
 
-	if len(dirFileInfos) != len(files) {
-		tc.Errorf("expected %v files in %v, got: %v", len(files), dir, len(dirFileInfos))
+	if len(dirEntries) != len(files) {
+		tc.Errorf("expected %v files in %v, got: %v", len(files), dir, len(dirEntries))
 	}
 
 	for name, content := range files {
 		path := filepath.Join(dir, name)
-		bytes, err := ioutil.ReadFile(path)
+		bytes, err := os.ReadFile(path)
 		if err != nil {
 			tc.Fatalf("read file %v: %v", path, err)
 		}

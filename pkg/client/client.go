@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -171,7 +170,7 @@ func readFileObject(directory, path string) (*pb.Object, error) {
 		return nil, err
 	}
 
-	bytes, err := ioutil.ReadFile(fullPath)
+	bytes, err := os.ReadFile(fullPath)
 	if err != nil {
 		return nil, err
 	}
