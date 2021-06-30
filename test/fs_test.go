@@ -13,6 +13,11 @@ import (
 	"google.golang.org/grpc"
 )
 
+type expectedObject struct {
+	deleted bool
+	content string
+}
+
 type mockGetServer struct {
 	grpc.ServerStream
 	ctx     context.Context
@@ -41,6 +46,58 @@ func (m *mockGetCompressServer) Context() context.Context {
 func (m *mockGetCompressServer) Send(resp *pb.GetCompressResponse) error {
 	m.results = append(m.results, resp.Bytes)
 	return nil
+}
+
+type mockUpdateServer struct {
+	grpc.ServerStream
+	ctx      context.Context
+	project  int32
+	updates  []*pb.Object
+	idx      int
+	response *pb.UpdateResponse
+}
+
+func newMockUpdateServer(ctx context.Context, project int32, updates map[string]expectedObject) *mockUpdateServer {
+	var objects []*pb.Object
+
+	for path, object := range updates {
+		objects = append(objects, &pb.Object{
+			Path:    path,
+			Mode:    0666,
+			Size:    int32(len(object.content)),
+			Deleted: object.deleted,
+			Content: []byte(object.content),
+		})
+	}
+
+	return &mockUpdateServer{
+		ctx:     ctx,
+		project: project,
+		updates: objects,
+		idx:     0,
+	}
+}
+
+func (m *mockUpdateServer) Context() context.Context {
+	return m.ctx
+}
+
+func (m *mockUpdateServer) SendAndClose(res *pb.UpdateResponse) error {
+	m.response = res
+	return nil
+}
+
+func (m *mockUpdateServer) Recv() (*pb.UpdateRequest, error) {
+	if m.idx >= len(m.updates) {
+		return nil, io.EOF
+	}
+
+	object := m.updates[m.idx]
+	m.idx += 1
+	return &pb.UpdateRequest{
+		Project: m.project,
+		Object:  object,
+	}, nil
 }
 
 func buildRequest(project int32, fromVersion, toVersion *int64, path string, prefix, content bool) *pb.GetRequest {
@@ -87,11 +144,6 @@ func buildCompressRequest(project int32, fromVersion, toVersion *int64, path str
 		ToVersion:   toVersion,
 		Queries:     []*pb.ObjectQuery{query},
 	}
-}
-
-type expectedObject struct {
-	deleted bool
-	content string
 }
 
 func verifyStreamResults(tc util.TestCtx, results []*pb.Object, expected map[string]expectedObject) {
@@ -418,6 +470,37 @@ func TestGetCompress(t *testing.T) {
 
 	verifyTarResults(tc, stream.results, map[string]expectedObject{
 		"/a": {content: "v3"},
+	})
+}
+
+func TestUpdate(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a", "v1")
+	writeObject(tc, 1, 1, nil, "/b", "v1")
+
+	fs := tc.FsApi()
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"/a": {content: "v2"},
+	})
+	fs.Update(updateStream)
+
+	if updateStream.response.Version != 2 {
+		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
+	}
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err := fs.Get(prefixQuery(1, nil, "/"), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a": {content: "v2"},
+		"/b": {content: "v1"},
 	})
 }
 

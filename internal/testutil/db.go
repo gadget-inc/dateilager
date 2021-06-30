@@ -31,7 +31,7 @@ func (d *DbTestConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 	if err != nil {
 		return nil, nil, err
 	}
-	return innerTx, func() { innerTx.Rollback(ctx) }, nil
+	return innerTx, func() {}, nil
 }
 
 func (d *DbTestConnector) close(ctx context.Context) {

@@ -2,7 +2,6 @@ package db
 
 import (
 	"bytes"
-	"io"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/minio/sha256-simd"
@@ -55,31 +54,25 @@ func (c *ContentEncoder) Encode(content []byte) ([]byte, error) {
 }
 
 type ContentDecoder struct {
-	buffer *bytes.Buffer
 	reader *zstd.Decoder
 }
 
 func NewContentDecoder() *ContentDecoder {
-	var buffer bytes.Buffer
 	reader, err := zstd.NewReader(nil)
 	if err != nil {
 		panic("assert not reached: invalid ZSTD reader options")
 	}
 
 	return &ContentDecoder{
-		buffer: &buffer,
 		reader: reader,
 	}
 }
 
 func (c *ContentDecoder) Decoder(encoded []byte) ([]byte, error) {
-	c.buffer.Truncate(0)
-	c.reader.Reset(bytes.NewBuffer(encoded))
-
-	_, err := io.Copy(c.buffer, c.reader)
+	output, err := c.reader.DecodeAll(encoded, make([]byte, 0))
 	if err != nil {
 		return nil, err
 	}
 
-	return c.buffer.Bytes(), nil
+	return output, nil
 }
