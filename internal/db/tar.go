@@ -186,3 +186,50 @@ func PackObjects(objects ObjectStream) ([]byte, []byte, error) {
 
 	return contentTar, namesTar, nil
 }
+
+func updateObjects(before []byte, updates []*pb.Object) ([]byte, []byte, error) {
+	reader := NewTarReader(before)
+
+	stream := func() (*pb.Object, error) {
+		header, err := reader.Next()
+		if err == io.EOF {
+			return nil, io.EOF
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		update := findUpdate(updates, header.Name)
+		if update != nil {
+			if update.Deleted {
+				return nil, SKIP
+			}
+
+			return update, nil
+		}
+
+		content, err := reader.ReadContent()
+		if err != nil {
+			return nil, err
+		}
+
+		return &pb.Object{
+			Path:    header.Name,
+			Mode:    int32(header.Mode),
+			Size:    int32(header.Size),
+			Deleted: false,
+			Content: content,
+		}, nil
+	}
+
+	return PackObjects(stream)
+}
+
+func findUpdate(updates []*pb.Object, path string) *pb.Object {
+	for _, object := range updates {
+		if path == object.Path {
+			return object
+		}
+	}
+	return nil
+}

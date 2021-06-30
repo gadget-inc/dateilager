@@ -5,6 +5,7 @@ go 1.16
 require (
 	github.com/angelini/fsdiff v0.1.4
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+	github.com/jackc/pgtype v1.7.0
 	github.com/jackc/pgx/v4 v4.11.0
 	github.com/klauspost/compress v1.13.1
 	github.com/lib/pq v1.8.0 // indirect

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
@@ -135,7 +135,7 @@ func filterObject(path string, objectQuery *pb.ObjectQuery, object *pb.Object) (
 }
 
 func GetObjects(ctx context.Context, tx pgx.Tx, project int32, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, error) {
-	parent, err := isParentPacked(ctx, tx, project, vrange, objectQuery)
+	parent, err := IsParentPacked(ctx, tx, project, vrange, objectQuery.Path)
 	if err != nil {
 		return nil, fmt.Errorf("getObjects searching for packed parents, project %v vrange %v: %w", project, vrange, err)
 	}
@@ -264,7 +264,7 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int32, vrange VersionRange,
 	}, nil
 }
 
-func isParentPacked(ctx context.Context, tx pgx.Tx, project int32, vrange VersionRange, objectQuery *pb.ObjectQuery) (string, error) {
+func IsParentPacked(ctx context.Context, tx pgx.Tx, project int32, vrange VersionRange, path string) (string, error) {
 	sql := `
 		SELECT o.path
 		FROM dl.objects o
@@ -277,7 +277,7 @@ func isParentPacked(ctx context.Context, tx pgx.Tx, project int32, vrange Versio
 	`
 
 	var parents []string
-	for _, split := range strings.Split(path.Dir(objectQuery.Path), "/") {
+	for _, split := range strings.Split(filepath.Dir(path), "/") {
 		if split == "" {
 			continue
 		}
@@ -307,8 +307,8 @@ func isParentPacked(ctx context.Context, tx pgx.Tx, project int32, vrange Versio
 		args = append(args, parent)
 	}
 
-	var path string
-	err := tx.QueryRow(ctx, fmt.Sprintf(sql, predicate), args...).Scan(&path)
+	var parentPath string
+	err := tx.QueryRow(ctx, fmt.Sprintf(sql, predicate), args...).Scan(&parentPath)
 	if err == pgx.ErrNoRows {
 		return "", nil
 	}
@@ -316,5 +316,5 @@ func isParentPacked(ctx context.Context, tx pgx.Tx, project int32, vrange Versio
 		return "", err
 	}
 
-	return path, nil
+	return parentPath, nil
 }

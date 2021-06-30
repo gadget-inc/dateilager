@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -171,64 +172,6 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	return nil
 }
 
-func (f *Fs) deleteObject(ctx context.Context, tx pgx.Tx, project int32, version int64, object *pb.Object) error {
-	_, err := tx.Exec(ctx, `
-		UPDATE dl.objects
-		SET stop_version = $1
-		WHERE project = $2
-		  AND path = $3
-		  AND stop_version IS NULL
-	`, version, project, object.Path)
-	if err != nil {
-		return fmt.Errorf("delete object: %w", err)
-	}
-
-	return nil
-}
-
-func (f *Fs) updateObject(ctx context.Context, tx pgx.Tx, encoder *db.ContentEncoder, project int32, version int64, object *pb.Object) error {
-	_, err := tx.Exec(ctx, `
-		UPDATE dl.objects SET stop_version = $1
-		WHERE project = $2
-		  AND path = $3
-		  AND stop_version IS NULL
-	`, version, project, object.Path)
-	if err != nil {
-		return fmt.Errorf("FS update latest version: %w", err)
-	}
-
-	content := object.Content
-	if content == nil {
-		content = []byte("")
-	}
-	h1, h2 := db.HashContent(content)
-
-	_, err = tx.Exec(ctx, `
-		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
-		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
-	`, project, version, object.Path, h1, h2, object.Mode, object.Size, false)
-	if err != nil {
-		return fmt.Errorf("FS insert new object version: %w", err)
-	}
-
-	encoded, err := encoder.Encode(content)
-	if err != nil {
-		return fmt.Errorf("FS update encode content: %w", err)
-	}
-
-	_, err = tx.Exec(ctx, `
-		INSERT INTO dl.contents (hash, bytes, names_tar)
-		VALUES (($1, $2), $3, NULL)
-		ON CONFLICT
-		   DO NOTHING
-	`, h1, h2, encoded)
-	if err != nil {
-		return fmt.Errorf("FS insert content: %w", err)
-	}
-
-	return nil
-}
-
 func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	ctx := stream.Context()
 
@@ -243,6 +186,8 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	// We only receive a project ID after the first streamed update
 	project := int32(-1)
 	version := int64(-1)
+
+	buffer := make(map[string][]*pb.Object)
 
 	for {
 		request, err := stream.Recv()
@@ -266,18 +211,45 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		}
 
 		if project != request.Project {
-			return fmt.Errorf("multiple projects in one update call: %v %v", project, request.Project)
+			return fmt.Errorf("FS multiple projects in one update call: %v %v", project, request.Project)
+		}
+
+		packedParent := ""
+		for parent := range buffer {
+			if strings.HasPrefix(request.Object.Path, parent) {
+				packedParent = parent
+				break
+			}
+		}
+
+		if packedParent == "" {
+			packedParent, err = db.IsParentPacked(ctx, tx, project, db.VersionRange{From: 0, To: version}, request.Object.Path)
+			if err != nil {
+				return fmt.Errorf("FS update check packed: %w", err)
+			}
+		}
+
+		if packedParent != "" {
+			buffer[packedParent] = append(buffer[packedParent], request.Object)
+			continue
 		}
 
 		if request.Object.Deleted {
-			err = f.deleteObject(ctx, tx, project, version, request.Object)
+			err = db.DeleteObject(ctx, tx, project, version, request.Object.Path)
 		} else {
-			err = f.updateObject(ctx, tx, contentEncoder, project, version, request.Object)
+			err = db.UpdateObject(ctx, tx, contentEncoder, project, version, request.Object)
 		}
 
 		if err != nil {
 			f.Log.Error("FS update", zap.Error(err))
 			return fmt.Errorf("FS update: %w", err)
+		}
+	}
+
+	for parent, objects := range buffer {
+		err = db.UpdatePackedObjects(ctx, tx, project, version, parent, objects)
+		if err != nil {
+			return fmt.Errorf("FS update packed objects for %v: %w", parent, err)
 		}
 	}
 
@@ -292,46 +264,6 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	}
 
 	return stream.SendAndClose(&pb.UpdateResponse{Version: version})
-}
-
-func (f *Fs) deleteObjects(ctx context.Context, tx pgx.Tx, project int32, version int64, path string) error {
-	_, err := tx.Exec(ctx, `
-		UPDATE dl.objects
-		SET stop_version = $1
-		WHERE project = $2
-		  AND path LIKE $3
-		  AND stop_version IS NULL
-		RETURNING path;
-	`, version, project, fmt.Sprintf("%s%%", path))
-	if err != nil {
-		return fmt.Errorf("FS delete objects: %w", err)
-	}
-
-	return nil
-}
-
-func (f *Fs) insertPackedObject(ctx context.Context, tx pgx.Tx, project int32, version int64, path string, contentTar, namesTar []byte) error {
-	h1, h2 := db.HashContent(contentTar)
-
-	_, err := tx.Exec(ctx, `
-		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
-		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
-	`, project, version, path, h1, h2, 0, len(contentTar), true)
-	if err != nil {
-		return fmt.Errorf("FS insert new packed object: %w", err)
-	}
-
-	_, err = tx.Exec(ctx, `
-		INSERT INTO dl.contents (hash, bytes, names_tar)
-		VALUES (($1, $2), $3, $4)
-		ON CONFLICT
-		DO NOTHING
-	`, h1, h2, contentTar, namesTar)
-	if err != nil {
-		return fmt.Errorf("FS insert content: %w", err)
-	}
-
-	return nil
 }
 
 func (f *Fs) Pack(ctx context.Context, request *pb.PackRequest) (*pb.PackResponse, error) {
@@ -370,12 +302,12 @@ func (f *Fs) Pack(ctx context.Context, request *pb.PackRequest) (*pb.PackRespons
 
 	version := latest_version + 1
 
-	err = f.deleteObjects(ctx, tx, request.Project, version, request.Path)
+	err = db.DeleteObjects(ctx, tx, request.Project, version, request.Path)
 	if err != nil {
 		return nil, err
 	}
 
-	err = f.insertPackedObject(ctx, tx, request.Project, version, request.Path, fullTar, namesTar)
+	err = db.InsertPackedObject(ctx, tx, request.Project, version, request.Path, fullTar, namesTar)
 	if err != nil {
 		return nil, err
 	}

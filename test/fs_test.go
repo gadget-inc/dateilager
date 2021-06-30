@@ -486,14 +486,17 @@ func TestUpdate(t *testing.T) {
 	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
 		"/a": {content: "v2"},
 	})
-	fs.Update(updateStream)
+	err := fs.Update(updateStream)
+	if err != nil {
+		t.Fatalf("fs.Update: %v", err)
+	}
 
 	if updateStream.response.Version != 2 {
 		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
 	}
 
 	stream := &mockGetServer{ctx: tc.Context()}
-	err := fs.Get(prefixQuery(1, nil, "/"), stream)
+	err = fs.Get(prefixQuery(1, nil, "/"), stream)
 	if err != nil {
 		t.Fatalf("fs.Get: %v", err)
 	}
@@ -652,5 +655,52 @@ func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
 		"/a/c": {content: "a/c v1"},
 		"/a/d": {content: "a/d v1"},
 		"/b":   {content: "b v2"},
+	})
+}
+
+func TestUpdatePackedObject(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a/c", "a/c v1")
+	writeObject(tc, 1, 1, nil, "/a/d", "a/d v1")
+	writeObject(tc, 1, 2, nil, "/b", "b v1")
+
+	fs := tc.FsApi()
+
+	request := pb.PackRequest{
+		Project: 1,
+		Path:    "/a/",
+	}
+	response, err := fs.Pack(tc.Context(), &request)
+	if err != nil {
+		t.Fatalf("fs.Pack: %v", err)
+	}
+
+	if response.Version != 2 {
+		t.Errorf("expected version 2, got: %v", response.Version)
+	}
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"/a/c": {content: "a/c v3"},
+	})
+	err = fs.Update(updateStream)
+	if err != nil {
+		t.Fatalf("fs.Update: %v", err)
+	}
+
+	if updateStream.response.Version != 3 {
+		tc.Errorf("expected version 3, got: %v", updateStream.response.Version)
+	}
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(exactQuery(1, nil, "/a/c"), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a/c": {content: "a/c v3"},
 	})
 }
