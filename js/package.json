@@ -1,7 +1,7 @@
 {
     "name": "dateilager-js-client",
     "version": "0.1.0",
-    "type": "module",
+    "private": true,
     "dependencies": {
         "@grpc/grpc-js": "^1.1.0",
         "@grpc/proto-loader": "^0.5.0",

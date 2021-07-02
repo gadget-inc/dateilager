@@ -97,8 +97,17 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	if err != nil {
 		return err
 	}
+	f.Log.Info("FS.Get", zap.Int32("project", req.Project), zap.Any("vrange", vrange))
 
 	for _, query := range req.Queries {
+		f.Log.Info("FS.Get - Query",
+			zap.Int32("project", req.Project),
+			zap.Any("vrange", vrange),
+			zap.String("path", query.Path),
+			zap.Bool("isPrefix", query.IsPrefix),
+			zap.Bool("withContent", query.WithContent),
+		)
+
 		objects, err := db.GetObjects(ctx, tx, req.Project, vrange, query)
 		if err != nil {
 			return err
@@ -207,7 +216,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			}
 
 			version = latest_version + 1
-			f.Log.Info("project update", zap.Int32("project", project), zap.Int64("version", version))
+			f.Log.Info("FS.Update", zap.Int32("project", project), zap.Int64("version", version))
 		}
 
 		if project != request.Project {
@@ -262,6 +271,8 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	if err != nil {
 		return fmt.Errorf("FS update commit tx: %w", err)
 	}
+
+	f.Log.Info("FS.Update - Commit", zap.Int32("project", project), zap.Int64("version", version))
 
 	return stream.SendAndClose(&pb.UpdateResponse{Version: version})
 }

@@ -12,7 +12,7 @@ INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
-.PHONY: install migrate migrate-create build test
+.PHONY: install migrate migrate-create js build test
 .PHONY: reset-db setup-local server client-update client-get client-rebuild client-pack health
 .PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-client-rebuild k8s-client-pack k8s-health
 
@@ -23,6 +23,8 @@ install:
 	go install github.com/grpc-ecosystem/grpc-health-probe@v0.4
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.14
 	go install github.com/angelini/fsdiff/cmd/fsdiff@v0.1
+	npm install -g grpc-tools
+	npm install -g grpc_tools_node_protoc_ts
 
 migrate:
 	migrate -database $(DB_URI)?sslmode=disable -path $(MIGRATE_DIR) up
@@ -40,7 +42,11 @@ internal/pb/%_grpc.pb.go: internal/pb/%.proto
 bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES)
 	go build -o $@ $<
 
-build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client
+js:
+	grpc_tools_node_protoc --js_out=import_style=commonjs,binary:js/src --grpc_out=grpc_js:js/src --proto_path=internal/pb fs.proto
+	grpc_tools_node_protoc --plugin=protoc-gen-ts=$(shell which protoc-gen-ts) --ts_out=js/src --proto_path=internal/pb fs.proto
+
+build: js internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client
 
 test: export DB_URI = postgres://postgres@$(DB_HOST):5432/dl_tests
 test: migrate

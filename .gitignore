@@ -3,4 +3,6 @@ input/
 input_old/
 rebuild/
 *.pb.go
+*_pb.js
+*_pb.d.ts
 **/node_modules/

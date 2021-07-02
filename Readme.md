@@ -6,6 +6,7 @@
 
 - Go 1.15
 - Postgresql
+- Node v15
 
 Create a Postgres database named `dl`. The default Postgres host is `127.0.0.1` you can override it by
 exporting `DB_HOST`.
@@ -94,56 +95,39 @@ $ make client-rebuild version=3 prefix=/ output=rebuild
 
 Ensure a server is running with `make server`.
 
-Import the `DateiLagerClient` from `js/client.js` and use it to query objects:
+Import the `DateiLagerClient` from the module in `js/` and use it to query objects:
 
 ```javascript
 // A client for project 1
 const client = new DateiLagerClient("localhost", 5051, 1);
 
+// Get a single object
+const object = await client.getObject("a");
+console.log("[getObject] path: " + object.path);
+console.log("[getObject] content:\n" + object.content);
+
 // List all objects
-const listStream = client.listObjects("")
-
-listStream.on("data", function (data) {
-  const output = [
-    "version: " + data.version,
-    "path: " + data.object.path,
-    "size: " + data.object.size,
-    "mode: " + data.object.mode,
-  ];
-  console.log("[listObjects] OBJECT: " + output.join(", "));
-  console.log(
-    "[listObjects] CONTENT:\n" + data.object.content.toString("utf-8")
-  );
-});
-
-listStream.on("error", function (error) {
-  console.log("[listObjects] ERROR: " + error);
-});
-
-listStream.on("end", function () {
-  console.log("[listObjects] END");
-});
+for await (const object of client.listObjects("")) {
+  console.log("[listObjects] path: " + object.path);
+  console.log("[listObjects] content:\n" + object.content);
+}
 ```
 
-Update objects, closing the stream will increment the project's version and commit the updates:
+Update objects and await the successful commit of a new version:
 
 ```javascript
-const updateStream = client.updateObjects(function (err, stats) {
-  if (err) {
-    console.log("[updateObjects] ERROR: " + err);
-    return;
-  }
+const [stream, promise] = client.updateObjects();
 
-  console.log("[updateObjects] VERSION: " + stats.version);
+stream.write({
+  path: "a",
+  mode: 0o755,
+  content: "foo bar",
 });
 
-updateStream.write({
-  path: "c",
-  mode: 420,
-  content: Buffer.from("c v4"),
-});
+stream.end();
 
-updateStream.end();
+const version = await promise;
+console.log("[updateObject] version: " + version);
 ```
 
 ## K8S
