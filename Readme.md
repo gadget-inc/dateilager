@@ -90,6 +90,62 @@ $ mkdir ./rebuild
 $ make client-rebuild version=3 prefix=/ output=rebuild
 ```
 
+## Javascript Client
+
+Ensure a server is running with `make server`.
+
+Import the `DateiLagerClient` from `js/client.js` and use it to query objects:
+
+```javascript
+// A client for project 1
+const client = new DateiLagerClient("localhost", 5051, 1);
+
+// List all objects
+const listStream = client.listObjects("")
+
+listStream.on("data", function (data) {
+  const output = [
+    "version: " + data.version,
+    "path: " + data.object.path,
+    "size: " + data.object.size,
+    "mode: " + data.object.mode,
+  ];
+  console.log("[listObjects] OBJECT: " + output.join(", "));
+  console.log(
+    "[listObjects] CONTENT:\n" + data.object.content.toString("utf-8")
+  );
+});
+
+listStream.on("error", function (error) {
+  console.log("[listObjects] ERROR: " + error);
+});
+
+listStream.on("end", function () {
+  console.log("[listObjects] END");
+});
+```
+
+Update objects, closing the stream will increment the project's version and commit the updates:
+
+```javascript
+const updateStream = client.updateObjects(function (err, stats) {
+  if (err) {
+    console.log("[updateObjects] ERROR: " + err);
+    return;
+  }
+
+  console.log("[updateObjects] VERSION: " + stats.version);
+});
+
+updateStream.write({
+  path: "c",
+  mode: 420,
+  content: Buffer.from("c v4"),
+});
+
+updateStream.end();
+```
+
 ## K8S
 
 The K8S tools assume a local K8S install using Containerd and Podman.
