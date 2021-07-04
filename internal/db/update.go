@@ -40,41 +40,52 @@ func DeleteObjects(ctx context.Context, tx pgx.Tx, project int32, version int64,
 }
 
 func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, project int32, version int64, object *pb.Object) error {
-	_, err := tx.Exec(ctx, `
-		UPDATE dl.objects SET stop_version = $1
-		WHERE project = $2
-		  AND path = $3
-		  AND stop_version IS NULL
-	`, version, project, object.Path)
-	if err != nil {
-		return fmt.Errorf("update latest version: %w", err)
-	}
-
 	content := object.Content
 	if content == nil {
 		content = []byte("")
 	}
 	h1, h2 := HashContent(content)
 
-	_, err = tx.Exec(ctx, `
-		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
-		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
-	`, project, version, object.Path, h1, h2, object.Mode, object.Size, false)
-	if err != nil {
-		return fmt.Errorf("insert new object version: %w", err)
-	}
-
 	encoded, err := encoder.Encode(content)
 	if err != nil {
 		return fmt.Errorf("encode updated content: %w", err)
 	}
 
-	_, err = tx.Exec(ctx, `
+	batch := &pgx.Batch{}
+
+	batch.Queue(`
+		UPDATE dl.objects SET stop_version = $1
+		WHERE project = $2
+			AND path = $3
+			AND stop_version IS NULL
+	`, version, project, object.Path)
+
+	batch.Queue(`
+		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
+		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
+	`, project, version, object.Path, h1, h2, object.Mode, object.Size, false)
+
+	batch.Queue(`
 		INSERT INTO dl.contents (hash, bytes, names_tar)
 		VALUES (($1, $2), $3, NULL)
 		ON CONFLICT
 		   DO NOTHING
 	`, h1, h2, encoded)
+
+	results := tx.SendBatch(ctx, batch)
+	defer results.Close()
+
+	_, err = results.Exec()
+	if err != nil {
+		return fmt.Errorf("update previous object version: %w", err)
+	}
+
+	_, err = results.Exec()
+	if err != nil {
+		return fmt.Errorf("insert new object version: %w", err)
+	}
+
+	_, err = results.Exec()
 	if err != nil {
 		return fmt.Errorf("insert updated content: %w", err)
 	}

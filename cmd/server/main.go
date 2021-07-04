@@ -5,6 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
+	"os/signal"
+	"runtime/pprof"
+	"syscall"
 
 	"go.uber.org/zap"
 
@@ -15,17 +19,20 @@ import (
 type ServerArgs struct {
 	port  int
 	dbUri string
+	prof  string
 }
 
 func parseArgs(log *zap.Logger) ServerArgs {
 	port := flag.Int("port", 5051, "GRPC server port")
 	dbUri := flag.String("dburi", "127.0.0.1:5432", "Postgres URI")
+	prof := flag.String("prof", "", "Output CPU profile to this path")
 
 	flag.Parse()
 
 	return ServerArgs{
 		port:  *port,
 		dbUri: *dbUri,
+		prof:  *prof,
 	}
 }
 
@@ -35,6 +42,15 @@ func main() {
 	defer log.Sync()
 
 	args := parseArgs(log)
+
+	if args.prof != "" {
+		file, err := os.Create(args.prof)
+		if err != nil {
+			log.Fatal("open pprof file", zap.String("file", args.prof), zap.Error(err))
+		}
+		pprof.StartCPUProfile(file)
+		defer pprof.StopCPUProfile()
+	}
 
 	listen, err := net.Listen("tcp", fmt.Sprintf(":%d", args.port))
 	if err != nil {
@@ -56,6 +72,13 @@ func main() {
 		DbConn: pool,
 	}
 	s.RegisterFs(ctx, fs)
+
+	osSignals := make(chan os.Signal)
+	signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-osSignals
+		s.Grpc.Stop()
+	}()
 
 	log.Info("start server", zap.Int("port", args.port))
 	if err := s.Serve(listen); err != nil {
