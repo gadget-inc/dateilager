@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 
 	"go.uber.org/zap"
 
@@ -99,6 +98,11 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	}
 	f.Log.Info("FS.Get", zap.Int32("project", req.Project), zap.Any("vrange", vrange))
 
+	packedCache, err := db.NewPackedCache(ctx, tx, req.Project, vrange)
+	if err != nil {
+		return err
+	}
+
 	for _, query := range req.Queries {
 		f.Log.Info("FS.Get - Query",
 			zap.Int32("project", req.Project),
@@ -108,7 +112,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 			zap.Bool("withContent", query.WithContent),
 		)
 
-		objects, err := db.GetObjects(ctx, tx, req.Project, vrange, query)
+		objects, err := db.GetObjects(ctx, tx, packedCache, req.Project, vrange, query)
 		if err != nil {
 			return err
 		}
@@ -196,6 +200,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	project := int32(-1)
 	version := int64(-1)
 
+	var packedCache *db.PackedCache
 	buffer := make(map[string][]*pb.Object)
 
 	for {
@@ -216,30 +221,21 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			}
 
 			version = latest_version + 1
-			f.Log.Info("FS.Update", zap.Int32("project", project), zap.Int64("version", version))
+			f.Log.Info("FS.Update[Init]", zap.Int32("project", project), zap.Int64("version", version))
+
+			packedCache, err = db.NewPackedCache(ctx, tx, project, db.VersionRange{From: 0, To: version})
+			if err != nil {
+				return err
+			}
 		}
 
 		if project != request.Project {
 			return fmt.Errorf("FS multiple projects in one update call: %v %v", project, request.Project)
 		}
 
-		packedParent := ""
-		for parent := range buffer {
-			if strings.HasPrefix(request.Object.Path, parent) {
-				packedParent = parent
-				break
-			}
-		}
-
-		if packedParent == "" {
-			packedParent, err = db.IsParentPacked(ctx, tx, project, db.VersionRange{From: 0, To: version}, request.Object.Path)
-			if err != nil {
-				return fmt.Errorf("FS update check packed: %w", err)
-			}
-		}
-
-		if packedParent != "" {
-			buffer[packedParent] = append(buffer[packedParent], request.Object)
+		parent, isPacked := packedCache.IsParentPacked(request.Object.Path)
+		if isPacked {
+			buffer[parent] = append(buffer[parent], request.Object)
 			continue
 		}
 
@@ -272,7 +268,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return fmt.Errorf("FS update commit tx: %w", err)
 	}
 
-	f.Log.Info("FS.Update - Commit", zap.Int32("project", project), zap.Int64("version", version))
+	f.Log.Info("FS.Update[Commit]", zap.Int32("project", project), zap.Int64("version", version))
 
 	return stream.SendAndClose(&pb.UpdateResponse{Version: version})
 }
@@ -296,7 +292,12 @@ func (f *Fs) Pack(ctx context.Context, request *pb.PackRequest) (*pb.PackRespons
 		WithContent: true,
 	}
 
-	objects, err := db.GetObjects(ctx, tx, request.Project, vrange, &query)
+	packedCache, err := db.NewPackedCache(ctx, tx, request.Project, vrange)
+	if err != nil {
+		return nil, err
+	}
+
+	objects, err := db.GetObjects(ctx, tx, packedCache, request.Project, vrange, &query)
 	if err != nil {
 		return nil, err
 	}
