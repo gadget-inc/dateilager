@@ -144,37 +144,4 @@ class DateiLagerClient {
   }
 }
 
-async function main() {
-  const client = new DateiLagerClient("localhost", 5051, 1);
-
-  const object = await client.getObject("a");
-  console.log("[getObject] path: " + object.path);
-  console.log("[getObject] content:\n" + object.content);
-
-  for await (const object of client.listObjects("")) {
-    console.log("[listObjects] path: " + object.path);
-    console.log("[listObjects] content:\n" + object.content);
-  }
-
-  const [updateStream, promise] = client.updateObjects();
-
-  updateStream.write({
-    path: "a",
-    mode: 0o755,
-    content: "foo bar",
-  });
-
-  updateStream.end();
-
-  const version = await promise;
-  console.log("[updateObject] version: " + version);
-
-  for await (const object of client.listObjects("")) {
-    console.log("[listObjects] path: " + object.path);
-    console.log("[listObjects] content:\n" + object.content);
-  }
-}
-
-main();
-
 export { DateiLagerClient };
