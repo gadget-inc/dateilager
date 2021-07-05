@@ -2,6 +2,7 @@ bin/
 input/
 input_old/
 rebuild/
+*.prof
 *.pb.go
 *_pb.js
 *_pb.d.ts

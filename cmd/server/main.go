@@ -78,6 +78,7 @@ func main() {
 	go func() {
 		<-osSignals
 		s.Grpc.Stop()
+		os.Exit(0)
 	}()
 
 	log.Info("start server", zap.Int("port", args.port))

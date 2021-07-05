@@ -13,7 +13,7 @@ MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
 .PHONY: install migrate migrate-create js build test
-.PHONY: reset-db setup-local server client-update client-get client-rebuild client-pack health
+.PHONY: reset-db setup-local server server-profile client-update client-get client-rebuild client-pack health
 .PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-client-rebuild k8s-client-pack k8s-health
 
 install:
@@ -60,6 +60,9 @@ setup-local: reset-db
 
 server:
 	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT)
+
+server-profile:
+	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT) -prof cpu.prof
 
 client-update:
 	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v1_state/diff.zst -directory input/v1
