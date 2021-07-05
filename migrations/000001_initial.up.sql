@@ -14,7 +14,7 @@ CREATE TABLE dl.objects (
     path          text    NOT NULL,
     hash          hash    NOT NULL,
     mode          integer NOT NULL,
-    size          integer NOT NULL,
+    size          bigint  NOT NULL,
     packed        boolean NOT NULL
 );
 

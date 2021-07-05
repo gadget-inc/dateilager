@@ -112,7 +112,7 @@ func unpackObjects(content []byte) ([]*pb.Object, error) {
 		objects = append(objects, &pb.Object{
 			Path:    header.Name,
 			Mode:    int32(header.Mode),
-			Size:    int32(header.Size),
+			Size:    header.Size,
 			Deleted: false,
 			Content: content,
 		})
@@ -162,7 +162,8 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packedCache *PackedCache, projec
 		}
 
 		var path string
-		var mode, size int32
+		var mode int32
+		var size int64
 		var encoded []byte
 		var packed bool
 		var deleted bool
@@ -220,7 +221,8 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int32, vrange VersionRange,
 		}
 
 		var path string
-		var mode, size int32
+		var mode int32
+		var size int64
 		var encoded []byte
 		var packed bool
 		var deleted bool

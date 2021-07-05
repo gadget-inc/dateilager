@@ -216,7 +216,7 @@ func updateObjects(before []byte, updates []*pb.Object) ([]byte, []byte, error) 
 		return &pb.Object{
 			Path:    header.Name,
 			Mode:    int32(header.Mode),
-			Size:    int32(header.Size),
+			Size:    header.Size,
 			Deleted: false,
 			Content: content,
 		}, nil

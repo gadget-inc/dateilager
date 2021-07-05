@@ -178,7 +178,7 @@ func readFileObject(directory, path string) (*pb.Object, error) {
 	return &pb.Object{
 		Path:    path,
 		Mode:    int32(info.Mode()),
-		Size:    int32(info.Size()),
+		Size:    info.Size(),
 		Deleted: false,
 		Content: bytes,
 	}, nil

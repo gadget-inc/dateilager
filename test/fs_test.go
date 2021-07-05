@@ -64,7 +64,7 @@ func newMockUpdateServer(ctx context.Context, project int32, updates map[string]
 		objects = append(objects, &pb.Object{
 			Path:    path,
 			Mode:    0666,
-			Size:    int32(len(object.content)),
+			Size:    int64(len(object.content)),
 			Deleted: object.deleted,
 			Content: []byte(object.content),
 		})

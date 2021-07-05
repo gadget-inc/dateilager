@@ -17,7 +17,7 @@ service Fs {
 message Object {
     string path = 1;
     int32 mode = 2;
-    int32 size = 3;
+    int64 size = 3;
     bool deleted = 4;
     optional bytes content = 5;
 }
