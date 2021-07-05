@@ -12,19 +12,17 @@ INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
-.PHONY: install migrate migrate-create js build test
+.PHONY: install migrate migrate-create build test
 .PHONY: reset-db setup-local server server-profile client-update client-get client-rebuild client-pack health
 .PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-client-rebuild k8s-client-pack k8s-health
 
 install:
-	go env -w GOPRIVATE=github.com/angelini/fsdiff
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.26
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.1
 	go install github.com/grpc-ecosystem/grpc-health-probe@v0.4
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.14
-	go install github.com/angelini/fsdiff/cmd/fsdiff@v0.1
-	npm install -g grpc-tools
-	npm install -g grpc_tools_node_protoc_ts
+	go install github.com/gadget-inc/fsdiff/cmd/fsdiff@v0.1
+	cd js && npm install
 
 migrate:
 	migrate -database $(DB_URI)?sslmode=disable -path $(MIGRATE_DIR) up
@@ -42,11 +40,16 @@ internal/pb/%_grpc.pb.go: internal/pb/%.proto
 bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES)
 	go build -o $@ $<
 
-js:
-	grpc_tools_node_protoc --js_out=import_style=commonjs,binary:js/src --grpc_out=grpc_js:js/src --proto_path=internal/pb fs.proto
-	grpc_tools_node_protoc --plugin=protoc-gen-ts=$(shell which protoc-gen-ts) --ts_out=js/src --proto_path=internal/pb fs.proto
+js/src/%_pb.js: internal/pb/%.proto
+	js/node_modules/.bin/grpc_tools_node_protoc --js_out=import_style=commonjs,binary:js/src --proto_path=internal/pb fs.proto
 
-build: js internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client
+js/src/%_grpc_pb.js: internal/pb/%.proto
+	js/node_modules/.bin/grpc_tools_node_protoc --grpc_out=grpc_js:js/src --proto_path=internal/pb fs.proto
+
+js/src/%_pb.d.ts: internal/pb/%.proto
+	js/node_modules/.bin/grpc_tools_node_protoc --plugin=protoc-gen-ts=js/node_modules/.bin/protoc-gen-ts --ts_out=js/src --proto_path=internal/pb fs.proto
+
+build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client js/src/fs_pb.js js/src/fs_grpc_pb.js js/src/fs_pb.d.ts
 
 test: export DB_URI = postgres://postgres@$(DB_HOST):5432/dl_tests
 test: migrate

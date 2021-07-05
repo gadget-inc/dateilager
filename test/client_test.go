@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	fsdiff "github.com/angelini/fsdiff/pkg/diff"
-	fsdiff_pb "github.com/angelini/fsdiff/pkg/pb"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/client"
+	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
+	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
 )

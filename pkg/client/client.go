@@ -8,10 +8,10 @@ import (
 	"os"
 	"path/filepath"
 
-	fsdiff "github.com/angelini/fsdiff/pkg/diff"
-	fsdiff_pb "github.com/angelini/fsdiff/pkg/pb"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
+	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
+	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
