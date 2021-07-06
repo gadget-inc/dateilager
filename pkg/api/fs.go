@@ -96,7 +96,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	if err != nil {
 		return err
 	}
-	f.Log.Info("FS.Get", zap.Int32("project", req.Project), zap.Any("vrange", vrange))
+	f.Log.Info("FS.Get[Init]", zap.Int32("project", req.Project), zap.Any("vrange", vrange))
 
 	packedCache, err := db.NewPackedCache(ctx, tx, req.Project, vrange)
 	if err != nil {
@@ -104,7 +104,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	}
 
 	for _, query := range req.Queries {
-		f.Log.Info("FS.Get - Query",
+		f.Log.Info("FS.Get[Query]",
 			zap.Int32("project", req.Project),
 			zap.Any("vrange", vrange),
 			zap.String("path", query.Path),

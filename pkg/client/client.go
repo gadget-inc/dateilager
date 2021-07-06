@@ -141,6 +141,18 @@ func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vran
 					return fmt.Errorf("write %v to disk: %w", path, err)
 				}
 
+			case tar.TypeDir:
+				err = os.MkdirAll(path, os.FileMode(header.Mode))
+				if err != nil {
+					return fmt.Errorf("mkdir -p %v: %w", path, err)
+				}
+
+			case tar.TypeSymlink:
+				err = os.Symlink(header.Linkname, path)
+				if err != nil {
+					return fmt.Errorf("ln -s %v %v: %w", header.Linkname, path, err)
+				}
+
 			case 'D':
 				err = os.Remove(path)
 				if err != nil {
@@ -159,28 +171,39 @@ func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vran
 func readFileObject(directory, path string) (*pb.Object, error) {
 	fullPath := filepath.Join(directory, path)
 
-	file, err := os.Open(fullPath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	info, err := file.Stat()
+	info, err := os.Lstat(fullPath)
 	if err != nil {
 		return nil, err
 	}
 
-	bytes, err := os.ReadFile(fullPath)
-	if err != nil {
-		return nil, err
+	var content []byte
+	var otype pb.Object_Type
+
+	if info.Mode()&os.ModeSymlink == os.ModeSymlink {
+		target, err := os.Readlink(fullPath)
+		if err != nil {
+			return nil, err
+		}
+		content = []byte(target)
+		otype = pb.Object_SYMLINK
+	} else if info.Mode().IsDir() {
+		content = []byte("")
+		otype = pb.Object_DIRECTORY
+	} else {
+		content, err = os.ReadFile(fullPath)
+		if err != nil {
+			return nil, err
+		}
+		otype = pb.Object_REGULAR
 	}
 
 	return &pb.Object{
-		Path:    path,
-		Mode:    int32(info.Mode()),
-		Size:    info.Size(),
-		Deleted: false,
-		Content: bytes,
+		Path:       path,
+		Permission: int32(info.Mode().Perm()),
+		Type:       otype,
+		Size:       int64(len(content)),
+		Deleted:    false,
+		Content:    content,
 	}, nil
 }
 

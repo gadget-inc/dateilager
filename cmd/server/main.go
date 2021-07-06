@@ -24,7 +24,7 @@ type ServerArgs struct {
 
 func parseArgs(log *zap.Logger) ServerArgs {
 	port := flag.Int("port", 5051, "GRPC server port")
-	dbUri := flag.String("dburi", "127.0.0.1:5432", "Postgres URI")
+	dbUri := flag.String("dburi", "postgres://postgres@127.0.0.1:5432/dl", "Postgres URI")
 	prof := flag.String("prof", "", "Output CPU profile to this path")
 
 	flag.Parse()

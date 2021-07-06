@@ -61,9 +61,9 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 	`, version, project, object.Path)
 
 	batch.Queue(`
-		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
-		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
-	`, project, version, object.Path, h1, h2, object.Mode, object.Size, false)
+		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, permission, type, size, packed)
+		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8, $9)
+	`, project, version, object.Path, h1, h2, object.Permission, object.Type, object.Size, false)
 
 	batch.Queue(`
 		INSERT INTO dl.contents (hash, bytes, names_tar)
@@ -127,9 +127,9 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int32, version 
 	h1, h2 = HashContent(updated)
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
-		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
-	`, project, version, parent, h1, h2, 0, len(updated), true)
+		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, permission, type, size, packed)
+		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8, $9)
+	`, project, version, parent, h1, h2, 0, pb.Object_REGULAR, len(updated), true)
 	if err != nil {
 		return fmt.Errorf("insert new packed object version: %w", err)
 	}
@@ -151,9 +151,9 @@ func InsertPackedObject(ctx context.Context, tx pgx.Tx, project int32, version i
 	h1, h2 := HashContent(contentTar)
 
 	_, err := tx.Exec(ctx, `
-		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
-		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
-	`, project, version, path, h1, h2, 0, len(contentTar), true)
+		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, permission, type, size, packed)
+		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8, $9)
+	`, project, version, path, h1, h2, 0, pb.Object_REGULAR, len(contentTar), true)
 	if err != nil {
 		return fmt.Errorf("FS insert new packed object: %w", err)
 	}

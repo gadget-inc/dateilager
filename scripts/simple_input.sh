@@ -26,6 +26,8 @@ v2() {
 
     cp -r "${v1}" "${dir}"
     echo "c" > "${dir}/c"
+    ln -s a "${dir}/e"
+    mkdir -p "${dir}/f"
 
     log "wrote v2 to ${dir}"
 }
