@@ -284,7 +284,7 @@ func NewPackedCache(ctx context.Context, tx pgx.Tx, project int32, vrange Versio
 		var path string
 		err = rows.Scan(&path)
 		if err != nil {
-			return nil, fmt.Errorf("packedCache scan,  project %v, vrange %v: %w", project, vrange, err)
+			return nil, fmt.Errorf("packedCache scan, project %v, vrange %v: %w", project, vrange, err)
 		}
 
 		packs[path] = true
