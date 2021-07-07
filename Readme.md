@@ -4,7 +4,7 @@
 
 ### Requirements
 
-- Go 1.15
+- Go 1.16
 - Postgresql
 - Node v15
 
@@ -17,9 +17,9 @@ $ export DB_HOST=10.0.0.1
 
 ### Install Go Tools
 
-Ensure that you have a working Go development environment: https://golang.org/doc/install
+Ensure that you have a working [Go development environment](https://golang.org/doc/install) and that you are running at least Go 1.16.
 
-And that you are running at least Go 1.15.
+You will also require `npm`.
 
 ```bash
 $ make install

@@ -125,21 +125,29 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int32, version 
 	}
 
 	h1, h2 = HashContent(updated)
+	batch := &pgx.Batch{}
 
-	_, err = tx.Exec(ctx, `
+	batch.Queue(`
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
 	`, project, version, parent, h1, h2, 0, len(updated), true)
+
+	batch.Queue(`
+		INSERT INTO dl.contents (hash, bytes, names_tar)
+		VALUES (($1, $2), $3, $4)
+		ON CONFLICT
+		DO NOTHING
+	`, h1, h2, updated, namesTar)
+
+	results := tx.SendBatch(ctx, batch)
+	defer results.Close()
+
+	_, err = results.Exec()
 	if err != nil {
 		return fmt.Errorf("insert new packed object version: %w", err)
 	}
 
-	_, err = tx.Exec(ctx, `
-		INSERT INTO dl.contents (hash, bytes, names_tar)
-		VALUES (($1, $2), $3, $4)
-		ON CONFLICT
-		   DO NOTHING
-	`, h1, h2, updated, namesTar)
+	_, err = results.Exec()
 	if err != nil {
 		return fmt.Errorf("insert packed content: %w", err)
 	}
@@ -149,21 +157,29 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int32, version 
 
 func InsertPackedObject(ctx context.Context, tx pgx.Tx, project int32, version int64, path string, contentTar, namesTar []byte) error {
 	h1, h2 := HashContent(contentTar)
+	batch := &pgx.Batch{}
 
-	_, err := tx.Exec(ctx, `
+	batch.Queue(`
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
 	`, project, version, path, h1, h2, 0, len(contentTar), true)
-	if err != nil {
-		return fmt.Errorf("FS insert new packed object: %w", err)
-	}
 
-	_, err = tx.Exec(ctx, `
+	batch.Queue(`
 		INSERT INTO dl.contents (hash, bytes, names_tar)
 		VALUES (($1, $2), $3, $4)
 		ON CONFLICT
 		DO NOTHING
 	`, h1, h2, contentTar, namesTar)
+
+	results := tx.SendBatch(ctx, batch)
+	defer results.Close()
+
+	_, err := results.Exec()
+	if err != nil {
+		return fmt.Errorf("FS insert new packed object: %w", err)
+	}
+
+	_, err = results.Exec()
 	if err != nil {
 		return fmt.Errorf("FS insert content: %w", err)
 	}
