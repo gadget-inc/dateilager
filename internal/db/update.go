@@ -33,7 +33,7 @@ func DeleteObjects(ctx context.Context, tx pgx.Tx, project int32, version int64,
 		RETURNING path;
 	`, version, project, fmt.Sprintf("%s%%", path))
 	if err != nil {
-		return fmt.Errorf("FS delete objects: %w", err)
+		return fmt.Errorf("delete objects: %w", err)
 	}
 
 	return nil
@@ -176,12 +176,12 @@ func InsertPackedObject(ctx context.Context, tx pgx.Tx, project int32, version i
 
 	_, err := results.Exec()
 	if err != nil {
-		return fmt.Errorf("FS insert new packed object: %w", err)
+		return fmt.Errorf("insert new packed object: %w", err)
 	}
 
 	_, err = results.Exec()
 	if err != nil {
-		return fmt.Errorf("FS insert content: %w", err)
+		return fmt.Errorf("insert content: %w", err)
 	}
 
 	return nil

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -10,6 +11,10 @@ import (
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/jackc/pgx/v4"
+)
+
+var (
+	ErrMultipleProjectsPerUpdate = errors.New("multiple objects in one update")
 )
 
 type Fs struct {
@@ -131,7 +136,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 
 			err = stream.Send(&pb.GetResponse{Version: vrange.To, Object: object})
 			if err != nil {
-				return fmt.Errorf("send GetResponse: %w", err)
+				return fmt.Errorf("FS send GetResponse: %w", err)
 			}
 		}
 	}
@@ -152,8 +157,17 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	if err != nil {
 		return err
 	}
+	f.Log.Info("FS.GetCompress[Init]", zap.Int32("project", req.Project), zap.Any("vrange", vrange))
 
 	for _, query := range req.Queries {
+		f.Log.Info("FS.GetCompress[Query]",
+			zap.Int32("project", req.Project),
+			zap.Any("vrange", vrange),
+			zap.String("path", query.Path),
+			zap.Bool("isPrefix", query.IsPrefix),
+			zap.Bool("withContent", query.WithContent),
+		)
+
 		tars, err := db.GetTars(ctx, tx, req.Project, vrange, query)
 		if err != nil {
 			return err
@@ -177,7 +191,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 				Bytes:   tar,
 			})
 			if err != nil {
-				return fmt.Errorf("send GetCompressResponse: %w", err)
+				return fmt.Errorf("FS send GetCompressResponse: %w", err)
 			}
 		}
 	}
@@ -230,7 +244,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		}
 
 		if project != request.Project {
-			return fmt.Errorf("FS multiple projects in one update call: %v %v", project, request.Project)
+			return fmt.Errorf("initial project %v, next project %v: %w", project, request.Project, ErrMultipleProjectsPerUpdate)
 		}
 
 		parent, isPacked := packedCache.IsParentPacked(request.Object.Path)
@@ -246,7 +260,6 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		}
 
 		if err != nil {
-			f.Log.Error("FS update", zap.Error(err))
 			return fmt.Errorf("FS update: %w", err)
 		}
 	}
@@ -273,37 +286,41 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	return stream.SendAndClose(&pb.UpdateResponse{Version: version})
 }
 
-func (f *Fs) Pack(ctx context.Context, request *pb.PackRequest) (*pb.PackResponse, error) {
+func (f *Fs) Pack(ctx context.Context, req *pb.PackRequest) (*pb.PackResponse, error) {
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer close()
 
-	latest_version, err := f.lockLatestVersion(ctx, tx, request.Project)
+	f.Log.Info("FS.Pack[Init]", zap.Int32("project", req.Project), zap.String("path", req.Path))
+
+	latest_version, err := f.lockLatestVersion(ctx, tx, req.Project)
 	if err != nil {
 		return nil, err
 	}
 
 	vrange := db.VersionRange{From: 0, To: latest_version}
 	query := pb.ObjectQuery{
-		Path:        request.Path,
+		Path:        req.Path,
 		IsPrefix:    true,
 		WithContent: true,
 	}
 
-	packedCache, err := db.NewPackedCache(ctx, tx, request.Project, vrange)
+	packedCache, err := db.NewPackedCache(ctx, tx, req.Project, vrange)
 	if err != nil {
 		return nil, err
 	}
 
-	objects, err := db.GetObjects(ctx, tx, packedCache, request.Project, vrange, &query)
+	objects, err := db.GetObjects(ctx, tx, packedCache, req.Project, vrange, &query)
 	if err != nil {
 		return nil, err
 	}
 
 	fullTar, namesTar, err := db.PackObjects(objects)
 	if err == db.ErrEmptyPack {
+		f.Log.Info("FS.Pack[Empty]", zap.Int32("project", req.Project), zap.String("path", req.Path), zap.Int64("version", latest_version))
+
 		return &pb.PackResponse{
 			Version: latest_version,
 		}, nil
@@ -314,17 +331,17 @@ func (f *Fs) Pack(ctx context.Context, request *pb.PackRequest) (*pb.PackRespons
 
 	version := latest_version + 1
 
-	err = db.DeleteObjects(ctx, tx, request.Project, version, request.Path)
+	err = db.DeleteObjects(ctx, tx, req.Project, version, req.Path)
 	if err != nil {
 		return nil, err
 	}
 
-	err = db.InsertPackedObject(ctx, tx, request.Project, version, request.Path, fullTar, namesTar)
+	err = db.InsertPackedObject(ctx, tx, req.Project, version, req.Path, fullTar, namesTar)
 	if err != nil {
 		return nil, err
 	}
 
-	err = f.updateLatestVersion(ctx, tx, request.Project, version)
+	err = f.updateLatestVersion(ctx, tx, req.Project, version)
 	if err != nil {
 		return nil, err
 	}
@@ -333,6 +350,7 @@ func (f *Fs) Pack(ctx context.Context, request *pb.PackRequest) (*pb.PackRespons
 	if err != nil {
 		return nil, fmt.Errorf("FS pack commit tx: %w", err)
 	}
+	f.Log.Info("FS.Pack[Commit]", zap.Int32("project", req.Project), zap.String("path", req.Path), zap.Int64("version", version))
 
 	return &pb.PackResponse{
 		Version: version,
