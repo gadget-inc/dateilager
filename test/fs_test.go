@@ -14,8 +14,8 @@ import (
 )
 
 type expectedObject struct {
-	deleted bool
 	content string
+	deleted bool
 }
 
 type mockGetServer struct {

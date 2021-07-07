@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,13 +19,23 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
+type Type int
+
 const (
-	bufSize = 1024 * 1024
+	bufSize          = 1024 * 1024
+	typeRegular Type = iota
+	typeDirectory
+	typeSymlink
 )
 
 var (
 	emptyVersionRange = client.VersionRange{From: nil, To: nil}
 )
+
+type expectedFile struct {
+	content  string
+	fileType Type
+}
 
 func toVersion(to int64) client.VersionRange {
 	return client.VersionRange{From: nil, To: &to}
@@ -83,7 +94,7 @@ func writeTmpFiles(tc util.TestCtx, files map[string]string) string {
 	}
 
 	for name, content := range files {
-		err = os.WriteFile(filepath.Join(dir, name), []byte(content), 0666)
+		err = os.WriteFile(filepath.Join(dir, name), []byte(content), 0755)
 		if err != nil {
 			tc.Fatalf("write temp file: %v", err)
 		}
@@ -115,7 +126,7 @@ func writeDiffFile(tc util.TestCtx, updates map[string]fsdiff_pb.Update_Action) 
 	return fileName
 }
 
-func verifyDir(tc util.TestCtx, dir string, files map[string]string) {
+func verifyDir(tc util.TestCtx, dir string, files map[string]expectedFile) {
 	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
 		tc.Fatalf("read directory %v: %v", dir, err)
@@ -125,15 +136,42 @@ func verifyDir(tc util.TestCtx, dir string, files map[string]string) {
 		tc.Errorf("expected %v files in %v, got: %v", len(files), dir, len(dirEntries))
 	}
 
-	for name, content := range files {
+	for name, file := range files {
 		path := filepath.Join(dir, name)
-		bytes, err := os.ReadFile(path)
+
+		info, err := os.Lstat(path)
 		if err != nil {
-			tc.Fatalf("read file %v: %v", path, err)
+			tc.Fatalf("lstat file %v: %v", path, err)
 		}
 
-		if string(bytes) != content {
-			tc.Errorf("content mismatch in %v expected: '%v', got: '%v'", name, content, string(bytes))
+		switch file.fileType {
+		case typeDirectory:
+			if !info.IsDir() {
+				tc.Errorf("%v is not a directory", name)
+			}
+		case typeSymlink:
+			if info.Mode()&fs.ModeSymlink != fs.ModeSymlink {
+				tc.Errorf("%v is not a symlink", name)
+			}
+
+			target, err := os.Readlink(path)
+			if err != nil {
+				tc.Fatalf("read link %v: %v", path, err)
+			}
+
+			if target != file.content {
+				tc.Errorf("symlink target mismatch in %v expected: '%v', got: '%v'", name, file.content, target)
+			}
+
+		case typeRegular:
+			bytes, err := os.ReadFile(path)
+			if err != nil {
+				tc.Fatalf("read file %v: %v", path, err)
+			}
+
+			if string(bytes) != file.content {
+				tc.Errorf("content mismatch in %v expected: '%v', got: '%v'", name, file.content, string(bytes))
+			}
 		}
 	}
 }
@@ -252,10 +290,10 @@ func TestRebuild(t *testing.T) {
 		t.Fatalf("client.Rebuild: %v", err)
 	}
 
-	verifyDir(tc, tmpDir, map[string]string{
-		"/a": "a v1",
-		"/b": "b v1",
-		"/c": "c v1",
+	verifyDir(tc, tmpDir, map[string]expectedFile{
+		"/a": {content: "a v1"},
+		"/b": {content: "b v1"},
+		"/c": {content: "c v1"},
 	})
 }
 
@@ -285,10 +323,94 @@ func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
 		t.Fatalf("client.Rebuild with overwrites and deletes: %v", err)
 	}
 
-	verifyDir(tc, tmpDir, map[string]string{
-		"/a": "a v2",
-		"/c": "c v1",
-		"/d": "d v2",
+	verifyDir(tc, tmpDir, map[string]expectedFile{
+		"/a": {content: "a v2"},
+		"/c": {content: "c v1"},
+		"/d": {content: "d v2"},
+	})
+}
+
+func TestRebuildWithEmptyDirAndSymlink(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2)
+	writeObject(tc, 1, 1, nil, "/a", "a v1")
+	writeEmptyDir(tc, 1, 1, nil, "/b/")
+	writeSymlink(tc, 1, 2, nil, "/c", "/a")
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	tmpDir := writeTmpFiles(tc, map[string]string{})
+	defer os.RemoveAll(tmpDir)
+
+	err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
+	if err != nil {
+		t.Fatalf("client.Rebuild: %v", err)
+	}
+
+	verifyDir(tc, tmpDir, map[string]expectedFile{
+		"/a":  {content: "a v1"},
+		"/b/": {content: "", fileType: typeDirectory},
+		"/c":  {content: "/a", fileType: typeSymlink},
+	})
+}
+
+func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeEmptyDir(tc, 1, 1, nil, "/a/")
+	writeEmptyDir(tc, 1, 1, nil, "/b/")
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	tmpDir := writeTmpFiles(tc, map[string]string{})
+	defer os.RemoveAll(tmpDir)
+
+	err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
+	if err != nil {
+		t.Fatalf("client.Rebuild: %v", err)
+	}
+
+	verifyDir(tc, tmpDir, map[string]expectedFile{
+		"/a/": {content: "", fileType: typeDirectory},
+		"/b/": {content: "", fileType: typeDirectory},
+	})
+
+	err = os.WriteFile(filepath.Join(tmpDir, "/a/c"), []byte("a/c v2"), 0755)
+	if err != nil {
+		tc.Fatalf("write file %v: %v", filepath.Join(tmpDir, "/a/c"), err)
+	}
+
+	diffPath := writeDiffFile(tc, map[string]fsdiff_pb.Update_Action{
+		"/a/c": fsdiff_pb.Update_ADD,
+	})
+
+	version, count, err := c.Update(tc.Context(), 1, diffPath, tmpDir)
+	if err != nil {
+		t.Fatalf("client.UpdateObjects: %v", err)
+	}
+
+	if version != 2 {
+		t.Errorf("expected version to increment to 2, got: %v", version)
+	}
+
+	if count != 1 {
+		t.Errorf("expected count to be 1, got: %v", count)
+	}
+
+	err = c.Rebuild(tc.Context(), 1, "", fromVersion(1), tmpDir)
+	if err != nil {
+		t.Fatalf("client.Rebuild: %v", err)
+	}
+
+	verifyDir(tc, tmpDir, map[string]expectedFile{
+		"/a/c": {content: "a/c v2"},
+		"/b/":  {content: "", fileType: typeDirectory},
 	})
 }
 
