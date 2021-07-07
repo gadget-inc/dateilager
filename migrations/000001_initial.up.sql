@@ -13,8 +13,7 @@ CREATE TABLE dl.objects (
     stop_version  bigint,
     path          text    NOT NULL,
     hash          hash    NOT NULL,
-    permission    integer NOT NULL,
-    type          integer NOT NULL,
+    mode          bigint  NOT NULL,
     size          bigint  NOT NULL,
     packed        boolean NOT NULL
 );

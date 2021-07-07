@@ -15,32 +15,6 @@ var (
 	ErrEmptyPack = errors.New("empty object stream to pack")
 )
 
-func typeFlagToPb(flag byte) pb.Object_Type {
-	switch flag {
-	case tar.TypeReg:
-		return pb.Object_REGULAR
-	case tar.TypeDir:
-		return pb.Object_DIRECTORY
-	case tar.TypeSymlink:
-		return pb.Object_SYMLINK
-	default:
-		panic(fmt.Sprintf("Invalid type flag: %v", flag))
-	}
-}
-
-func typePbToFlag(otype pb.Object_Type) byte {
-	switch otype {
-	case pb.Object_REGULAR:
-		return tar.TypeReg
-	case pb.Object_DIRECTORY:
-		return tar.TypeDir
-	case pb.Object_SYMLINK:
-		return tar.TypeSymlink
-	default:
-		panic(fmt.Sprintf("Invalid object type: %v", otype))
-	}
-}
-
 type TarWriter struct {
 	size       int
 	buffer     *bytes.Buffer
@@ -90,12 +64,7 @@ func (t *TarWriter) Size() int {
 }
 
 func (t *TarWriter) WriteObject(object *pb.Object, writeContent bool) error {
-	typeFlag := typePbToFlag(object.Type)
-
-	if object.Deleted {
-		// Custom dateilager type flag to represent deleted files
-		typeFlag = 'D'
-	}
+	typeFlag := object.TarType()
 
 	size := int64(len(object.Content))
 	if !writeContent || typeFlag == tar.TypeDir || typeFlag == tar.TypeSymlink {
@@ -104,8 +73,8 @@ func (t *TarWriter) WriteObject(object *pb.Object, writeContent bool) error {
 
 	header := &tar.Header{
 		Name:     object.Path,
-		Mode:     int64(object.Permission),
-		Typeflag: byte(typeFlag),
+		Mode:     int64(object.FileMode().Perm()),
+		Typeflag: typeFlag,
 		Size:     size,
 		Format:   tar.FormatPAX,
 	}
@@ -244,14 +213,7 @@ func updateObjects(before []byte, updates []*pb.Object) ([]byte, []byte, error) 
 			return nil, err
 		}
 
-		return &pb.Object{
-			Path:       header.Name,
-			Permission: int32(header.Mode),
-			Type:       typeFlagToPb(header.Typeflag),
-			Size:       header.Size,
-			Deleted:    false,
-			Content:    content,
-		}, nil
+		return pb.ObjectFromTarHeader(header, content), nil
 	}
 
 	return PackObjects(stream)

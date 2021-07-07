@@ -168,45 +168,6 @@ func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vran
 	return nil
 }
 
-func readFileObject(directory, path string) (*pb.Object, error) {
-	fullPath := filepath.Join(directory, path)
-
-	info, err := os.Lstat(fullPath)
-	if err != nil {
-		return nil, err
-	}
-
-	var content []byte
-	var otype pb.Object_Type
-
-	if info.Mode()&os.ModeSymlink == os.ModeSymlink {
-		target, err := os.Readlink(fullPath)
-		if err != nil {
-			return nil, err
-		}
-		content = []byte(target)
-		otype = pb.Object_SYMLINK
-	} else if info.Mode().IsDir() {
-		content = []byte("")
-		otype = pb.Object_DIRECTORY
-	} else {
-		content, err = os.ReadFile(fullPath)
-		if err != nil {
-			return nil, err
-		}
-		otype = pb.Object_REGULAR
-	}
-
-	return &pb.Object{
-		Path:       path,
-		Permission: int32(info.Mode().Perm()),
-		Type:       otype,
-		Size:       int64(len(content)),
-		Deleted:    false,
-		Content:    content,
-	}, nil
-}
-
 func (c *Client) Update(ctx context.Context, project int32, diffPath string, directory string) (int64, int, error) {
 	stream, err := c.fs.Update(ctx)
 	if err != nil {
@@ -227,7 +188,7 @@ func (c *Client) Update(ctx context.Context, project int32, diffPath string, dir
 				Deleted: true,
 			}
 		} else {
-			object, err = readFileObject(directory, update.Path)
+			object, err = pb.ObjectFromFilePath(directory, update.Path)
 			if err != nil {
 				return -1, 0, fmt.Errorf("read file object: %w", err)
 			}

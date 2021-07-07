@@ -50,7 +50,7 @@ func buildQuery(project int32, vrange VersionRange, objectQuery *pb.ObjectQuery)
 
 	fetchDeleted := `
 		UNION
-		SELECT path, permission, type, size, bytes, packed, deleted
+		SELECT path, mode, size, bytes, packed, deleted
 		FROM removed_files
 	`
 	if vrange.From == 0 {
@@ -59,7 +59,7 @@ func buildQuery(project int32, vrange VersionRange, objectQuery *pb.ObjectQuery)
 
 	sqlTemplate := `
 		WITH updated_files AS (
-			SELECT o.path, o.permission, o.type, o.size, %s, o.packed, false AS deleted
+			SELECT o.path, o.mode, o.size, %s, o.packed, false AS deleted
 			FROM dl.objects o
 			%s
 			WHERE o.project = $1
@@ -69,7 +69,7 @@ func buildQuery(project int32, vrange VersionRange, objectQuery *pb.ObjectQuery)
 			  AND %s
 			ORDER BY o.path
 		), removed_files AS (
-			SELECT o.path, o.permission, o.type, 0 AS size, ''::bytea as bytes, o.packed, true AS deleted
+			SELECT o.path, o.mode, 0 AS size, ''::bytea as bytes, o.packed, true AS deleted
 			FROM dl.objects o
 			WHERE o.project = $1
 			  AND o.start_version <= $3
@@ -78,7 +78,7 @@ func buildQuery(project int32, vrange VersionRange, objectQuery *pb.ObjectQuery)
 			  AND o.path not in (SELECT path FROM updated_files)
 			ORDER BY o.path
 		)
-		SELECT path, permission, type, size, bytes, packed, deleted
+		SELECT path, mode, size, bytes, packed, deleted
 		FROM updated_files
 		%s;
 	`
@@ -109,14 +109,7 @@ func unpackObjects(content []byte) ([]*pb.Object, error) {
 			return nil, err
 		}
 
-		objects = append(objects, &pb.Object{
-			Path:       header.Name,
-			Permission: int32(header.Mode),
-			Type:       typeFlagToPb(header.Typeflag),
-			Size:       header.Size,
-			Deleted:    false,
-			Content:    content,
-		})
+		objects = append(objects, pb.ObjectFromTarHeader(header, content))
 	}
 }
 
@@ -163,14 +156,12 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packedCache *PackedCache, projec
 		}
 
 		var path string
-		var permission int32
-		var otype pb.Object_Type
-		var size int64
+		var mode, size int64
 		var encoded []byte
 		var packed bool
 		var deleted bool
 
-		err := rows.Scan(&path, &permission, &otype, &size, &encoded, &packed, &deleted)
+		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted)
 		if err != nil {
 			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: %w", project, vrange, err)
 		}
@@ -192,12 +183,11 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packedCache *PackedCache, projec
 		}
 
 		return filterObject(originalPath, objectQuery, &pb.Object{
-			Path:       path,
-			Permission: permission,
-			Type:       otype,
-			Size:       size,
-			Deleted:    deleted,
-			Content:    content,
+			Path:    path,
+			Mode:    mode,
+			Size:    size,
+			Deleted: deleted,
+			Content: content,
 		})
 	}, nil
 }
@@ -224,14 +214,12 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int32, vrange VersionRange,
 		}
 
 		var path string
-		var permission int32
-		var otype pb.Object_Type
-		var size int64
+		var mode, size int64
 		var encoded []byte
 		var packed bool
 		var deleted bool
 
-		err := rows.Scan(&path, &permission, &otype, &size, &encoded, &packed, &deleted)
+		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted)
 		if err != nil {
 			return nil, fmt.Errorf("getTars scan, project %v vrange %v: %w", project, vrange, err)
 		}
@@ -246,12 +234,11 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int32, vrange VersionRange,
 		}
 
 		object := pb.Object{
-			Path:       path,
-			Permission: permission,
-			Type:       otype,
-			Size:       size,
-			Deleted:    deleted,
-			Content:    content,
+			Path:    path,
+			Mode:    mode,
+			Size:    size,
+			Deleted: deleted,
+			Content: content,
 		}
 
 		err = tarWriter.WriteObject(&object, true)

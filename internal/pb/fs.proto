@@ -15,17 +15,11 @@ service Fs {
 }
 
 message Object {
-    enum Type {
-        REGULAR = 0;
-        DIRECTORY = 1;
-        SYMLINK = 2;
-    }
     string path = 1;
-    int32 permission = 2;
-    Type type = 3;
-    int64 size = 4;
-    bool deleted = 5;
-    optional bytes content = 6;
+    int64 mode = 2;
+    int64 size = 3;
+    bool deleted = 4;
+    optional bytes content = 5;
 }
 
 message ObjectQuery {
