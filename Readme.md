@@ -1,5 +1,9 @@
 # DateiLager
 
+## Docs
+
+You can read more about DateiLager's design in the `docs/` directory. A good place to start is the [core concepts file](./docs/core.md).
+
 ## Setup
 
 ### Requirements
