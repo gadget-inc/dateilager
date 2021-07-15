@@ -7,6 +7,11 @@ log() {
     echo "$(date +"%H:%M:%S") - $(printf '%s' "$@")" 1>&2
 }
 
+realpath() {
+    local path="${1}"
+    echo "$(cd "$(dirname "${path}")"; pwd -P)"
+}
+
 readonly ROOT_DIR="$(realpath "$(dirname "$0")/..")"
 readonly INPUT_DIR="${ROOT_DIR}/input"
 
