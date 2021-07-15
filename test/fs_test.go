@@ -212,6 +212,29 @@ func verifyTarResults(tc util.TestCtx, results [][]byte, expected map[string]exp
 	}
 }
 
+func TestNewProject(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	fs := tc.FsApi()
+
+	_, err := fs.NewProject(tc.Context(), &pb.NewProjectRequest{Id: 1})
+	if err != nil {
+		t.Fatalf("fs.NewProject: %v", err)
+	}
+
+	stream := &mockGetServer{ctx: tc.Context()}
+
+	err = fs.Get(&pb.GetRequest{Project: 1}, stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	if len(stream.results) != 0 {
+		t.Fatalf("stream results should be empty: %v", stream.results)
+	}
+}
+
 func TestGetEmpty(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()

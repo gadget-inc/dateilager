@@ -8,6 +8,18 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
+func CreateProject(ctx context.Context, tx pgx.Tx, project int64) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO dl.projects (id, latest_version)
+		VALUES ($1, 0);
+	`, project)
+	if err != nil {
+		return fmt.Errorf("create project %v: %w", project, err)
+	}
+
+	return nil
+}
+
 func DeleteObject(ctx context.Context, tx pgx.Tx, project int64, version int64, path string) error {
 	_, err := tx.Exec(ctx, `
 		UPDATE dl.objects
@@ -17,13 +29,14 @@ func DeleteObject(ctx context.Context, tx pgx.Tx, project int64, version int64, 
 		  AND stop_version IS NULL
 	`, version, project, path)
 	if err != nil {
-		return fmt.Errorf("delete object: %w", err)
+		return fmt.Errorf("delete object, project %v, version %v, path %v: %w", project, version, path, err)
 	}
 
 	return nil
 }
 
 func DeleteObjects(ctx context.Context, tx pgx.Tx, project int64, version int64, path string) error {
+	pathPredicate := fmt.Sprintf("%s%%", path)
 	_, err := tx.Exec(ctx, `
 		UPDATE dl.objects
 		SET stop_version = $1
@@ -31,9 +44,9 @@ func DeleteObjects(ctx context.Context, tx pgx.Tx, project int64, version int64,
 		  AND path LIKE $3
 		  AND stop_version IS NULL
 		RETURNING path;
-	`, version, project, fmt.Sprintf("%s%%", path))
+	`, version, project, pathPredicate)
 	if err != nil {
-		return fmt.Errorf("delete objects: %w", err)
+		return fmt.Errorf("delete objects, project %v, version %v, path %v: %w", project, version, pathPredicate, err)
 	}
 
 	return nil
@@ -48,7 +61,7 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 
 	encoded, err := encoder.Encode(content)
 	if err != nil {
-		return fmt.Errorf("encode updated content: %w", err)
+		return fmt.Errorf("encode updated content, project %v, version %v, path %v: %w", project, version, object.Path, err)
 	}
 
 	batch := &pgx.Batch{}
@@ -77,17 +90,17 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 
 	_, err = results.Exec()
 	if err != nil {
-		return fmt.Errorf("update previous object version: %w", err)
+		return fmt.Errorf("update previous object, project %v, version %v, path %v: %w", project, version, object.Path, err)
 	}
 
 	_, err = results.Exec()
 	if err != nil {
-		return fmt.Errorf("insert new object version: %w", err)
+		return fmt.Errorf("insert new object, project %v, version %v, path %v: %w", project, version, object.Path, err)
 	}
 
 	_, err = results.Exec()
 	if err != nil {
-		return fmt.Errorf("insert updated content: %w", err)
+		return fmt.Errorf("insert updated content, hash %x-%x: %w", h1, h2, err)
 	}
 
 	return nil
@@ -106,7 +119,7 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 		RETURNING (hash).h1, (hash).h2
 	`, version, project, parent).Scan(&h1, &h2)
 	if err != nil {
-		return fmt.Errorf("update latest version: %w", err)
+		return fmt.Errorf("update latest version, project %v, version %v, parent %v: %w", project, version, parent, err)
 	}
 
 	err = tx.QueryRow(ctx, `
@@ -116,7 +129,7 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 		  AND (hash).h2 = $2
 	`, h1, h2).Scan(&content)
 	if err != nil {
-		return fmt.Errorf("fetch latest packed content: %w", err)
+		return fmt.Errorf("fetch latest packed content, hash %x-%x: %w", h1, h2, err)
 	}
 
 	updated, namesTar, err := updateObjects(content, updates)
@@ -144,12 +157,12 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 
 	_, err = results.Exec()
 	if err != nil {
-		return fmt.Errorf("insert new packed object version: %w", err)
+		return fmt.Errorf("insert new packed object, project %v, version %v, parent %v: %w", project, version, parent, err)
 	}
 
 	_, err = results.Exec()
 	if err != nil {
-		return fmt.Errorf("insert packed content: %w", err)
+		return fmt.Errorf("insert packed content, hash %x-%x: %w", h1, h2, err)
 	}
 
 	return nil
@@ -176,12 +189,12 @@ func InsertPackedObject(ctx context.Context, tx pgx.Tx, project int64, version i
 
 	_, err := results.Exec()
 	if err != nil {
-		return fmt.Errorf("insert new packed object: %w", err)
+		return fmt.Errorf("insert new packed object, project %v, version %v, parent %v: %w", project, version, path, err)
 	}
 
 	_, err = results.Exec()
 	if err != nil {
-		return fmt.Errorf("insert content: %w", err)
+		return fmt.Errorf("insert content, hash %x-%x: %w", h1, h2, err)
 	}
 
 	return nil

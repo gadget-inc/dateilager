@@ -25,6 +25,34 @@ type Fs struct {
 	DbConn db.DbConnector
 }
 
+func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.NewProjectResponse, error) {
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+	}
+	defer close()
+
+	f.Log.Info("FS.NewProject[Init]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
+
+	if req.Template != nil {
+		return nil, status.Errorf(codes.Unimplemented, "FS new project template is not yet implemented")
+	}
+
+	err = db.CreateProject(ctx, tx, req.Id)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS new project %v, %w", req.Id, err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS new project commit tx: %w", err)
+	}
+
+	f.Log.Info("FS.NewProject[Commit]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
+
+	return &pb.NewProjectResponse{}, nil
+}
+
 func (f *Fs) getLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
 	var latest_version int64
 

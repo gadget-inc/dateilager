@@ -5,6 +5,8 @@ package pb;
 option go_package = "github.com/gadget-inc/dateilager/pkg/pb";
 
 service Fs {
+    rpc NewProject(NewProjectRequest) returns (NewProjectResponse);
+
     rpc Get(GetRequest) returns (stream GetResponse);
 
     rpc GetCompress(GetCompressRequest) returns (stream GetCompressResponse);
@@ -13,6 +15,13 @@ service Fs {
 
     rpc Pack(PackRequest) returns (PackResponse);
 }
+
+message NewProjectRequest {
+    int64 id = 1;
+    optional int64 template = 2;
+}
+
+message NewProjectResponse {};
 
 message Object {
     string path = 1;
