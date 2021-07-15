@@ -25,7 +25,7 @@ type Fs struct {
 	DbConn db.DbConnector
 }
 
-func (f *Fs) getLatestVersion(ctx context.Context, tx pgx.Tx, project int32) (int64, error) {
+func (f *Fs) getLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
 	var latest_version int64
 
 	err := tx.QueryRow(ctx, `
@@ -42,7 +42,7 @@ func (f *Fs) getLatestVersion(ctx context.Context, tx pgx.Tx, project int32) (in
 	return latest_version, nil
 }
 
-func (f *Fs) lockLatestVersion(ctx context.Context, tx pgx.Tx, project int32) (int64, error) {
+func (f *Fs) lockLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
 	var latest_version int64
 
 	err := tx.QueryRow(ctx, `
@@ -60,7 +60,7 @@ func (f *Fs) lockLatestVersion(ctx context.Context, tx pgx.Tx, project int32) (i
 	return latest_version, nil
 }
 
-func (f *Fs) updateLatestVersion(ctx context.Context, tx pgx.Tx, project int32, version int64) error {
+func (f *Fs) updateLatestVersion(ctx context.Context, tx pgx.Tx, project int64, version int64) error {
 	_, err := tx.Exec(ctx, `
 		UPDATE dl.projects
 		SET latest_version = $1
@@ -73,7 +73,7 @@ func (f *Fs) updateLatestVersion(ctx context.Context, tx pgx.Tx, project int32, 
 	return nil
 }
 
-func (f *Fs) buildVersionRange(ctx context.Context, tx pgx.Tx, project int32, from *int64, to *int64) (db.VersionRange, error) {
+func (f *Fs) buildVersionRange(ctx context.Context, tx pgx.Tx, project int64, from *int64, to *int64) (db.VersionRange, error) {
 	vrange := db.VersionRange{}
 
 	if from == nil {
@@ -108,7 +108,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	if err != nil {
 		return err
 	}
-	f.Log.Info("FS.Get[Init]", zap.Int32("project", req.Project), zap.Any("vrange", vrange))
+	f.Log.Info("FS.Get[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
 	packedCache, err := db.NewPackedCache(ctx, tx, req.Project, vrange)
 	if err != nil {
@@ -117,7 +117,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 
 	for _, query := range req.Queries {
 		f.Log.Info("FS.Get[Query]",
-			zap.Int32("project", req.Project),
+			zap.Int64("project", req.Project),
 			zap.Any("vrange", vrange),
 			zap.String("path", query.Path),
 			zap.Bool("isPrefix", query.IsPrefix),
@@ -164,11 +164,11 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	if err != nil {
 		return err
 	}
-	f.Log.Info("FS.GetCompress[Init]", zap.Int32("project", req.Project), zap.Any("vrange", vrange))
+	f.Log.Info("FS.GetCompress[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
 	for _, query := range req.Queries {
 		f.Log.Info("FS.GetCompress[Query]",
-			zap.Int32("project", req.Project),
+			zap.Int64("project", req.Project),
 			zap.Any("vrange", vrange),
 			zap.String("path", query.Path),
 			zap.Bool("isPrefix", query.IsPrefix),
@@ -218,7 +218,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	contentEncoder := db.NewContentEncoder()
 
 	// We only receive a project ID after the first streamed update
-	project := int32(-1)
+	project := int64(-1)
 	version := int64(-1)
 
 	var packedCache *db.PackedCache
@@ -243,7 +243,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			}
 
 			version = latest_version + 1
-			f.Log.Info("FS.Update[Init]", zap.Int32("project", project), zap.Int64("version", version))
+			f.Log.Info("FS.Update[Init]", zap.Int64("project", project), zap.Int64("version", version))
 
 			packedCache, err = db.NewPackedCache(ctx, tx, project, db.VersionRange{From: 0, To: version})
 			if err != nil {
@@ -289,7 +289,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return status.Errorf(codes.Internal, "FS update commit tx: %w", err)
 	}
 
-	f.Log.Info("FS.Update[Commit]", zap.Int32("project", project), zap.Int64("version", version))
+	f.Log.Info("FS.Update[Commit]", zap.Int64("project", project), zap.Int64("version", version))
 
 	return stream.SendAndClose(&pb.UpdateResponse{Version: version})
 }
@@ -301,7 +301,7 @@ func (f *Fs) Pack(ctx context.Context, req *pb.PackRequest) (*pb.PackResponse, e
 	}
 	defer close()
 
-	f.Log.Info("FS.Pack[Init]", zap.Int32("project", req.Project), zap.String("path", req.Path))
+	f.Log.Info("FS.Pack[Init]", zap.Int64("project", req.Project), zap.String("path", req.Path))
 
 	latest_version, err := f.lockLatestVersion(ctx, tx, req.Project)
 	if err != nil {
@@ -327,7 +327,7 @@ func (f *Fs) Pack(ctx context.Context, req *pb.PackRequest) (*pb.PackResponse, e
 
 	fullTar, namesTar, err := db.PackObjects(objects)
 	if err == db.ErrEmptyPack {
-		f.Log.Info("FS.Pack[Empty]", zap.Int32("project", req.Project), zap.String("path", req.Path), zap.Int64("version", latest_version))
+		f.Log.Info("FS.Pack[Empty]", zap.Int64("project", req.Project), zap.String("path", req.Path), zap.Int64("version", latest_version))
 
 		return &pb.PackResponse{
 			Version: latest_version,
@@ -358,7 +358,7 @@ func (f *Fs) Pack(ctx context.Context, req *pb.PackRequest) (*pb.PackResponse, e
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS pack commit tx: %w", err)
 	}
-	f.Log.Info("FS.Pack[Commit]", zap.Int32("project", req.Project), zap.String("path", req.Path), zap.Int64("version", version))
+	f.Log.Info("FS.Pack[Commit]", zap.Int64("project", req.Project), zap.String("path", req.Path), zap.Int64("version", version))
 
 	return &pb.PackResponse{
 		Version: version,

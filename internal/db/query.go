@@ -25,7 +25,7 @@ type VersionRange struct {
 	To   int64
 }
 
-func buildQuery(project int32, vrange VersionRange, objectQuery *pb.ObjectQuery) (string, []interface{}) {
+func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (string, []interface{}) {
 	bytesSelector := "c.bytes"
 	joinClause := `
 		JOIN dl.contents c
@@ -127,7 +127,7 @@ func filterObject(path string, objectQuery *pb.ObjectQuery, object *pb.Object) (
 	return nil, SKIP
 }
 
-func GetObjects(ctx context.Context, tx pgx.Tx, packedCache *PackedCache, project int32, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, error) {
+func GetObjects(ctx context.Context, tx pgx.Tx, packedCache *PackedCache, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, error) {
 	parent, isPacked := packedCache.IsParentPacked(objectQuery.Path)
 
 	originalPath := objectQuery.Path
@@ -194,7 +194,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packedCache *PackedCache, projec
 
 type tarStream func() ([]byte, error)
 
-func GetTars(ctx context.Context, tx pgx.Tx, project int32, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
+func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
 	sql, args := buildQuery(project, vrange, objectQuery)
 	rows, err := tx.Query(ctx, sql, args...)
 	if err != nil {
@@ -258,7 +258,7 @@ type PackedCache struct {
 	packs map[string]bool
 }
 
-func NewPackedCache(ctx context.Context, tx pgx.Tx, project int32, vrange VersionRange) (*PackedCache, error) {
+func NewPackedCache(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange) (*PackedCache, error) {
 	sql := `
 		SELECT o.path
 		FROM dl.objects o

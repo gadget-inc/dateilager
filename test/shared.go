@@ -22,7 +22,7 @@ func writeProject(tc util.TestCtx, id int32, latest_version int64) {
 	}
 }
 
-func writeObjectFull(tc util.TestCtx, project int32, start int64, stop *int64, path, content string, mode fs.FileMode) {
+func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, path, content string, mode fs.FileMode) {
 	conn := tc.Connect()
 
 	contentBytes := []byte(content)
@@ -53,7 +53,7 @@ func writeObjectFull(tc util.TestCtx, project int32, start int64, stop *int64, p
 	}
 }
 
-func writeObject(tc util.TestCtx, project int32, start int64, stop *int64, path string, contents ...string) {
+func writeObject(tc util.TestCtx, project int64, start int64, stop *int64, path string, contents ...string) {
 	var content string
 	if len(contents) == 0 {
 		content = ""
@@ -64,14 +64,14 @@ func writeObject(tc util.TestCtx, project int32, start int64, stop *int64, path 
 	writeObjectFull(tc, project, start, stop, path, content, 0755)
 }
 
-func writeEmptyDir(tc util.TestCtx, project int32, start int64, stop *int64, path string) {
+func writeEmptyDir(tc util.TestCtx, project int64, start int64, stop *int64, path string) {
 	mode := fs.FileMode(0755)
 	mode |= fs.ModeDir
 
 	writeObjectFull(tc, project, start, stop, path, "", mode)
 }
 
-func writeSymlink(tc util.TestCtx, project int32, start int64, stop *int64, path, target string) {
+func writeSymlink(tc util.TestCtx, project int64, start int64, stop *int64, path, target string) {
 	mode := fs.FileMode(0755)
 	mode |= fs.ModeSymlink
 

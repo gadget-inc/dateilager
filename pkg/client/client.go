@@ -46,7 +46,7 @@ func (c *Client) Close() {
 	c.conn.Close()
 }
 
-func (c *Client) Get(ctx context.Context, project int32, prefix string, vrange VersionRange) ([]*pb.Object, error) {
+func (c *Client) Get(ctx context.Context, project int64, prefix string, vrange VersionRange) ([]*pb.Object, error) {
 	var objects []*pb.Object
 
 	query := &pb.ObjectQuery{
@@ -82,7 +82,7 @@ func (c *Client) Get(ctx context.Context, project int32, prefix string, vrange V
 	return objects, nil
 }
 
-func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vrange VersionRange, output string) error {
+func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vrange VersionRange, output string) error {
 	query := &pb.ObjectQuery{
 		Path:        prefix,
 		IsPrefix:    true,
@@ -168,7 +168,7 @@ func (c *Client) Rebuild(ctx context.Context, project int32, prefix string, vran
 	return nil
 }
 
-func (c *Client) Update(ctx context.Context, project int32, diffPath string, directory string) (int64, int, error) {
+func (c *Client) Update(ctx context.Context, project int64, diffPath string, directory string) (int64, int, error) {
 	stream, err := c.fs.Update(ctx)
 	if err != nil {
 		return -1, 0, fmt.Errorf("connect fs.Update: %w", err)
@@ -211,7 +211,7 @@ func (c *Client) Update(ctx context.Context, project int32, diffPath string, dir
 	return response.Version, len(diff.Updates), nil
 }
 
-func (c *Client) Pack(ctx context.Context, project int32, path string) (int64, error) {
+func (c *Client) Pack(ctx context.Context, project int64, path string) (int64, error) {
 	response, err := c.fs.Pack(ctx, &pb.PackRequest{
 		Project: project,
 		Path:    path,

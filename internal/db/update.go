@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
-func DeleteObject(ctx context.Context, tx pgx.Tx, project int32, version int64, path string) error {
+func DeleteObject(ctx context.Context, tx pgx.Tx, project int64, version int64, path string) error {
 	_, err := tx.Exec(ctx, `
 		UPDATE dl.objects
 		SET stop_version = $1
@@ -23,7 +23,7 @@ func DeleteObject(ctx context.Context, tx pgx.Tx, project int32, version int64, 
 	return nil
 }
 
-func DeleteObjects(ctx context.Context, tx pgx.Tx, project int32, version int64, path string) error {
+func DeleteObjects(ctx context.Context, tx pgx.Tx, project int64, version int64, path string) error {
 	_, err := tx.Exec(ctx, `
 		UPDATE dl.objects
 		SET stop_version = $1
@@ -39,7 +39,7 @@ func DeleteObjects(ctx context.Context, tx pgx.Tx, project int32, version int64,
 	return nil
 }
 
-func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, project int32, version int64, object *pb.Object) error {
+func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, project int64, version int64, object *pb.Object) error {
 	content := object.Content
 	if content == nil {
 		content = []byte("")
@@ -93,7 +93,7 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 	return nil
 }
 
-func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int32, version int64, parent string, updates []*pb.Object) error {
+func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version int64, parent string, updates []*pb.Object) error {
 	var h1, h2 []byte
 	var content []byte
 
@@ -155,7 +155,7 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int32, version 
 	return nil
 }
 
-func InsertPackedObject(ctx context.Context, tx pgx.Tx, project int32, version int64, path string, contentTar, namesTar []byte) error {
+func InsertPackedObject(ctx context.Context, tx pgx.Tx, project int64, version int64, path string, contentTar, namesTar []byte) error {
 	h1, h2 := HashContent(contentTar)
 	batch := &pgx.Batch{}
 

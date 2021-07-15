@@ -51,13 +51,13 @@ func (m *mockGetCompressServer) Send(resp *pb.GetCompressResponse) error {
 type mockUpdateServer struct {
 	grpc.ServerStream
 	ctx      context.Context
-	project  int32
+	project  int64
 	updates  []*pb.Object
 	idx      int
 	response *pb.UpdateResponse
 }
 
-func newMockUpdateServer(ctx context.Context, project int32, updates map[string]expectedObject) *mockUpdateServer {
+func newMockUpdateServer(ctx context.Context, project int64, updates map[string]expectedObject) *mockUpdateServer {
 	var objects []*pb.Object
 
 	for path, object := range updates {
@@ -100,7 +100,7 @@ func (m *mockUpdateServer) Recv() (*pb.UpdateRequest, error) {
 	}, nil
 }
 
-func buildRequest(project int32, fromVersion, toVersion *int64, path string, prefix, content bool) *pb.GetRequest {
+func buildRequest(project int64, fromVersion, toVersion *int64, path string, prefix, content bool) *pb.GetRequest {
 	query := &pb.ObjectQuery{
 		Path:        path,
 		IsPrefix:    prefix,
@@ -115,23 +115,23 @@ func buildRequest(project int32, fromVersion, toVersion *int64, path string, pre
 	}
 }
 
-func exactQuery(project int32, version *int64, path string) *pb.GetRequest {
+func exactQuery(project int64, version *int64, path string) *pb.GetRequest {
 	return buildRequest(project, nil, version, path, false, true)
 }
 
-func prefixQuery(project int32, version *int64, path string) *pb.GetRequest {
+func prefixQuery(project int64, version *int64, path string) *pb.GetRequest {
 	return buildRequest(project, nil, version, path, true, true)
 }
 
-func noContentQuery(project int32, version *int64, path string) *pb.GetRequest {
+func noContentQuery(project int64, version *int64, path string) *pb.GetRequest {
 	return buildRequest(project, nil, version, path, true, false)
 }
 
-func rangeQuery(project int32, fromVersion, toVersion *int64, path string) *pb.GetRequest {
+func rangeQuery(project int64, fromVersion, toVersion *int64, path string) *pb.GetRequest {
 	return buildRequest(project, fromVersion, toVersion, path, true, true)
 }
 
-func buildCompressRequest(project int32, fromVersion, toVersion *int64, path string) *pb.GetCompressRequest {
+func buildCompressRequest(project int64, fromVersion, toVersion *int64, path string) *pb.GetCompressRequest {
 	query := &pb.ObjectQuery{
 		Path:        path,
 		IsPrefix:    true,

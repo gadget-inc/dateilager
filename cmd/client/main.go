@@ -18,7 +18,7 @@ type Command interface {
 
 type getArgs struct {
 	server  string
-	project int32
+	project int64
 	vrange  client.VersionRange
 	prefix  string
 }
@@ -27,7 +27,7 @@ func parseGetArgs(log *zap.Logger, args []string) *getArgs {
 	set := flag.NewFlagSet("get", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
-	project := set.Int("project", -1, "Project ID (required)")
+	project := set.Int64("project", -1, "Project ID (required)")
 	from := set.Int64("from", -1, "From version ID (optional)")
 	to := set.Int64("to", -1, "To version ID (optional)")
 	prefix := set.String("prefix", "", "Search prefix")
@@ -47,7 +47,7 @@ func parseGetArgs(log *zap.Logger, args []string) *getArgs {
 
 	return &getArgs{
 		server:  *server,
-		project: int32(*project),
+		project: *project,
 		vrange:  client.VersionRange{From: from, To: to},
 		prefix:  *prefix,
 	}
@@ -63,15 +63,15 @@ func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
 
-	log.Info("listing objects in project", zap.Int32("project", a.project), zap.Int("count", len(objects)))
-	for _, object := range objects {
-		log.Info("object", zap.String("path", object.Path), zap.String("content", string(object.Content)))
-	}
+	log.Info("listing objects in project", zap.Int64("project", a.project), zap.Int("count", len(objects)))
+	// for _, object := range objects {
+	// 	log.Info("object", zap.String("path", object.Path), zap.String("content", string(object.Content)))
+	// }
 }
 
 type rebuildArgs struct {
 	server  string
-	project int32
+	project int64
 	vrange  client.VersionRange
 	prefix  string
 	output  string
@@ -81,7 +81,7 @@ func parseRebuildArgs(log *zap.Logger, args []string) *rebuildArgs {
 	set := flag.NewFlagSet("rebuild", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
-	project := set.Int("project", -1, "Project ID (required)")
+	project := set.Int64("project", -1, "Project ID (required)")
 	from := set.Int64("from", -1, "From version ID (optional)")
 	to := set.Int64("to", -1, "To version ID (optional)")
 	prefix := set.String("prefix", "", "Search prefix")
@@ -102,7 +102,7 @@ func parseRebuildArgs(log *zap.Logger, args []string) *rebuildArgs {
 
 	return &rebuildArgs{
 		server:  *server,
-		project: int32(*project),
+		project: *project,
 		vrange:  client.VersionRange{From: from, To: to},
 		prefix:  *prefix,
 		output:  *output,
@@ -119,12 +119,12 @@ func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
 
-	log.Info("wrote files", zap.Int32("project", a.project), zap.String("output", a.output))
+	log.Info("wrote files", zap.Int64("project", a.project), zap.String("output", a.output))
 }
 
 type updateArgs struct {
 	server    string
-	project   int32
+	project   int64
 	diff      string
 	directory string
 }
@@ -133,7 +133,7 @@ func parseUpdateArgs(log *zap.Logger, args []string) *updateArgs {
 	set := flag.NewFlagSet("update", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
-	project := set.Int("project", -1, "Project ID (required)")
+	project := set.Int64("project", -1, "Project ID (required)")
 	diff := set.String("diff", "", "Diff file listing changed file names")
 	directory := set.String("directory", "", "Directory containing updated files")
 
@@ -145,7 +145,7 @@ func parseUpdateArgs(log *zap.Logger, args []string) *updateArgs {
 
 	return &updateArgs{
 		server:    *server,
-		project:   int32(*project),
+		project:   *project,
 		diff:      *diff,
 		directory: *directory,
 	}
@@ -161,12 +161,12 @@ func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client)
 		log.Fatal("update objects", zap.Error(err))
 	}
 
-	log.Info("updated objects", zap.Int32("project", a.project), zap.Int64("version", version), zap.Int("count", count))
+	log.Info("updated objects", zap.Int64("project", a.project), zap.Int64("version", version), zap.Int("count", count))
 }
 
 type packArgs struct {
 	server  string
-	project int32
+	project int64
 	path    string
 }
 
@@ -174,7 +174,7 @@ func parsePackArgs(log *zap.Logger, args []string) *packArgs {
 	set := flag.NewFlagSet("update", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
-	project := set.Int("project", -1, "Project ID (required)")
+	project := set.Int64("project", -1, "Project ID (required)")
 	path := set.String("path", "", "Root of the object path to pack")
 
 	set.Parse(args)
@@ -185,7 +185,7 @@ func parsePackArgs(log *zap.Logger, args []string) *packArgs {
 
 	return &packArgs{
 		server:  *server,
-		project: int32(*project),
+		project: *project,
 		path:    *path,
 	}
 }
@@ -197,10 +197,10 @@ func (a *packArgs) serverAddr() string {
 func (a *packArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
 	version, err := c.Pack(ctx, a.project, a.path)
 	if err != nil {
-		log.Fatal("pack objects", zap.Int32("project", a.project), zap.String("path", a.path), zap.Error(err))
+		log.Fatal("pack objects", zap.Int64("project", a.project), zap.String("path", a.path), zap.Error(err))
 	}
 
-	log.Info("packed objects", zap.Int32("project", a.project), zap.String("path", a.path), zap.Int64("version", version))
+	log.Info("packed objects", zap.Int64("project", a.project), zap.String("path", a.path), zap.Int64("version", version))
 }
 
 func main() {

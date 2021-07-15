@@ -3,7 +3,7 @@ CREATE TYPE hash AS (h1 uuid, h2 uuid);
 CREATE SCHEMA dl;
 
 CREATE TABLE dl.projects (
-    id             integer PRIMARY KEY,
+    id             bigint PRIMARY KEY,
     latest_version bigint  NOT NULL
 );
 

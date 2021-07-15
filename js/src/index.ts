@@ -26,10 +26,6 @@ function objectToPb(source: Object): pb.Object {
   return obj;
 }
 
-type UpdateCallback = {
-  (err: Error | null, version: number): void;
-};
-
 class DateiLagerClient {
   project: number;
   client: any;

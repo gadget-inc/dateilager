@@ -29,7 +29,7 @@ message ObjectQuery {
 }
 
 message GetRequest {
-    int32 project = 1;
+    int64 project = 1;
     optional int64 from_version = 2;
     optional int64 to_version = 3;
     repeated ObjectQuery queries = 4;
@@ -41,7 +41,7 @@ message GetResponse {
 }
 
 message GetCompressRequest {
-    int32 project = 1;
+    int64 project = 1;
     optional int64 from_version = 2;
     optional int64 to_version = 3;
     repeated ObjectQuery queries = 5;
@@ -57,7 +57,7 @@ message GetCompressResponse {
 }
 
 message UpdateRequest {
-    int32 project = 1;
+    int64 project = 1;
     Object object = 2;
 }
 
@@ -66,7 +66,7 @@ message UpdateResponse {
 }
 
 message PackRequest {
-    int32 project = 1;
+    int64 project = 1;
     string path = 2;
 }
 
