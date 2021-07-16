@@ -102,16 +102,15 @@ Ensure a server is running with `make server`.
 Import the `DateiLagerClient` from the module in `js/` and use it to query objects:
 
 ```javascript
-// A client for project 1
-const client = new DateiLagerClient("localhost", 5051, 1);
+const client = new DateiLagerClient("localhost", 5051);
 
 // Get a single object
-const object = await client.getObject("a");
+const object = await client.getObject(1n, "a");
 console.log("[getObject] path: " + object.path);
 console.log("[getObject] content:\n" + object.content);
 
 // List all objects
-for await (const object of client.listObjects("")) {
+for await (const object of client.listObjects(1n, "")) {
   console.log("[listObjects] path: " + object.path);
   console.log("[listObjects] content:\n" + object.content);
 }
@@ -120,17 +119,15 @@ for await (const object of client.listObjects("")) {
 Update objects and await the successful commit of a new version:
 
 ```javascript
-const [stream, promise] = client.updateObjects();
+const stream = client.updateObjects(1n);
 
-stream.write({
+stream.send({
   path: "a",
   mode: 0o755,
   content: "foo bar",
 });
 
-stream.end();
-
-const version = await promise;
+const version = await stream.complete();
 console.log("[updateObject] version: " + version);
 ```
 

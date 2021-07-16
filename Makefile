@@ -40,16 +40,10 @@ internal/pb/%_grpc.pb.go: internal/pb/%.proto
 bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES)
 	go build -o $@ $<
 
-js/src/%_pb.js: internal/pb/%.proto
-	js/node_modules/.bin/grpc_tools_node_protoc --js_out=import_style=commonjs,binary:js/src --proto_path=internal/pb fs.proto
+js/src/%.client.ts: internal/pb/%.proto
+	cd js && npx protoc --experimental_allow_proto3_optional --ts_out ./src --ts_opt long_type_bigint --proto_path ../internal/pb/ ../$^
 
-js/src/%_grpc_pb.js: internal/pb/%.proto
-	js/node_modules/.bin/grpc_tools_node_protoc --grpc_out=grpc_js:js/src --proto_path=internal/pb fs.proto
-
-js/src/%_pb.d.ts: internal/pb/%.proto
-	js/node_modules/.bin/grpc_tools_node_protoc --plugin=protoc-gen-ts=js/node_modules/.bin/protoc-gen-ts --ts_out=js/src --proto_path=internal/pb fs.proto
-
-build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client js/src/fs_pb.js js/src/fs_grpc_pb.js js/src/fs_pb.d.ts
+build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client js/src/fs.client.ts
 
 test: export DB_URI = postgres://postgres@$(DB_HOST):5432/dl_tests
 test: migrate
