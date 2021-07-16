@@ -6,8 +6,7 @@
     "@grpc/grpc-js": "^1.1.0",
     "@protobuf-ts/grpc-transport": "^2.0.0-alpha.27",
     "@protobuf-ts/plugin": "^2.0.0-alpha.27",
-    "@protobuf-ts/runtime-rpc": "^2.0.0-alpha.27",
-    "esbuild": "^0.12.15"
+    "@protobuf-ts/runtime-rpc": "^2.0.0-alpha.27"
   },
   "devDependencies": {
     "ts-node": "^10.1.0"
