@@ -24,6 +24,21 @@ wait_for_postgres() {
     done
 }
 
+write_reset_script() {
+    local dburi="${1}"
+    local file="${HOME}/reset-db.sh"
+
+    log "writing ${file}"
+
+    cat <<EOF > "${file}"
+#!/usr/bin/env bash
+
+migrate -path "${HOME}/migrations" -database "${dburi}?sslmode=disable" down -all
+migrate -path "${HOME}/migrations" -database "${dburi}?sslmode=disable" up
+EOF
+    chmod +x "${file}"
+}
+
 main() {
     if [[ "$#" -ne 1 ]]; then
         error "Usage: ${0} <dburi>"
@@ -31,6 +46,7 @@ main() {
     local dburi="${1}"
 
     wait_for_postgres "${dburi}"
+    write_reset_script "${dburi}"
 
     if [[ "${RUN_MIGRATIONS:-0}" == "1" ]]; then
         log "run migrations"
