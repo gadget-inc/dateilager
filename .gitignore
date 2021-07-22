@@ -2,6 +2,7 @@ bin/
 input/
 input_old/
 rebuild/
+release/
 *.prof
 *.pb.go
 fs*.ts

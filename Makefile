@@ -12,7 +12,7 @@ INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
-.PHONY: install migrate migrate-create build test
+.PHONY: install migrate migrate-create build release test
 .PHONY: reset-db setup-local server server-profile client-update client-get client-rebuild client-pack health
 .PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-client-rebuild k8s-client-pack k8s-health
 
@@ -44,6 +44,14 @@ js/src/%.client.ts: internal/pb/%.proto
 	cd js && npx protoc --experimental_allow_proto3_optional --ts_out ./src --ts_opt long_type_bigint --proto_path ../internal/pb/ ../$^
 
 build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client js/src/fs.client.ts
+
+release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES)
+	GOOS=linux GOARCH=amd64 go build -o $@ $<
+
+release/%_macos_amd64: cmd/%/main.go $(PKG_GO_FILES)
+	GOOS=darwin GOARCH=amd64 go build -o $@ $<
+
+release: build release/server_linux_amd64 release/server_macos_amd64 release/client_linux_amd64 release/client_macos_amd64
 
 test: export DB_URI = postgres://postgres@$(DB_HOST):5432/dl_tests
 test: migrate
