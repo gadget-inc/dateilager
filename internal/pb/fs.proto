@@ -23,7 +23,8 @@ message NewProjectRequest {
 
 message NewProjectResponse {};
 
-message Object {
+// Typescript does not support creating a new Object class
+message Objekt {
     string path = 1;
     int64 mode = 2;
     int64 size = 3;
@@ -46,7 +47,7 @@ message GetRequest {
 
 message GetResponse {
     int64 version = 1;
-    Object object = 2;
+    Objekt object = 2;
 }
 
 message GetCompressRequest {
@@ -67,7 +68,7 @@ message GetCompressResponse {
 
 message UpdateRequest {
     int64 project = 1;
-    Object object = 2;
+    Objekt object = 2;
 }
 
 message UpdateResponse {
