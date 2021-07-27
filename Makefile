@@ -63,6 +63,7 @@ reset-db: migrate
 setup-local: reset-db
 	scripts/simple_input.sh
 
+server: export DL_ENV=dev
 server:
 	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT)
 

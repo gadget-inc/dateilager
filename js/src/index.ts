@@ -98,4 +98,8 @@ export class DateiLagerClient {
     await stream.send(obj);
     return await stream.complete();
   }
+
+  async resetAllInDevOrTests(): Promise<void> {
+    await this.client.reset(this._options());
+  }
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -60,6 +61,7 @@ type Server struct {
 	log    *zap.Logger
 	Grpc   *grpc.Server
 	Health *health.Server
+	Env    environment.Env
 }
 
 func NewServer(log *zap.Logger) *Server {
@@ -76,7 +78,7 @@ func NewServer(log *zap.Logger) *Server {
 	healthServer := health.NewServer()
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
 
-	return &Server{log: log, Grpc: grpcServer, Health: healthServer}
+	return &Server{log: log, Grpc: grpcServer, Health: healthServer, Env: environment.LoadEnvironment()}
 }
 
 func (s *Server) MonitorDbPool(ctx context.Context, pool *DbPoolConnector) {

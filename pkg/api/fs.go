@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/jackc/pgx/v4"
 )
@@ -21,6 +22,7 @@ var (
 type Fs struct {
 	pb.UnimplementedFsServer
 
+	Env    environment.Env
 	Log    *zap.Logger
 	DbConn db.DbConnector
 }
@@ -391,4 +393,23 @@ func (f *Fs) Pack(ctx context.Context, req *pb.PackRequest) (*pb.PackResponse, e
 	return &pb.PackResponse{
 		Version: version,
 	}, nil
+}
+
+func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse, error) {
+	if f.Env != environment.Dev && f.Env != environment.Test {
+		return nil, status.Errorf(codes.Unimplemented, "FS reset only implemented in dev and test environments")
+	}
+
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+	}
+	defer close()
+
+	err = db.ResetAll(ctx, tx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS reset: %w", err)
+	}
+
+	return &pb.ResetResponse{}, nil
 }

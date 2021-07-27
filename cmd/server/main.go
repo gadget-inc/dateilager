@@ -68,6 +68,7 @@ func main() {
 
 	log.Info("register Fs")
 	fs := &api.Fs{
+		Env:    s.Env,
 		Log:    log,
 		DbConn: pool,
 	}
@@ -81,7 +82,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	log.Info("start server", zap.Int("port", args.port))
+	log.Info("start server", zap.Int("port", args.port), zap.String("env", s.Env.String()))
 	if err := s.Serve(listen); err != nil {
 		log.Fatal("failed to serve", zap.Error(err))
 	}

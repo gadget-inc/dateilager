@@ -727,3 +727,20 @@ func TestUpdatePackedObject(t *testing.T) {
 		"/a/c": {content: "a/c v3"},
 	})
 }
+
+func TestReset(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+
+	fs := tc.FsApi()
+
+	request := pb.ResetRequest{}
+	_, err := fs.Reset(tc.Context(), &request)
+	if err != nil {
+		t.Fatalf("fs.Reset: %v", err)
+	}
+
+	writeProject(tc, 1, 1)
+}

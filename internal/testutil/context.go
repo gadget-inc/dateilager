@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/jackc/pgx/v4"
 	"go.uber.org/zap"
@@ -69,6 +70,7 @@ func (tc *TestCtx) Close() {
 
 func (tc *TestCtx) FsApi() *api.Fs {
 	return &api.Fs{
+		Env:    environment.Test,
 		Log:    tc.Logger(),
 		DbConn: tc.Connector(),
 	}
