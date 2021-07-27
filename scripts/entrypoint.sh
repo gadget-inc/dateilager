@@ -24,8 +24,18 @@ wait_for_postgres() {
     done
 }
 
-write_reset_script() {
+ensure_db() {
     local dburi="${1}"
+    local dbname="${2}"
+
+    if [[ "$(psql "${dburi}" -tAc "SELECT 1 FROM pg_database WHERE datname = '${dbname}'")" != "1" ]]; then
+        log "create DB ${dbname}"
+        psql "${dburi}" -c "CREATE DATABASE ${dbname};" > /dev/null
+    fi
+}
+
+write_reset_script() {
+    local appdb="${1}"
     local file="${HOME}/reset-db.sh"
 
     log "writing ${file}"
@@ -33,28 +43,34 @@ write_reset_script() {
     cat <<EOF > "${file}"
 #!/usr/bin/env bash
 
-migrate -path "${HOME}/migrations" -database "${dburi}?sslmode=disable" down -all
-migrate -path "${HOME}/migrations" -database "${dburi}?sslmode=disable" up
+migrate -path "${HOME}/migrations" -database "${appdb}?sslmode=disable" down -all
+migrate -path "${HOME}/migrations" -database "${appdb}?sslmode=disable" up
 EOF
     chmod +x "${file}"
 }
 
 main() {
-    if [[ "$#" -ne 1 ]]; then
-        error "Usage: ${0} <dburi>"
+    if [[ "$#" -ne 2 ]]; then
+        error "Usage: ${0} <dburi> <dbname>"
     fi
     local dburi="${1}"
+    local dbname="${2}"
 
-    wait_for_postgres "${dburi}"
-    write_reset_script "${dburi}"
+    local rootdb="${dburi}/postgres"
+    local appdb="${dburi}/${dbname}"
+
+    wait_for_postgres "${rootdb}"
+    ensure_db "${rootdb}" "${dbname}"
+
+    write_reset_script "${appdb}"
 
     if [[ "${RUN_MIGRATIONS:-0}" == "1" ]]; then
         log "run migrations"
-        migrate -path "${HOME}/migrations" -database "${dburi}?sslmode=disable" up
+        migrate -path "${HOME}/migrations" -database "${appdb}?sslmode=disable" up
     fi
 
     log "start dateilager server"
-    "${HOME}/server" -dburi "${dburi}"
+    "${HOME}/server" -dburi "${appdb}"
 }
 
 main "$@"
