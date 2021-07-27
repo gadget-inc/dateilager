@@ -15,6 +15,7 @@ SERVICE := $(PROJECT).server
 .PHONY: install migrate migrate-create build release test
 .PHONY: reset-db setup-local server server-profile client-update client-get client-rebuild client-pack health
 .PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-client-rebuild k8s-client-pack k8s-health
+.PHONY: upload-container-image
 
 install:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.26
@@ -131,3 +132,11 @@ k8s-health: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o cu
 k8s-health:
 	grpc-health-probe -addr $(GRPC_SERVER)
 	grpc-health-probe -addr $(GRPC_SERVER) -service $(SERVICE)
+
+upload-container-image: build
+ifndef version
+	$(error version variable must be set)
+else
+	docker build -t gcr.io/gadget-core-production/dateilager:$(version) .
+	docker push gcr.io/gadget-core-production/dateilager:$(version)
+endif

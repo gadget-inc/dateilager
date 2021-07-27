@@ -406,10 +406,18 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 	}
 	defer close()
 
+	f.Log.Info("FS.Reset[Init]")
+
 	err = db.ResetAll(ctx, tx)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS reset: %w", err)
 	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS reset commit tx: %w", err)
+	}
+	f.Log.Info("FS.Reset[Commit]")
 
 	return &pb.ResetResponse{}, nil
 }
