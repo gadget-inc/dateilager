@@ -39,7 +39,7 @@ internal/pb/%_grpc.pb.go: internal/pb/%.proto
 	protoc --experimental_allow_proto3_optional --go-grpc_out=. --go-grpc_opt=paths=source_relative $^
 
 bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES)
-	go build -o $@ $<
+	CGO_ENABLED=0 go build -o $@ $<
 
 js/src/%.client.ts: internal/pb/%.proto
 	cd js && npx protoc --experimental_allow_proto3_optional --ts_out ./src --ts_opt long_type_bigint --proto_path ../internal/pb/ ../$^

@@ -50,11 +50,12 @@ EOF
 }
 
 main() {
-    if [[ "$#" -ne 2 ]]; then
-        error "Usage: ${0} <dburi> <dbname>"
+    if [[ "$#" -ne 3 ]]; then
+        error "Usage: ${0} <port> <dburi> <dbname>"
     fi
-    local dburi="${1}"
-    local dbname="${2}"
+    local port="${1}"
+    local dburi="${2}"
+    local dbname="${3}"
 
     local rootdb="${dburi}/postgres"
     local appdb="${dburi}/${dbname}"
@@ -70,7 +71,7 @@ main() {
     fi
 
     log "start dateilager server"
-    "${HOME}/server" -dburi "${appdb}"
+    "${HOME}/server" -dburi "${appdb}" -port "${port}"
 }
 
 main "$@"

@@ -291,6 +291,8 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			continue
 		}
 
+		f.Log.Info("FS.Update[Object]", zap.Int64("project", project), zap.Int64("version", version), zap.String("path", req.Object.Path))
+
 		if req.Object.Deleted {
 			err = db.DeleteObject(ctx, tx, project, version, req.Object.Path)
 		} else {
@@ -303,6 +305,8 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	}
 
 	for parent, objects := range buffer {
+		f.Log.Info("FS.Update[PackedObject]", zap.Int64("project", project), zap.Int64("version", version), zap.String("parent", parent), zap.Int("object_count", len(objects)))
+
 		err = db.UpdatePackedObjects(ctx, tx, project, version, parent, objects)
 		if err != nil {
 			return status.Errorf(codes.Internal, "FS update packed objects for %v: %w", parent, err)
