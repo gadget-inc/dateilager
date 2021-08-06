@@ -11,7 +11,7 @@ import (
 func CreateProject(ctx context.Context, tx pgx.Tx, project int64) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO dl.projects (id, latest_version)
-		VALUES ($1, 0);
+		VALUES ($1, 0)
 	`, project)
 	if err != nil {
 		return fmt.Errorf("create project %v: %w", project, err)
@@ -43,7 +43,7 @@ func DeleteObjects(ctx context.Context, tx pgx.Tx, project int64, version int64,
 		WHERE project = $2
 		  AND path LIKE $3
 		  AND stop_version IS NULL
-		RETURNING path;
+		RETURNING path
 	`, version, project, pathPredicate)
 	if err != nil {
 		return fmt.Errorf("delete objects, project %v, version %v, path %v: %w", project, version, pathPredicate, err)

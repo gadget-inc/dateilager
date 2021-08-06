@@ -36,13 +36,16 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 
 	f.Log.Info("FS.NewProject[Init]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
 
-	if req.Template != nil {
-		return nil, status.Errorf(codes.Unimplemented, "FS new project template is not yet implemented")
-	}
-
 	err = db.CreateProject(ctx, tx, req.Id)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS new project %v, %w", req.Id, err)
+	}
+
+	if req.Template != nil {
+		err = db.CopyAllObjects(ctx, tx, *req.Template, req.Id)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "FS new project copy from template %v to %v, %w", req.Template, req.Id, err)
+		}
 	}
 
 	err = tx.Commit(ctx)

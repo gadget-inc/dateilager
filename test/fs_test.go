@@ -235,6 +235,36 @@ func TestNewProject(t *testing.T) {
 	}
 }
 
+func TestNewProjectWithTemplate(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 3)
+	writeObject(tc, 1, 1, i(3), "/a")
+	writeObject(tc, 1, 2, i(3), "/b", "b v2")
+	writeObject(tc, 1, 3, nil, "/b", "b v3")
+	writeObject(tc, 1, 3, nil, "/c", "c v3")
+
+	fs := tc.FsApi()
+
+	_, err := fs.NewProject(tc.Context(), &pb.NewProjectRequest{Id: 2, Template: i(1)})
+	if err != nil {
+		t.Fatalf("fs.NewProject: %v", err)
+	}
+
+	stream := &mockGetServer{ctx: tc.Context()}
+
+	err = fs.Get(prefixQuery(2, nil, ""), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/b": {content: "b v3"},
+		"/c": {content: "c v3"},
+	})
+}
+
 func TestGetEmpty(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
