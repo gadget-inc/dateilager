@@ -47,10 +47,10 @@ js/src/%.client.ts: internal/pb/%.proto
 build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client js/src/fs.client.ts
 
 release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES)
-	GOOS=linux GOARCH=amd64 go build -o $@ $<
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $@ $<
 
 release/%_macos_amd64: cmd/%/main.go $(PKG_GO_FILES)
-	GOOS=darwin GOARCH=amd64 go build -o $@ $<
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o $@ $<
 
 release: build release/server_linux_amd64 release/server_macos_amd64 release/client_linux_amd64 release/client_macos_amd64
 

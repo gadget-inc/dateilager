@@ -11,6 +11,7 @@ You can read more about DateiLager's design in the `docs/` directory. A good pla
 - Go 1.16
 - Postgresql
 - Node v15
+- Protobuf Compiler (https://grpc.io/docs/protoc-installation/)
 
 Create a Postgres database named `dl`. The default Postgres host is `127.0.0.1` you can override it by
 exporting `DB_HOST`.
