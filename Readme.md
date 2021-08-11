@@ -132,6 +132,25 @@ const version = await stream.complete();
 console.log("[updateObject] version: " + version);
 ```
 
+## Release
+
+New versions are released and hosted on Github. (https://github.com/gadget-inc/dateilager/releases)
+
+As a first step build all the files necessary for a release.
+
+```bash
+$ make release
+```
+
+Then create a new git tag and push it to Github.
+
+```bash
+$ git tag v0.0.1
+$ git push origin v0.0.1
+```
+
+Then navigate to the release page (https://github.com/gadget-inc/dateilager/releases/edit/v0.0.1), add a description and upload all files found in the `release` directory.
+
 ## K8S
 
 The K8S tools assume a local K8S install using Containerd and Podman.
@@ -158,7 +177,3 @@ but they require a `k8s-` prefix.
 ```bash
 $ make k8s-client-get
 ```
-
-## References
-
-- https://github.com/golang-standards/project-layout

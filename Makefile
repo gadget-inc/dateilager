@@ -52,7 +52,10 @@ release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES)
 release/%_macos_amd64: cmd/%/main.go $(PKG_GO_FILES)
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o $@ $<
 
-release: build release/server_linux_amd64 release/server_macos_amd64 release/client_linux_amd64 release/client_macos_amd64
+release/migrations.tar.gz: migrations/*
+	tar -zcf $@ migrations
+
+release: build release/server_linux_amd64 release/server_macos_amd64 release/client_linux_amd64 release/client_macos_amd64 release/migrations.tar.gz
 
 test: export DB_URI = postgres://postgres@$(DB_HOST):5432/dl_tests
 test: migrate
