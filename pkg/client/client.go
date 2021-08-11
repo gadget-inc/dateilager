@@ -16,6 +16,10 @@ import (
 	"google.golang.org/grpc"
 )
 
+const (
+	MB = 1000 * 1000
+)
+
 type VersionRange struct {
 	From *int64
 	To   *int64
@@ -34,7 +38,9 @@ func NewClientConn(ctx context.Context, log *zap.Logger, conn *grpc.ClientConn) 
 func NewClient(ctx context.Context, server string) (*Client, error) {
 	log, _ := zap.NewDevelopment()
 
-	conn, err := grpc.DialContext(ctx, server, grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.DialContext(ctx, server, grpc.WithInsecure(), grpc.WithBlock(),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(50*MB), grpc.MaxCallSendMsgSize(50*MB)),
+	)
 	if err != nil {
 		return nil, err
 	}

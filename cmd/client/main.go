@@ -35,7 +35,7 @@ func parseGetArgs(log *zap.Logger, args []string) *getArgs {
 	set.Parse(args)
 
 	if *project == -1 {
-		log.Fatal("--project required")
+		log.Fatal("-project required")
 	}
 
 	if *from == -1 {
@@ -140,7 +140,7 @@ func parseUpdateArgs(log *zap.Logger, args []string) *updateArgs {
 	set.Parse(args)
 
 	if *project == -1 {
-		log.Fatal("--project required")
+		log.Fatal("-project required")
 	}
 
 	return &updateArgs{
@@ -180,7 +180,7 @@ func parsePackArgs(log *zap.Logger, args []string) *packArgs {
 	set.Parse(args)
 
 	if *project == -1 {
-		log.Fatal("--project required")
+		log.Fatal("-project required")
 	}
 
 	return &packArgs{
@@ -226,7 +226,7 @@ func main() {
 		log.Fatal("requires a subcommand: [get, rebuild, update]")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()
 
 	c, err := client.NewClient(ctx, cmd.serverAddr())

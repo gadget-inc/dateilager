@@ -20,6 +20,10 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
+const (
+	MB = 1000 * 1000
+)
+
 type DbPoolConnector struct {
 	pool *pgxpool.Pool
 }
@@ -72,6 +76,8 @@ func NewServer(log *zap.Logger) *Server {
 				grpc_recovery.UnaryServerInterceptor(),
 			),
 		),
+		grpc.MaxRecvMsgSize(50*MB),
+		grpc.MaxSendMsgSize(50*MB),
 	)
 
 	log.Info("register HealthServer")
