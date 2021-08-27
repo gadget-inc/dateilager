@@ -9,7 +9,7 @@ log() {
 
 realpath() {
     local path="${1}"
-    echo "$(cd "$(dirname "${path}")"; pwd -P)"
+    echo "$(cd ${path}; pwd -P)"
 }
 
 readonly ROOT_DIR="$(realpath "$(dirname "$0")/..")"

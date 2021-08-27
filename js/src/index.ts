@@ -4,6 +4,8 @@ import { ClientStreamingCall } from "@protobuf-ts/runtime-rpc";
 import { Objekt, UpdateRequest, UpdateResponse } from "./fs";
 import { FsClient } from "./fs.client";
 
+const MB = 1024 * 1024;
+
 class UpdateInputStream {
   project: bigint;
   call: ClientStreamingCall<UpdateRequest, UpdateResponse>;
@@ -27,6 +29,15 @@ class UpdateInputStream {
   }
 }
 
+/**
+ * A client class for interacting with DateiLager's GRPC API
+ *
+ * The library used to interact with GRPC creates connections lazily, this constructor will not
+ * raise an error even if there is no service running at host:port.
+ *
+ * The DateiLager API surface area is as minimal as possible, convenience functions, such as getObject,
+ * should be implemented within the client.
+ */
 export class DateiLagerClient {
   client: FsClient;
 
@@ -34,6 +45,10 @@ export class DateiLagerClient {
     const transport = new GrpcTransport({
       host: host + ":" + port,
       channelCredentials: ChannelCredentials.createInsecure(),
+      clientOptions: {
+        'grpc.max_send_message_length': 50 * MB,
+        'grpc.max_receive_message_length': 50 * MB,
+      }
     });
     this.client = new FsClient(transport);
   }

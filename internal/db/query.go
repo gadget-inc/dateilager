@@ -276,11 +276,7 @@ func NewPackedCache(ctx context.Context, tx pgx.Tx, project int64, vrange Versio
 
 	packs := make(map[string]bool)
 
-	for {
-		if !rows.Next() {
-			break
-		}
-
+	for rows.Next() {
 		var path string
 		err = rows.Scan(&path)
 		if err != nil {

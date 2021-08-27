@@ -90,7 +90,7 @@ func parseRebuildArgs(log *zap.Logger, args []string) *rebuildArgs {
 	set.Parse(args)
 
 	if *project == -1 {
-		log.Fatal("--project required")
+		log.Fatal("-project required")
 	}
 
 	if *from == -1 {
