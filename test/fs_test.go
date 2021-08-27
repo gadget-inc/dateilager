@@ -758,7 +758,65 @@ func TestUpdatePackedObject(t *testing.T) {
 	})
 }
 
-func TestReset(t *testing.T) {
+func TestSnapshotAndReset(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a/c", "a/c v1")
+	writeObject(tc, 1, 1, nil, "/a/d", "a/d v1")
+
+	fs := tc.FsApi()
+
+	snapshotResponse, err := fs.Snapshot(tc.Context(), &pb.SnapshotRequest{})
+	if err != nil {
+		t.Fatalf("fs.Snapshot: %v", err)
+	}
+
+	project := snapshotResponse.Projects[0]
+	if project.Id != 1 || project.Version != 1 {
+		t.Errorf("expected snaptshotted project (1, 1) got (%v, %v)", project.Id, project.Version)
+	}
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"/a/c": {content: "a/c v2"},
+	})
+	err = fs.Update(updateStream)
+	if err != nil {
+		t.Fatalf("fs.Update: %v", err)
+	}
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(1, nil, ""), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a/c": {content: "a/c v2"},
+		"/a/d": {content: "a/d v1"},
+	})
+
+	_, err = fs.Reset(tc.Context(), &pb.ResetRequest{
+		Projects: snapshotResponse.Projects,
+	})
+	if err != nil {
+		t.Fatalf("fs.Reset: %v", err)
+	}
+
+	stream = &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(1, nil, ""), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+		"/a/d": {content: "a/d v1"},
+	})
+}
+
+func TestResetAll(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 
@@ -766,8 +824,7 @@ func TestReset(t *testing.T) {
 
 	fs := tc.FsApi()
 
-	request := pb.ResetRequest{}
-	_, err := fs.Reset(tc.Context(), &request)
+	_, err := fs.Reset(tc.Context(), &pb.ResetRequest{})
 	if err != nil {
 		t.Fatalf("fs.Reset: %v", err)
 	}

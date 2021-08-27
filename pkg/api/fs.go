@@ -402,6 +402,29 @@ func (f *Fs) Pack(ctx context.Context, req *pb.PackRequest) (*pb.PackResponse, e
 	}, nil
 }
 
+func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.SnapshotResponse, error) {
+	if f.Env != environment.Dev && f.Env != environment.Test {
+		return nil, status.Errorf(codes.Unimplemented, "FS snapshot only implemented in dev and test environments")
+	}
+
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+	}
+	defer close()
+
+	f.Log.Info("FS.Snapshot[Query]")
+
+	projects, err := db.SnapshotProjects(ctx, tx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS snapshot: %w", err)
+	}
+
+	return &pb.SnapshotResponse{
+		Projects: projects,
+	}, nil
+}
+
 func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse, error) {
 	if f.Env != environment.Dev && f.Env != environment.Test {
 		return nil, status.Errorf(codes.Unimplemented, "FS reset only implemented in dev and test environments")
@@ -415,9 +438,18 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 
 	f.Log.Info("FS.Reset[Init]")
 
-	err = db.ResetAll(ctx, tx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS reset: %w", err)
+	if len(req.Projects) == 0 {
+		err = db.ResetAll(ctx, tx)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "FS reset: %w", err)
+		}
+	} else {
+		for _, project := range req.Projects {
+			err = db.ResetProject(ctx, tx, project.Id, project.Version)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "FS reset: %w", err)
+			}
+		}
 	}
 
 	err = tx.Commit(ctx)
