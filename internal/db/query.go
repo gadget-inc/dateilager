@@ -75,7 +75,7 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 			  AND o.start_version <= $3
 			  AND o.stop_version > $2
 			  AND o.stop_version <= $3
-			  AND o.path not in (SELECT path FROM updated_files)
+			  AND o.path NOT IN (SELECT path FROM updated_files)
 			ORDER BY o.path
 		)
 		SELECT path, mode, size, bytes, packed, deleted

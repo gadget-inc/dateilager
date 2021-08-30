@@ -5,6 +5,7 @@ go 1.16
 require (
 	github.com/gadget-inc/fsdiff v0.1.5
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+	github.com/jackc/pgtype v1.7.0 // indirect
 	github.com/jackc/pgx/v4 v4.11.0
 	github.com/klauspost/compress v1.13.1
 	github.com/lib/pq v1.8.0 // indirect

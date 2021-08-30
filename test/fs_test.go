@@ -797,6 +797,8 @@ func TestSnapshotAndReset(t *testing.T) {
 		"/a/d": {content: "a/d v1"},
 	})
 
+	writeProject(tc, 2, 1)
+
 	_, err = fs.Reset(tc.Context(), &pb.ResetRequest{
 		Projects: snapshotResponse.Projects,
 	})
@@ -814,6 +816,8 @@ func TestSnapshotAndReset(t *testing.T) {
 		"/a/c": {content: "a/c v1"},
 		"/a/d": {content: "a/d v1"},
 	})
+
+	writeProject(tc, 2, 1)
 }
 
 func TestResetAll(t *testing.T) {

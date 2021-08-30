@@ -8,7 +8,7 @@ CREATE TABLE dl.projects (
 );
 
 CREATE TABLE dl.objects (
-    project       integer NOT NULL,
+    project       bigint  NOT NULL,
     start_version bigint  NOT NULL,
     stop_version  bigint,
     path          text    NOT NULL,

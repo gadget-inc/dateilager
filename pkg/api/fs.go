@@ -439,16 +439,27 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 	f.Log.Info("FS.Reset[Init]")
 
 	if len(req.Projects) == 0 {
+		f.Log.Info("FS.Reset[All]")
+
 		err = db.ResetAll(ctx, tx)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "FS reset: %w", err)
+			return nil, status.Errorf(codes.Internal, "FS reset all: %w", err)
 		}
 	} else {
+		var projects []int64
+
 		for _, project := range req.Projects {
+			f.Log.Info("FS.Reset[Project]", zap.Int64("project", project.Id), zap.Int64("version", project.Version))
 			err = db.ResetProject(ctx, tx, project.Id, project.Version)
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "FS reset: %w", err)
+				return nil, status.Errorf(codes.Internal, "FS reset project %v: %w", project.Id, err)
 			}
+			projects = append(projects, project.Id)
+		}
+
+		err = db.DropOtherProjects(ctx, tx, projects)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "FS reset drop others: %w", err)
 		}
 	}
 

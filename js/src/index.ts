@@ -1,6 +1,7 @@
 import { ChannelCredentials } from "@grpc/grpc-js";
 import { GrpcTransport } from "@protobuf-ts/grpc-transport";
 import { ClientStreamingCall } from "@protobuf-ts/runtime-rpc";
+import { TextEncoder } from "util";
 import { Objekt, ProjectSnapshot, UpdateRequest, UpdateResponse } from "./fs";
 import { FsClient } from "./fs.client";
 
@@ -27,6 +28,14 @@ class UpdateInputStream {
     const response = await this.call.response;
     return response.version;
   }
+}
+
+/**
+ * Encode string object contents as an array of bytes.
+ */
+export function encodeContent(content: string): Uint8Array {
+  const encoder = new TextEncoder();
+  return encoder.encode(content);
 }
 
 /**
