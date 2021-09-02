@@ -205,7 +205,7 @@ func (c *Client) Update(ctx context.Context, project int64, diffPath string, dir
 			Object:  object,
 		})
 		if err != nil {
-			return -1, 0, fmt.Errorf("send fs.Update: %w", err)
+			return -1, 0, fmt.Errorf("send fs.Update, path %v, size %v, mode %v, deleted %v: %w", object.Path, object.Size, object.Mode, object.Deleted, err)
 		}
 	}
 
