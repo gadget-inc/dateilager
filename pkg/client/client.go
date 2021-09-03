@@ -229,3 +229,6 @@ func (c *Client) Pack(ctx context.Context, project int64, path string) (int64, e
 
 	return response.Version, nil
 }
+
+func (c *Client) Inspect(ctx context.Context, project int64, path string) (int64, error) {
+}

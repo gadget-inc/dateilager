@@ -203,12 +203,49 @@ func (a *packArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
 	log.Info("packed objects", zap.Int64("project", a.project), zap.String("path", a.path), zap.Int64("version", version))
 }
 
+type inspectArgs struct {
+	server  string
+	project int64
+	path    string
+}
+
+func parseInspectArgs(log *zap.Logger, args []string) *inspectArgs {
+	set := flag.NewFlagSet("update", flag.ExitOnError)
+
+	server := set.String("server", "", "Server GRPC address")
+	project := set.Int64("project", -1, "Project ID (required)")
+
+	set.Parse(args)
+
+	if *project == -1 {
+		log.Fatal("-project required")
+	}
+
+	return &inspectArgs{
+		server:  *server,
+		project: *project,
+	}
+}
+
+func (a *inspectArgs) serverAddr() string {
+	return a.server
+}
+
+func (a *inspectArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+	version, err := c.Inspect(ctx, a.project)
+	if err != nil {
+		log.Fatal("inspect project", zap.Int64("project", a.project), zap.Error(err))
+	}
+
+	// log.Info("inspect objects", zap.Int64("project", a.project), zap.String("path", a.path), zap.Int64("version", version))
+}
+
 func main() {
 	log, _ := zap.NewDevelopment()
 	defer log.Sync()
 
 	if len(os.Args) < 2 {
-		log.Fatal("requires a subcommand: [get, rebuild, update]")
+		log.Fatal("requires a subcommand: [get, rebuild, update, inspect]")
 	}
 
 	var cmd Command
@@ -222,6 +259,8 @@ func main() {
 		cmd = parseUpdateArgs(log, os.Args[2:])
 	case "pack":
 		cmd = parsePackArgs(log, os.Args[2:])
+	case "inspect":
+		cmd = parseInspectArgs(log, os.Args[2:])
 	default:
 		log.Fatal("requires a subcommand: [get, rebuild, update]")
 	}
