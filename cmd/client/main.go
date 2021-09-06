@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -243,12 +244,75 @@ func (a *inspectArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 	)
 }
 
+type snapshotArgs struct {
+	server string
+}
+
+func parseSnapshotArgs(log *zap.Logger, args []string) *snapshotArgs {
+	set := flag.NewFlagSet("update", flag.ExitOnError)
+
+	server := set.String("server", "", "Server GRPC address")
+
+	set.Parse(args)
+
+	return &snapshotArgs{
+		server: *server,
+	}
+}
+
+func (a *snapshotArgs) serverAddr() string {
+	return a.server
+}
+
+func (a *snapshotArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+	state, err := c.Snapshot(ctx)
+	if err != nil {
+		log.Fatal("snapshot", zap.Error(err))
+	}
+
+	log.Info("successful snapshot")
+	fmt.Println("reset with:")
+	fmt.Printf("  dlc reset -server %v -state '%v'\n", a.server, state)
+}
+
+type resetArgs struct {
+	server string
+	state  string
+}
+
+func parseResetArgs(log *zap.Logger, args []string) *resetArgs {
+	set := flag.NewFlagSet("update", flag.ExitOnError)
+
+	server := set.String("server", "", "Server GRPC address")
+	state := set.String("state", "", "State string from a snapshot command")
+
+	set.Parse(args)
+
+	return &resetArgs{
+		server: *server,
+		state:  *state,
+	}
+}
+
+func (a *resetArgs) serverAddr() string {
+	return a.server
+}
+
+func (a *resetArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+	err := c.Reset(ctx, a.state)
+	if err != nil {
+		log.Fatal("reset", zap.String("state", a.state), zap.Error(err))
+	}
+
+	log.Info("successful reset", zap.String("state", a.state))
+}
+
 func main() {
 	log, _ := zap.NewDevelopment()
 	defer log.Sync()
 
 	if len(os.Args) < 2 {
-		log.Fatal("requires a subcommand: [get, rebuild, update, inspect]")
+		log.Fatal("requires a subcommand: [get, rebuild, update, inspect, snapshot, reset]")
 	}
 
 	var cmd Command
@@ -264,8 +328,12 @@ func main() {
 		cmd = parsePackArgs(log, os.Args[2:])
 	case "inspect":
 		cmd = parseInspectArgs(log, os.Args[2:])
+	case "snapshot":
+		cmd = parseSnapshotArgs(log, os.Args[2:])
+	case "reset":
+		cmd = parseResetArgs(log, os.Args[2:])
 	default:
-		log.Fatal("requires a subcommand: [get, rebuild, update, inspect]")
+		log.Fatal("requires a subcommand: [get, rebuild, update, inspect, snapshot, reset]")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)

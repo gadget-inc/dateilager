@@ -74,7 +74,7 @@ func ResetProject(ctx context.Context, tx pgx.Tx, project, version int64) error 
 		UPDATE dl.objects
 		SET stop_version = NULL
 		WHERE project = $1
-		  AND stop_version = $2
+		  AND stop_version > $2
 	`, project, version)
 	if err != nil {
 		return fmt.Errorf("reset objects for %v with stop_version %v: %w", project, version, err)

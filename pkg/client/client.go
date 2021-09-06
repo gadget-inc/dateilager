@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
@@ -237,4 +239,53 @@ func (c *Client) Inspect(ctx context.Context, project int64) (*pb.InspectRespons
 	}
 
 	return inspect, nil
+}
+
+func (c *Client) Snapshot(ctx context.Context) (string, error) {
+	resp, err := c.fs.Snapshot(ctx, &pb.SnapshotRequest{})
+	if err != nil {
+		return "", fmt.Errorf("snapshot: %w", err)
+	}
+
+	var state []string
+	for _, projectSnapshot := range resp.Projects {
+		state = append(state, fmt.Sprintf("%v=%v", projectSnapshot.Id, projectSnapshot.Version))
+	}
+
+	return strings.Join(state, ","), nil
+}
+
+func (c *Client) Reset(ctx context.Context, state string) error {
+	var projects []*pb.ProjectSnapshot
+
+	for _, projectSplit := range strings.Split(state, ",") {
+		parts := strings.Split(projectSplit, "=")
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid state chunk: %v", projectSplit)
+		}
+
+		project, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid state int %v: %w", parts[0], err)
+		}
+
+		version, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid state int %v: %w", parts[1], err)
+		}
+
+		projects = append(projects, &pb.ProjectSnapshot{
+			Id:      project,
+			Version: version,
+		})
+	}
+
+	_, err := c.fs.Reset(ctx, &pb.ResetRequest{
+		Projects: projects,
+	})
+	if err != nil {
+		return fmt.Errorf("reset to state: %w", err)
+	}
+
+	return nil
 }
