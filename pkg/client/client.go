@@ -229,3 +229,12 @@ func (c *Client) Pack(ctx context.Context, project int64, path string) (int64, e
 
 	return response.Version, nil
 }
+
+func (c *Client) Inspect(ctx context.Context, project int64) (*pb.InspectResponse, error) {
+	inspect, err := c.fs.Inspect(ctx, &pb.InspectRequest{Project: project})
+	if err != nil {
+		return nil, fmt.Errorf("inspect project %v: %w", project, err)
+	}
+
+	return inspect, nil
+}

@@ -402,6 +402,64 @@ func (f *Fs) Pack(ctx context.Context, req *pb.PackRequest) (*pb.PackResponse, e
 	}, nil
 }
 
+func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectResponse, error) {
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+	}
+	defer close()
+
+	f.Log.Info("FS.Inspect[Query]", zap.Int64("project", req.Project))
+
+	vrange, err := f.buildVersionRange(ctx, tx, req.Project, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	packedCache, err := db.NewPackedCache(ctx, tx, req.Project, vrange)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS create packed cache: %w", err)
+	}
+
+	query := &pb.ObjectQuery{
+		Path:        "",
+		IsPrefix:    true,
+		WithContent: false,
+	}
+	objects, err := db.GetObjects(ctx, tx, packedCache, req.Project, vrange, query)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS get objects: %w", err)
+	}
+
+	live_objects_count := int64(0)
+	for {
+		_, err := objects()
+		if err == db.SKIP {
+			continue
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "FS get next object: %w", err)
+		}
+
+		live_objects_count += 1
+	}
+
+	total_objects_count, err := db.TotalObjectsCount(ctx, tx, req.Project)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS inspect project: %w", err)
+	}
+
+	return &pb.InspectResponse{
+		Project:           req.Project,
+		LatestVersion:     vrange.To,
+		LiveObjectsCount:  live_objects_count,
+		TotalObjectsCount: total_objects_count,
+	}, nil
+}
+
 func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.SnapshotResponse, error) {
 	if f.Env != environment.Dev && f.Env != environment.Test {
 		return nil, status.Errorf(codes.Unimplemented, "FS snapshot only implemented in dev and test environments")
