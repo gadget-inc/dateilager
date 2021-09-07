@@ -7,6 +7,8 @@ option go_package = "github.com/gadget-inc/dateilager/pkg/pb";
 service Fs {
     rpc NewProject(NewProjectRequest) returns (NewProjectResponse);
 
+    rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+
     rpc Get(GetRequest) returns (stream GetResponse);
 
     rpc GetCompress(GetCompressRequest) returns (stream GetCompressResponse);
@@ -28,6 +30,17 @@ message NewProjectRequest {
 }
 
 message NewProjectResponse {};
+
+message Project {
+    int64 id = 1;
+    int64 version = 2;
+}
+
+message ListProjectsRequest {};
+
+message ListProjectsResponse {
+    repeated Project projects = 1;
+}
 
 // Typescript does not support creating a new Object class
 message Objekt {
@@ -101,19 +114,14 @@ message InspectResponse {
     int64 total_objects_count = 4;
 }
 
-message ProjectSnapshot {
-    int64 id = 1;
-    int64 version = 2;
-}
-
 message SnapshotRequest {};
 
 message SnapshotResponse {
-    repeated ProjectSnapshot projects = 1;
+    repeated Project projects = 1;
 }
 
 message ResetRequest {
-    repeated ProjectSnapshot projects = 1;
+    repeated Project projects = 1;
 }
 
 message ResetResponse {};

@@ -4,33 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 )
-
-func SnapshotProjects(ctx context.Context, tx pgx.Tx) ([]*pb.ProjectSnapshot, error) {
-	rows, err := tx.Query(ctx, `
-		SELECT id, latest_version
-		FROM dl.projects
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("snapshotProjects query: %w", err)
-	}
-
-	projects := []*pb.ProjectSnapshot{}
-
-	for rows.Next() {
-		var id, version int64
-		err = rows.Scan(&id, &version)
-		if err != nil {
-			return nil, fmt.Errorf("snapshotProjects scan: %w", err)
-		}
-		projects = append(projects, &pb.ProjectSnapshot{Id: id, Version: version})
-	}
-
-	return projects, nil
-}
 
 func ResetAll(ctx context.Context, tx pgx.Tx) error {
 	_, err := tx.Exec(ctx, "TRUNCATE dl.projects;")

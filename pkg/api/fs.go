@@ -58,6 +58,25 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 	return &pb.NewProjectResponse{}, nil
 }
 
+func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb.ListProjectsResponse, error) {
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+	}
+	defer close()
+
+	f.Log.Info("FS.ListProjects[Query]")
+
+	projects, err := db.ListProjects(ctx, tx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS snapshot: %w", err)
+	}
+
+	return &pb.ListProjectsResponse{
+		Projects: projects,
+	}, nil
+}
+
 func (f *Fs) getLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
 	var latest_version int64
 
@@ -473,7 +492,7 @@ func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.Snapsho
 
 	f.Log.Info("FS.Snapshot[Query]")
 
-	projects, err := db.SnapshotProjects(ctx, tx)
+	projects, err := db.ListProjects(ctx, tx)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS snapshot: %w", err)
 	}

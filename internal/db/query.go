@@ -20,6 +20,29 @@ var (
 	SKIP = errors.New("Skip")
 )
 
+func ListProjects(ctx context.Context, tx pgx.Tx) ([]*pb.Project, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT id, latest_version
+		FROM dl.projects
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("snapshotProjects query: %w", err)
+	}
+
+	projects := []*pb.Project{}
+
+	for rows.Next() {
+		var id, version int64
+		err = rows.Scan(&id, &version)
+		if err != nil {
+			return nil, fmt.Errorf("snapshotProjects scan: %w", err)
+		}
+		projects = append(projects, &pb.Project{Id: id, Version: version})
+	}
+
+	return projects, nil
+}
+
 type VersionRange struct {
 	From int64
 	To   int64

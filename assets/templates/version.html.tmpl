@@ -1,0 +1,20 @@
+{{ template "header.html.tmpl" "DL project" }}
+
+<h1>Project: {{ .Project }}</h1>
+<h3>Version: {{ .Version }}</h3>
+<ul>
+    {{ range .Objects }}
+        <li>
+            <details>
+                <summary>{{ .Path }}</summary>
+                <br/>
+                Mode: {{ .Mode }}<br/>
+                Size: {{ .Size }}<br/>
+                Truncated: {{ .Truncated }}<br/>
+                <pre>{{ .Content }}</pre>
+            </details>
+        </li>
+    {{ end }}
+</ul>
+
+{{ template "footer.html.tmpl" }}

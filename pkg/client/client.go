@@ -54,6 +54,15 @@ func (c *Client) Close() {
 	c.conn.Close()
 }
 
+func (c *Client) ListProjects(ctx context.Context) ([]*pb.Project, error) {
+	resp, err := c.fs.ListProjects(ctx, &pb.ListProjectsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("list projects: %w", err)
+	}
+
+	return resp.Projects, nil
+}
+
 func (c *Client) Get(ctx context.Context, project int64, prefix string, vrange VersionRange) ([]*pb.Object, error) {
 	var objects []*pb.Object
 
@@ -256,7 +265,7 @@ func (c *Client) Snapshot(ctx context.Context) (string, error) {
 }
 
 func (c *Client) Reset(ctx context.Context, state string) error {
-	var projects []*pb.ProjectSnapshot
+	var projects []*pb.Project
 
 	for _, projectSplit := range strings.Split(state, ",") {
 		parts := strings.Split(projectSplit, "=")
@@ -274,7 +283,7 @@ func (c *Client) Reset(ctx context.Context, state string) error {
 			return fmt.Errorf("invalid state int %v: %w", parts[1], err)
 		}
 
-		projects = append(projects, &pb.ProjectSnapshot{
+		projects = append(projects, &pb.Project{
 			Id:      project,
 			Version: version,
 		})

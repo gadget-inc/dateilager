@@ -45,7 +45,7 @@ bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES)
 js/src/%.client.ts: internal/pb/%.proto
 	cd js && npx protoc --experimental_allow_proto3_optional --ts_out ./src --ts_opt long_type_bigint --proto_path ../internal/pb/ ../$^
 
-build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client js/src/fs.client.ts
+build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui js/src/fs.client.ts
 
 release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $@ $<
@@ -56,7 +56,10 @@ release/%_macos_amd64: cmd/%/main.go $(PKG_GO_FILES)
 release/migrations.tar.gz: migrations/*
 	tar -zcf $@ migrations
 
-release: build release/server_linux_amd64 release/server_macos_amd64 release/client_linux_amd64 release/client_macos_amd64 release/migrations.tar.gz
+release/assets.tar.gz: assets/*
+	tar -zcf $@ assets
+
+release: build release/server_linux_amd64 release/server_macos_amd64 release/client_linux_amd64 release/client_macos_amd64 release/webui_macos_amd64 release/webui_linux_amd64 release/assets.tar.gz release/migrations.tar.gz
 
 test: export DB_URI = postgres://$(DB_USER)@$(DB_HOST):5432/dl_tests
 test: migrate
@@ -72,6 +75,7 @@ server: export DL_ENV=dev
 server:
 	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT)
 
+server-profile: export DL_ENV=dev
 server-profile:
 	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT) -prof cpu.prof
 
@@ -96,6 +100,9 @@ endif
 
 client-pack:
 	go run cmd/client/main.go pack -project 1 -server $(GRPC_SERVER) -path $(path)
+
+webui:
+	go run cmd/webui/main.go -server $(GRPC_SERVER)
 
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)

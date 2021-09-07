@@ -1,0 +1,10 @@
+{{ template "header.html.tmpl" "DL index" }}
+
+<h1>Projects</h1>
+<ul>
+    {{ range .Projects }}
+        <li><a href="{{ .LinkLatestVersion }}">{{ .Id }}</a></li>
+    {{ end }}
+</ul>
+
+{{ template "footer.html.tmpl" }}

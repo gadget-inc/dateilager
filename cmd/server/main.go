@@ -22,7 +22,7 @@ type ServerArgs struct {
 	prof  string
 }
 
-func parseArgs(log *zap.Logger) ServerArgs {
+func parseArgs() ServerArgs {
 	port := flag.Int("port", 5051, "GRPC server port")
 	dbUri := flag.String("dburi", "postgres://postgres@127.0.0.1:5432/dl", "Postgres URI")
 	prof := flag.String("prof", "", "Output CPU profile to this path")
@@ -41,7 +41,7 @@ func main() {
 	log, _ := zap.NewDevelopment()
 	defer log.Sync()
 
-	args := parseArgs(log)
+	args := parseArgs()
 
 	if args.prof != "" {
 		file, err := os.Create(args.prof)
