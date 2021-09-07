@@ -145,11 +145,18 @@ $ make release
 Then create a new git tag and push it to Github.
 
 ```bash
-$ git tag v0.0.1
-$ git push origin v0.0.1
+$ git tag v0.0.x
+$ git push origin v0.0.x
 ```
 
-Then navigate to the release page (https://github.com/gadget-inc/dateilager/releases/edit/v0.0.1), add a description and upload all files found in the `release` directory.
+Then navigate to the release page (https://github.com/gadget-inc/dateilager/releases/edit/v0.0.x), add a description and upload all files found in the `release` directory.
+
+Finally we need to build and push the Docker image to it's repository.
+
+```bash
+docker build -t gcr.io/gadget-core-production/dateilager:0.0.x .
+docker push gcr.io/gadget-core-production/dateilager:0.0.x
+```
 
 ## K8S
 
