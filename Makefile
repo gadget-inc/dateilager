@@ -7,6 +7,8 @@ DB_URI := postgres://$(DB_USER)@$(DB_HOST):5432/dl
 GRPC_PORT ?= 5051
 GRPC_SERVER ?= localhost:$(GRPC_PORT)
 
+DEV_ADMIN_TOKEN ?= s3kr3t
+
 PKG_GO_FILES := $(shell find pkg/ -type f -name '*.go')
 INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
 
@@ -49,7 +51,12 @@ bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES)
 js/src/%.client.ts: internal/pb/%.proto
 	cd js && npx protoc --experimental_allow_proto3_optional --ts_out ./src --ts_opt long_type_bigint --proto_path ../internal/pb/ ../$^
 
-build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui js/src/fs.client.ts
+dev/server.key:
+	mkcert -cert-file dev/server.crt -key-file dev/server.key localhost
+
+dev/server.cert: dev/server.key
+
+build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui js/src/fs.client.ts dev/server.cert
 
 release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $@ $<
@@ -76,37 +83,39 @@ setup-local: reset-db
 	scripts/simple_input.sh
 
 server: export DL_ENV=dev
+server: export DL_ADMIN_TOKEN=$(DEV_ADMIN_TOKEN)
 server:
 	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT)
 
 server-profile: export DL_ENV=dev
+server-profile: export DL_ADMIN_TOKEN=$(DEV_ADMIN_TOKEN)
 server-profile:
 	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT) -prof cpu.prof
 
 client-update:
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v1_state/diff.zst -directory input/v1
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v2_state/diff.zst -directory input/v2
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v3_state/diff.zst -directory input/v3
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -token $(DEV_ADMIN_TOKEN) -diff input/v1_state/diff.zst -directory input/v1
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -token $(DEV_ADMIN_TOKEN) -diff input/v2_state/diff.zst -directory input/v2
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -token $(DEV_ADMIN_TOKEN) -diff input/v3_state/diff.zst -directory input/v3
 
 client-get:
 ifndef version
-	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)"
+	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -token $(DEV_ADMIN_TOKEN) -prefix "$(prefix)"
 else
-	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -to $(version) -prefix "$(prefix)"
+	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -token $(DEV_ADMIN_TOKEN) -to $(version) -prefix "$(prefix)"
 endif
 
 client-rebuild:
 ifndef version
-	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)" -output $(output)
+	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -token $(DEV_ADMIN_TOKEN) -prefix "$(prefix)" -output $(output)
 else
-	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -to $(version) -prefix "$(prefix)" -output $(output)
+	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -token $(DEV_ADMIN_TOKEN) -to $(version) -prefix "$(prefix)" -output $(output)
 endif
 
 client-pack:
-	go run cmd/client/main.go pack -project 1 -server $(GRPC_SERVER) -path $(path)
+	go run cmd/client/main.go pack -project 1 -server $(GRPC_SERVER) -token $(DEV_ADMIN_TOKEN) -path $(path)
 
 webui:
-	go run cmd/webui/main.go -server $(GRPC_SERVER)
+	go run cmd/webui/main.go -server $(GRPC_SERVER) -token $(DEV_ADMIN_TOKEN)
 
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)

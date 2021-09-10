@@ -154,8 +154,7 @@ Then navigate to the release page (https://github.com/gadget-inc/dateilager/rele
 Finally we need to build and push the Docker image to it's repository.
 
 ```bash
-docker build -t gcr.io/gadget-core-production/dateilager:0.0.x .
-docker push gcr.io/gadget-core-production/dateilager:0.0.x
+$ make upload-container-image version=0.0.x
 ```
 
 ## K8S

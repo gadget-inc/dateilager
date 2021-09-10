@@ -13,11 +13,12 @@ import (
 
 type Command interface {
 	run(context.Context, *zap.Logger, *client.Client)
-	serverAddr() string
+	connectionInfo() (string, string)
 }
 
 type getArgs struct {
 	server  string
+	token   string
 	project int64
 	vrange  client.VersionRange
 	prefix  string
@@ -27,6 +28,7 @@ func parseGetArgs(log *zap.Logger, args []string) *getArgs {
 	set := flag.NewFlagSet("get", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
+	token := set.String("token", "", "Auth token")
 	project := set.Int64("project", -1, "Project ID (required)")
 	from := set.Int64("from", -1, "From version ID (optional)")
 	to := set.Int64("to", -1, "To version ID (optional)")
@@ -47,14 +49,15 @@ func parseGetArgs(log *zap.Logger, args []string) *getArgs {
 
 	return &getArgs{
 		server:  *server,
+		token:   *token,
 		project: *project,
 		vrange:  client.VersionRange{From: from, To: to},
 		prefix:  *prefix,
 	}
 }
 
-func (a *getArgs) serverAddr() string {
-	return a.server
+func (a *getArgs) connectionInfo() (string, string) {
+	return a.server, a.token
 }
 
 func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
@@ -71,6 +74,7 @@ func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
 
 type rebuildArgs struct {
 	server  string
+	token   string
 	project int64
 	vrange  client.VersionRange
 	prefix  string
@@ -81,6 +85,7 @@ func parseRebuildArgs(log *zap.Logger, args []string) *rebuildArgs {
 	set := flag.NewFlagSet("rebuild", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
+	token := set.String("token", "", "Auth token")
 	project := set.Int64("project", -1, "Project ID (required)")
 	from := set.Int64("from", -1, "From version ID (optional)")
 	to := set.Int64("to", -1, "To version ID (optional)")
@@ -102,6 +107,7 @@ func parseRebuildArgs(log *zap.Logger, args []string) *rebuildArgs {
 
 	return &rebuildArgs{
 		server:  *server,
+		token:   *token,
 		project: *project,
 		vrange:  client.VersionRange{From: from, To: to},
 		prefix:  *prefix,
@@ -109,8 +115,8 @@ func parseRebuildArgs(log *zap.Logger, args []string) *rebuildArgs {
 	}
 }
 
-func (a *rebuildArgs) serverAddr() string {
-	return a.server
+func (a *rebuildArgs) connectionInfo() (string, string) {
+	return a.server, a.token
 }
 
 func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
@@ -124,6 +130,7 @@ func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 
 type updateArgs struct {
 	server    string
+	token     string
 	project   int64
 	diff      string
 	directory string
@@ -133,6 +140,7 @@ func parseUpdateArgs(log *zap.Logger, args []string) *updateArgs {
 	set := flag.NewFlagSet("update", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
+	token := set.String("token", "", "Auth token")
 	project := set.Int64("project", -1, "Project ID (required)")
 	diff := set.String("diff", "", "Diff file listing changed file names")
 	directory := set.String("directory", "", "Directory containing updated files")
@@ -145,14 +153,15 @@ func parseUpdateArgs(log *zap.Logger, args []string) *updateArgs {
 
 	return &updateArgs{
 		server:    *server,
+		token:     *token,
 		project:   *project,
 		diff:      *diff,
 		directory: *directory,
 	}
 }
 
-func (a *updateArgs) serverAddr() string {
-	return a.server
+func (a *updateArgs) connectionInfo() (string, string) {
+	return a.server, a.token
 }
 
 func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
@@ -167,6 +176,7 @@ func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client)
 
 type inspectArgs struct {
 	server  string
+	token   string
 	project int64
 }
 
@@ -174,6 +184,7 @@ func parseInspectArgs(log *zap.Logger, args []string) *inspectArgs {
 	set := flag.NewFlagSet("update", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
+	token := set.String("token", "", "Auth token")
 	project := set.Int64("project", -1, "Project ID (required)")
 
 	set.Parse(args)
@@ -184,12 +195,13 @@ func parseInspectArgs(log *zap.Logger, args []string) *inspectArgs {
 
 	return &inspectArgs{
 		server:  *server,
+		token:   *token,
 		project: *project,
 	}
 }
 
-func (a *inspectArgs) serverAddr() string {
-	return a.server
+func (a *inspectArgs) connectionInfo() (string, string) {
+	return a.server, a.token
 }
 
 func (a *inspectArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
@@ -208,22 +220,25 @@ func (a *inspectArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 
 type snapshotArgs struct {
 	server string
+	token  string
 }
 
 func parseSnapshotArgs(log *zap.Logger, args []string) *snapshotArgs {
 	set := flag.NewFlagSet("update", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
+	token := set.String("token", "", "Auth token")
 
 	set.Parse(args)
 
 	return &snapshotArgs{
 		server: *server,
+		token:  *token,
 	}
 }
 
-func (a *snapshotArgs) serverAddr() string {
-	return a.server
+func (a *snapshotArgs) connectionInfo() (string, string) {
+	return a.server, a.token
 }
 
 func (a *snapshotArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
@@ -239,6 +254,7 @@ func (a *snapshotArgs) run(ctx context.Context, log *zap.Logger, c *client.Clien
 
 type resetArgs struct {
 	server string
+	token  string
 	state  string
 }
 
@@ -246,18 +262,20 @@ func parseResetArgs(log *zap.Logger, args []string) *resetArgs {
 	set := flag.NewFlagSet("update", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
+	token := set.String("token", "", "Auth token")
 	state := set.String("state", "", "State string from a snapshot command")
 
 	set.Parse(args)
 
 	return &resetArgs{
 		server: *server,
+		token:  *token,
 		state:  *state,
 	}
 }
 
-func (a *resetArgs) serverAddr() string {
-	return a.server
+func (a *resetArgs) connectionInfo() (string, string) {
+	return a.server, a.token
 }
 
 func (a *resetArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
@@ -299,9 +317,14 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()
 
-	c, err := client.NewClient(ctx, cmd.serverAddr())
+	server, token := cmd.connectionInfo()
+	if server == "" || token == "" {
+		log.Fatal("invalid connection info", zap.String("server", server), zap.String("token", token))
+	}
+
+	c, err := client.NewClient(ctx, server, token)
 	if err != nil {
-		log.Fatal("could not connect to server", zap.String("server", cmd.serverAddr()), zap.Error(err))
+		log.Fatal("could not connect to server", zap.String("server", server), zap.String("token", token), zap.Error(err))
 	}
 	defer c.Close()
 

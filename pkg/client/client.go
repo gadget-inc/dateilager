@@ -3,6 +3,7 @@ package client
 import (
 	"archive/tar"
 	"context"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"os"
@@ -15,7 +16,10 @@ import (
 	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
 	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
 	"go.uber.org/zap"
+	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/oauth"
 )
 
 const (
@@ -37,10 +41,23 @@ func NewClientConn(ctx context.Context, log *zap.Logger, conn *grpc.ClientConn) 
 	return &Client{log: log, conn: conn, fs: pb.NewFsClient(conn)}
 }
 
-func NewClient(ctx context.Context, server string) (*Client, error) {
+func NewClient(ctx context.Context, server, token string) (*Client, error) {
 	log, _ := zap.NewDevelopment()
 
-	conn, err := grpc.DialContext(ctx, server, grpc.WithInsecure(), grpc.WithBlock(),
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, fmt.Errorf("load system cert pool: %w", err)
+	}
+	creds := credentials.NewClientTLSFromCert(pool, "")
+
+	auth := oauth.NewOauthAccess(&oauth2.Token{
+		AccessToken: token,
+	})
+
+	conn, err := grpc.DialContext(ctx, server,
+		grpc.WithTransportCredentials(creds),
+		grpc.WithPerRPCCredentials(auth),
+		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(50*MB), grpc.MaxCallSendMsgSize(50*MB)),
 	)
 	if err != nil {
