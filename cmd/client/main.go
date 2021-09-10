@@ -341,7 +341,7 @@ func main() {
 
 	c, err := client.NewClient(ctx, cmd.serverAddr())
 	if err != nil {
-		log.Fatal("could not connect to server", zap.String("server", cmd.serverAddr()))
+		log.Fatal("could not connect to server", zap.String("server", cmd.serverAddr()), zap.Error(err))
 	}
 	defer c.Close()
 

@@ -76,6 +76,12 @@ func NewServer(log *zap.Logger) *Server {
 				grpc_recovery.UnaryServerInterceptor(),
 			),
 		),
+		grpc.StreamInterceptor(
+			grpc_middleware.ChainStreamServer(
+				grpc_zap.StreamServerInterceptor(log),
+				grpc_recovery.StreamServerInterceptor(),
+			),
+		),
 		grpc.MaxRecvMsgSize(50*MB),
 		grpc.MaxSendMsgSize(50*MB),
 	)
