@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"net"
@@ -18,15 +19,19 @@ import (
 )
 
 type ServerArgs struct {
-	port  int
-	dbUri string
-	prof  string
-	level zapcore.Level
+	port     int
+	dbUri    string
+	certFile string
+	keyFile  string
+	prof     string
+	level    zapcore.Level
 }
 
 func parseArgs() ServerArgs {
 	port := flag.Int("port", 5051, "GRPC server port")
 	dbUri := flag.String("dburi", "postgres://postgres@127.0.0.1:5432/dl", "Postgres URI")
+	certFile := flag.String("cert", "dev/server.crt", "TLS cert file")
+	keyFile := flag.String("key", "dev/server.key", "TLS key file")
 	prof := flag.String("prof", "", "Output CPU profile to this path")
 
 	level := zap.LevelFlag("log", zap.DebugLevel, "Set the log level")
@@ -34,10 +39,12 @@ func parseArgs() ServerArgs {
 	flag.Parse()
 
 	return ServerArgs{
-		port:  *port,
-		dbUri: *dbUri,
-		prof:  *prof,
-		level: *level,
+		port:     *port,
+		dbUri:    *dbUri,
+		certFile: *certFile,
+		keyFile:  *keyFile,
+		prof:     *prof,
+		level:    *level,
 	}
 }
 
@@ -61,20 +68,27 @@ func main() {
 		log.Fatal("failed to listen", zap.String("protocol", "tcp"), zap.Int("port", args.port))
 	}
 
-	pool, err := server.NewDbPoolConnector(ctx, args.dbUri)
+	dbConn, err := server.NewDbPoolConnector(ctx, args.dbUri)
 	if err != nil {
 		log.Fatal("cannot connect to DB", zap.String("dburi", args.dbUri))
 	}
-	defer pool.Close()
+	defer dbConn.Close()
 
-	s := server.NewServer(log)
-	s.MonitorDbPool(ctx, pool)
+	cert, err := tls.LoadX509KeyPair(args.certFile, args.keyFile)
+	if err != nil {
+		log.Fatal("cannot open TLS cert and key files", zap.String("cert", args.certFile), zap.String("key", args.keyFile), zap.Error(err))
+	}
+
+	s, err := server.NewServer(ctx, log, dbConn, &cert)
+	if err != nil {
+		log.Fatal("cannot start server", zap.Error(err))
+	}
 
 	log.Info("register Fs")
 	fs := &api.Fs{
 		Env:    s.Env,
 		Log:    log,
-		DbConn: pool,
+		DbConn: dbConn,
 	}
 	s.RegisterFs(ctx, fs)
 

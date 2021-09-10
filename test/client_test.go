@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
@@ -15,6 +16,7 @@ import (
 	"github.com/gadget-inc/dateilager/pkg/client"
 	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
 	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
 )
@@ -46,8 +48,23 @@ func fromVersion(from int64) client.VersionRange {
 }
 
 func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, db.CloseFunc) {
+	reqAuth := tc.Context().Value(auth.AuthCtxKey).(auth.Auth)
+
 	lis := bufconn.Listen(bufSize)
-	s := grpc.NewServer()
+	s := grpc.NewServer(
+		grpc.UnaryInterceptor(
+			grpc.UnaryServerInterceptor(func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+				return handler(context.WithValue(ctx, auth.AuthCtxKey, reqAuth), req)
+			}),
+		),
+		grpc.StreamInterceptor(
+			grpc.StreamServerInterceptor(func(srv interface{}, stream grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+				wrapped := grpc_middleware.WrapServerStream(stream)
+				wrapped.WrappedContext = context.WithValue(stream.Context(), auth.AuthCtxKey, reqAuth)
+				return handler(srv, wrapped)
+			}),
+		),
+	)
 
 	pb.RegisterFsServer(s, fs)
 	go func() {
@@ -177,7 +194,7 @@ func verifyDir(tc util.TestCtx, dir string, files map[string]expectedFile) {
 }
 
 func TestGetLatestEmpty(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
@@ -196,7 +213,7 @@ func TestGetLatestEmpty(t *testing.T) {
 }
 
 func TestGetLatest(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 2)
@@ -228,7 +245,7 @@ func TestGetLatest(t *testing.T) {
 }
 
 func TestGetVersion(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 3)
@@ -271,7 +288,7 @@ func TestGetVersion(t *testing.T) {
 }
 
 func TestRebuild(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
@@ -298,7 +315,7 @@ func TestRebuild(t *testing.T) {
 }
 
 func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 2)
@@ -331,7 +348,7 @@ func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
 }
 
 func TestRebuildWithEmptyDirAndSymlink(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 2)
@@ -362,7 +379,7 @@ func TestRebuildWithEmptyDirAndSymlink(t *testing.T) {
 }
 
 func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
@@ -419,7 +436,7 @@ func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
 }
 
 func TestUpdateObjects(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)

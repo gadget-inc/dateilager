@@ -1,4 +1,6 @@
 bin/
+dev/server.crt
+dev/server.key
 input/
 input_old/
 rebuild/

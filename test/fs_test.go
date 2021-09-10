@@ -7,6 +7,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/klauspost/compress/zstd"
@@ -214,7 +215,7 @@ func verifyTarResults(tc util.TestCtx, results [][]byte, expected map[string]exp
 }
 
 func TestNewProject(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Admin)
 	defer tc.Close()
 
 	fs := tc.FsApi()
@@ -237,7 +238,7 @@ func TestNewProject(t *testing.T) {
 }
 
 func TestNewProjectWithTemplate(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Admin)
 	defer tc.Close()
 
 	writeProject(tc, 1, 3)
@@ -267,7 +268,7 @@ func TestNewProjectWithTemplate(t *testing.T) {
 }
 
 func TestGetEmpty(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
@@ -286,7 +287,7 @@ func TestGetEmpty(t *testing.T) {
 }
 
 func TestGetExactlyOne(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
@@ -307,7 +308,7 @@ func TestGetExactlyOne(t *testing.T) {
 }
 
 func TestGetPrefix(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
@@ -331,7 +332,7 @@ func TestGetPrefix(t *testing.T) {
 }
 
 func TestGetWithIgnorePattern(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
@@ -357,7 +358,7 @@ func TestGetWithIgnorePattern(t *testing.T) {
 }
 
 func TestGetRange(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 4)
@@ -399,7 +400,7 @@ func TestGetRange(t *testing.T) {
 }
 
 func TestGetDeleteAll(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
@@ -462,7 +463,7 @@ func TestGetDeleteAll(t *testing.T) {
 }
 
 func TestGetExactlyOneVersioned(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 3)
@@ -504,7 +505,7 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 }
 
 func TestGetWithoutContent(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 3)
@@ -528,7 +529,7 @@ func TestGetWithoutContent(t *testing.T) {
 }
 
 func TestGetCompress(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 3)
@@ -554,7 +555,7 @@ func TestGetCompress(t *testing.T) {
 }
 
 func TestGetCompressWithIgnorePattern(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
@@ -582,7 +583,7 @@ func TestGetCompressWithIgnorePattern(t *testing.T) {
 }
 
 func TestGetPackedObjects(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 2, "/a/")
@@ -610,7 +611,7 @@ func TestGetPackedObjects(t *testing.T) {
 }
 
 func TestGetPackedObjectsWithoutContent(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 2, "/a/")
@@ -637,7 +638,7 @@ func TestGetPackedObjectsWithoutContent(t *testing.T) {
 }
 
 func TestGetObjectWithinPack(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1, "/a/")
@@ -660,7 +661,7 @@ func TestGetObjectWithinPack(t *testing.T) {
 }
 
 func TestGetObjectWithinPatternPack(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1, "/a/.*/")
@@ -687,7 +688,7 @@ func TestGetObjectWithinPatternPack(t *testing.T) {
 }
 
 func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 2, "/a/")
@@ -717,7 +718,7 @@ func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
@@ -751,7 +752,7 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestUpdatePackedObject(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1, "/a/")
@@ -787,7 +788,7 @@ func TestUpdatePackedObject(t *testing.T) {
 }
 
 func TestUpdateWithNewPatternPackedObject(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1, "/a/.*/")
@@ -819,7 +820,7 @@ func TestUpdateWithNewPatternPackedObject(t *testing.T) {
 }
 
 func TestUpdateWithExistingPatternPackedObject(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1, "/a/.*/")
@@ -855,7 +856,7 @@ func TestUpdateWithExistingPatternPackedObject(t *testing.T) {
 }
 
 func TestSnapshotAndReset(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Admin)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
@@ -917,7 +918,7 @@ func TestSnapshotAndReset(t *testing.T) {
 }
 
 func TestResetAll(t *testing.T) {
-	tc := util.NewTestCtx(t)
+	tc := util.NewTestCtx(t, auth.Admin)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)

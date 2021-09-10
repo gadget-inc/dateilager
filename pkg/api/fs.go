@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/pb"
@@ -18,6 +19,30 @@ import (
 var (
 	ErrMultipleProjectsPerUpdate = errors.New("multiple objects in one update")
 )
+
+func requireAdminAuth(ctx context.Context) error {
+	ctxAuth := ctx.Value(auth.AuthCtxKey).(auth.Auth)
+
+	if ctxAuth.Role == auth.Admin {
+		return nil
+	}
+
+	return status.Errorf(codes.PermissionDenied, "FS endpoint requires admin access")
+}
+
+func requireProjectAuth(ctx context.Context) (int64, error) {
+	ctxAuth := ctx.Value(auth.AuthCtxKey).(auth.Auth)
+
+	if ctxAuth.Role == auth.Admin {
+		return -1, nil
+	}
+
+	if ctxAuth.Role == auth.Project {
+		return *ctxAuth.Project, nil
+	}
+
+	return -1, status.Errorf(codes.PermissionDenied, "FS endpoint requires project access")
+}
 
 type Fs struct {
 	pb.UnimplementedFsServer
@@ -28,6 +53,11 @@ type Fs struct {
 }
 
 func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.NewProjectResponse, error) {
+	err := requireAdminAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
@@ -59,6 +89,11 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 }
 
 func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb.ListProjectsResponse, error) {
+	err := requireAdminAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
@@ -93,6 +128,15 @@ func validateObjectQuery(query *pb.ObjectQuery) error {
 
 func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	ctx := stream.Context()
+
+	project, err := requireProjectAuth(ctx)
+	if err != nil {
+		return err
+	}
+
+	if project > -1 && req.Project != project {
+		return status.Errorf(codes.PermissionDenied, "Mismatch project authorization and request")
+	}
 
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
@@ -160,6 +204,15 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressServer) error {
 	ctx := stream.Context()
 
+	project, err := requireProjectAuth(ctx)
+	if err != nil {
+		return err
+	}
+
+	if project > -1 && req.Project != project {
+		return status.Errorf(codes.PermissionDenied, "Mismatch project authorization and request")
+	}
+
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
 		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
@@ -225,6 +278,12 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	ctx := stream.Context()
 
+	version := int64(-1)
+	project, err := requireProjectAuth(ctx)
+	if err != nil {
+		return err
+	}
+
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
 		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
@@ -232,10 +291,6 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	defer close()
 
 	contentEncoder := db.NewContentEncoder()
-
-	// We only receive a project ID after the first streamed update
-	project := int64(-1)
-	version := int64(-1)
 
 	var packManager *db.PackManager
 	buffer := make(map[string][]*pb.Object)
@@ -250,8 +305,10 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			return status.Errorf(errStatus.Code(), "FS receive update request: %w", err)
 		}
 
-		if project == -1 {
-			project = req.Project
+		if version == -1 {
+			if project == -1 {
+				project = req.Project
+			}
 
 			latest_version, err := db.LockLatestVersion(ctx, tx, project)
 			if errors.Is(err, db.ErrNotFound) {
@@ -318,6 +375,11 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 }
 
 func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectResponse, error) {
+	err := requireAdminAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
@@ -383,6 +445,11 @@ func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.Snapsho
 		return nil, status.Errorf(codes.Unimplemented, "FS snapshot only implemented in dev and test environments")
 	}
 
+	err := requireAdminAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
@@ -404,6 +471,11 @@ func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.Snapsho
 func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse, error) {
 	if f.Env != environment.Dev && f.Env != environment.Test {
 		return nil, status.Errorf(codes.Unimplemented, "FS reset only implemented in dev and test environments")
+	}
+
+	err := requireAdminAuth(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	tx, close, err := f.DbConn.Connect(ctx)

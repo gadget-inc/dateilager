@@ -4,7 +4,7 @@ CREATE SCHEMA dl;
 
 CREATE TABLE dl.projects (
     id             bigint PRIMARY KEY,
-    latest_version bigint  NOT NULL
+    latest_version bigint NOT NULL
 );
 
 CREATE TABLE dl.objects (

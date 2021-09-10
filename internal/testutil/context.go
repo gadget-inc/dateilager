@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/pkg/api"
@@ -20,8 +21,16 @@ type TestCtx struct {
 	ctx    context.Context
 }
 
-func NewTestCtx(t *testing.T) TestCtx {
-	ctx := context.Background()
+func NewTestCtx(t *testing.T, role auth.Role, projects ...int64) TestCtx {
+	var project *int64
+	if len(projects) > 0 {
+		project = &projects[0]
+	}
+
+	ctx := context.WithValue(context.Background(), auth.AuthCtxKey, auth.Auth{
+		Role:    role,
+		Project: project,
+	})
 
 	dbConn, err := newDbTestConnector(ctx, os.Getenv("DB_URI"))
 	if err != nil {
