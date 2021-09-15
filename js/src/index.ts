@@ -72,7 +72,7 @@ export class DateiLagerClient {
     await this.client.newProject({ id: project }, this._options());
   }
 
-  async *listObjects(project: bigint, path: string) {
+  async *listObjects(project: bigint, path: string, ignore?: string) {
     const call = this.client.get(
       {
         project: project,
@@ -81,6 +81,7 @@ export class DateiLagerClient {
             path: path,
             isPrefix: true,
             withContent: true,
+            ignore: ignore,
           },
         ],
       },

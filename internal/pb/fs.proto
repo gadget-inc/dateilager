@@ -55,6 +55,7 @@ message ObjectQuery {
     string path = 1;
     bool is_prefix = 2;
     bool with_content = 3;
+    optional string ignore = 4;
 }
 
 message GetRequest {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -147,6 +148,18 @@ func (f *Fs) buildVersionRange(ctx context.Context, tx pgx.Tx, project int64, fr
 	return vrange, nil
 }
 
+func validateObjectQuery(query *pb.ObjectQuery) error {
+	if !query.IsPrefix && query.Ignore != nil {
+		return status.Error(codes.InvalidArgument, "Invalid ObjectQuery: cannot mix unprefixed queries with ignore predicates")
+	}
+
+	if query.Ignore != nil && !strings.HasPrefix(*query.Ignore, query.Path) {
+		return status.Errorf(codes.InvalidArgument, "Invalid ObjectQuery: ignore pattern (%v) must fully include the path predicate (%v)", *query.Ignore, query.Path)
+	}
+
+	return nil
+}
+
 func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	ctx := stream.Context()
 
@@ -168,12 +181,18 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	}
 
 	for _, query := range req.Queries {
+		err = validateObjectQuery(query)
+		if err != nil {
+			return err
+		}
+
 		f.Log.Info("FS.Get[Query]",
 			zap.Int64("project", req.Project),
 			zap.Any("vrange", vrange),
 			zap.String("path", query.Path),
 			zap.Bool("isPrefix", query.IsPrefix),
 			zap.Bool("withContent", query.WithContent),
+			zap.Stringp("ignore", query.Ignore),
 		)
 
 		objects, err := db.GetObjects(ctx, tx, packedCache, req.Project, vrange, query)
@@ -219,12 +238,18 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	f.Log.Info("FS.GetCompress[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
 	for _, query := range req.Queries {
+		err = validateObjectQuery(query)
+		if err != nil {
+			return err
+		}
+
 		f.Log.Info("FS.GetCompress[Query]",
 			zap.Int64("project", req.Project),
 			zap.Any("vrange", vrange),
 			zap.String("path", query.Path),
 			zap.Bool("isPrefix", query.IsPrefix),
 			zap.Bool("withContent", query.WithContent),
+			zap.Stringp("ignore", query.Ignore),
 		)
 
 		tars, err := db.GetTars(ctx, tx, req.Project, vrange, query)

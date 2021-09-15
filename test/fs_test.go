@@ -100,11 +100,17 @@ func (m *mockUpdateServer) Recv() (*pb.UpdateRequest, error) {
 	}, nil
 }
 
-func buildRequest(project int64, fromVersion, toVersion *int64, path string, prefix, content bool) *pb.GetRequest {
+func buildRequest(project int64, fromVersion, toVersion *int64, prefix, content bool, paths ...string) *pb.GetRequest {
+	var ignore *string
+	if len(paths) > 1 {
+		ignore = &paths[1]
+	}
+
 	query := &pb.ObjectQuery{
-		Path:        path,
+		Path:        paths[0],
 		IsPrefix:    prefix,
 		WithContent: content,
+		Ignore:      ignore,
 	}
 
 	return &pb.GetRequest{
@@ -115,27 +121,33 @@ func buildRequest(project int64, fromVersion, toVersion *int64, path string, pre
 	}
 }
 
-func exactQuery(project int64, version *int64, path string) *pb.GetRequest {
-	return buildRequest(project, nil, version, path, false, true)
+func exactQuery(project int64, version *int64, paths ...string) *pb.GetRequest {
+	return buildRequest(project, nil, version, false, true, paths...)
 }
 
-func prefixQuery(project int64, version *int64, path string) *pb.GetRequest {
-	return buildRequest(project, nil, version, path, true, true)
+func prefixQuery(project int64, version *int64, paths ...string) *pb.GetRequest {
+	return buildRequest(project, nil, version, true, true, paths...)
 }
 
-func noContentQuery(project int64, version *int64, path string) *pb.GetRequest {
-	return buildRequest(project, nil, version, path, true, false)
+func noContentQuery(project int64, version *int64, paths ...string) *pb.GetRequest {
+	return buildRequest(project, nil, version, true, false, paths...)
 }
 
-func rangeQuery(project int64, fromVersion, toVersion *int64, path string) *pb.GetRequest {
-	return buildRequest(project, fromVersion, toVersion, path, true, true)
+func rangeQuery(project int64, fromVersion, toVersion *int64, paths ...string) *pb.GetRequest {
+	return buildRequest(project, fromVersion, toVersion, true, true, paths...)
 }
 
-func buildCompressRequest(project int64, fromVersion, toVersion *int64, path string) *pb.GetCompressRequest {
+func buildCompressRequest(project int64, fromVersion, toVersion *int64, paths ...string) *pb.GetCompressRequest {
+	var ignore *string
+	if len(paths) > 1 {
+		ignore = &paths[1]
+	}
+
 	query := &pb.ObjectQuery{
-		Path:        path,
+		Path:        paths[0],
 		IsPrefix:    true,
 		WithContent: true,
+		Ignore:      ignore,
 	}
 
 	return &pb.GetCompressRequest{
@@ -326,6 +338,31 @@ func TestGetPrefix(t *testing.T) {
 	verifyStreamResults(tc, stream.results, map[string]expectedObject{
 		"/a/a": {content: ""},
 		"/a/b": {content: ""},
+	})
+}
+
+func TestGetWithIgnorePattern(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a/b/c")
+	writeObject(tc, 1, 1, nil, "/a/b/d")
+	writeObject(tc, 1, 1, nil, "/a/e/f")
+	writeObject(tc, 1, 1, nil, "/a/e/g")
+	writeObject(tc, 1, 1, nil, "/h/i")
+
+	fs := tc.FsApi()
+	stream := &mockGetServer{ctx: tc.Context()}
+
+	err := fs.Get(prefixQuery(1, nil, "/a", "/a/b"), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a/e/f": {content: ""},
+		"/a/e/g": {content: ""},
 	})
 }
 
@@ -523,6 +560,34 @@ func TestGetCompress(t *testing.T) {
 
 	verifyTarResults(tc, stream.results, map[string]expectedObject{
 		"/a": {content: "v3"},
+	})
+}
+
+func TestGetCompressWithIgnorePattern(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a/b/c", "a/b/c v1")
+	writeObject(tc, 1, 1, nil, "/a/b/d", "a/b/d v1")
+	writeObject(tc, 1, 1, nil, "/a/e/f", "a/e/f v1")
+	writeObject(tc, 1, 1, nil, "/a/e/g", "a/e/g v1")
+
+	fs := tc.FsApi()
+
+	stream := &mockGetCompressServer{ctx: tc.Context()}
+	err := fs.GetCompress(buildCompressRequest(1, nil, nil, "", "/a/e"), stream)
+	if err != nil {
+		t.Fatalf("fs.GetCompress: %v", err)
+	}
+
+	if len(stream.results) != 1 {
+		t.Errorf("expected 1 TAR files, got: %v", len(stream.results))
+	}
+
+	verifyTarResults(tc, stream.results, map[string]expectedObject{
+		"/a/b/c": {content: "a/b/c v1"},
+		"/a/b/d": {content: "a/b/d v1"},
 	})
 }
 

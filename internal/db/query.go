@@ -65,10 +65,16 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 	}
 
 	path := objectQuery.Path
-	pathPredicate := "o.path = $4"
+	pathPredicate := "(o.path = $4 AND o.path != $5)"
 	if objectQuery.IsPrefix {
 		path = fmt.Sprintf("%s%%", objectQuery.Path)
-		pathPredicate = "o.path LIKE $4"
+		pathPredicate = "(o.path LIKE $4 AND o.path NOT LIKE $5)"
+	}
+
+	// Use an invalid file name for queries which don't ignore paths
+	ignore := ".."
+	if objectQuery.Ignore != nil {
+		ignore = fmt.Sprintf("%s%%", *objectQuery.Ignore)
 	}
 
 	fetchDeleted := `
@@ -109,7 +115,7 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 	query := fmt.Sprintf(sqlTemplate, bytesSelector, joinClause, pathPredicate, fetchDeleted)
 
 	return query, []interface{}{
-		project, vrange.From, vrange.To, path,
+		project, vrange.From, vrange.To, path, ignore,
 	}
 }
 
