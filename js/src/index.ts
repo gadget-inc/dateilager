@@ -2,7 +2,7 @@ import { ChannelCredentials } from "@grpc/grpc-js";
 import { GrpcTransport } from "@protobuf-ts/grpc-transport";
 import { ClientStreamingCall } from "@protobuf-ts/runtime-rpc";
 import { TextEncoder } from "util";
-import { Objekt, ProjectSnapshot, UpdateRequest, UpdateResponse } from "./fs";
+import { Objekt, Project, UpdateRequest, UpdateResponse } from "./fs";
 import { FsClient } from "./fs.client";
 
 const MB = 1024 * 1024;
@@ -123,12 +123,12 @@ export class DateiLagerClient {
     return await stream.complete();
   }
 
-  async snapshotInDevOrTests(): Promise<ProjectSnapshot[]> {
+  async snapshotInDevOrTests(): Promise<Project[]> {
     const response = await this.client.snapshot({}, this._options());
     return response.response.projects;
   }
 
-  async resetToSnapshotInDevOrTests(projects: ProjectSnapshot[]): Promise<void> {
+  async resetToSnapshotInDevOrTests(projects: Project[]): Promise<void> {
     await this.client.reset({ projects: projects }, this._options());
   }
 
