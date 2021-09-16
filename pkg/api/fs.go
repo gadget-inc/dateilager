@@ -149,12 +149,14 @@ func (f *Fs) buildVersionRange(ctx context.Context, tx pgx.Tx, project int64, fr
 }
 
 func validateObjectQuery(query *pb.ObjectQuery) error {
-	if !query.IsPrefix && query.Ignore != nil {
+	if !query.IsPrefix && len(query.Ignores) > 0 {
 		return status.Error(codes.InvalidArgument, "Invalid ObjectQuery: cannot mix unprefixed queries with ignore predicates")
 	}
 
-	if query.Ignore != nil && !strings.HasPrefix(*query.Ignore, query.Path) {
-		return status.Errorf(codes.InvalidArgument, "Invalid ObjectQuery: ignore pattern (%v) must fully include the path predicate (%v)", *query.Ignore, query.Path)
+	for _, ignore := range query.Ignores {
+		if !strings.HasPrefix(ignore, query.Path) {
+			return status.Errorf(codes.InvalidArgument, "Invalid ObjectQuery: ignore pattern (%v) must fully include the path predicate (%v)", ignore, query.Path)
+		}
 	}
 
 	return nil
@@ -192,7 +194,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 			zap.String("path", query.Path),
 			zap.Bool("isPrefix", query.IsPrefix),
 			zap.Bool("withContent", query.WithContent),
-			zap.Stringp("ignore", query.Ignore),
+			zap.Strings("ignores", query.Ignores),
 		)
 
 		objects, err := db.GetObjects(ctx, tx, packedCache, req.Project, vrange, query)
@@ -249,7 +251,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			zap.String("path", query.Path),
 			zap.Bool("isPrefix", query.IsPrefix),
 			zap.Bool("withContent", query.WithContent),
-			zap.Stringp("ignore", query.Ignore),
+			zap.Strings("ignores", query.Ignores),
 		)
 
 		tars, err := db.GetTars(ctx, tx, req.Project, vrange, query)

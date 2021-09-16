@@ -101,16 +101,13 @@ func (m *mockUpdateServer) Recv() (*pb.UpdateRequest, error) {
 }
 
 func buildRequest(project int64, fromVersion, toVersion *int64, prefix, content bool, paths ...string) *pb.GetRequest {
-	var ignore *string
-	if len(paths) > 1 {
-		ignore = &paths[1]
-	}
+	path, ignores := paths[0], paths[1:]
 
 	query := &pb.ObjectQuery{
-		Path:        paths[0],
+		Path:        path,
 		IsPrefix:    prefix,
 		WithContent: content,
-		Ignore:      ignore,
+		Ignores:     ignores,
 	}
 
 	return &pb.GetRequest{
@@ -138,16 +135,13 @@ func rangeQuery(project int64, fromVersion, toVersion *int64, paths ...string) *
 }
 
 func buildCompressRequest(project int64, fromVersion, toVersion *int64, paths ...string) *pb.GetCompressRequest {
-	var ignore *string
-	if len(paths) > 1 {
-		ignore = &paths[1]
-	}
+	path, ignores := paths[0], paths[1:]
 
 	query := &pb.ObjectQuery{
-		Path:        paths[0],
+		Path:        path,
 		IsPrefix:    true,
 		WithContent: true,
-		Ignore:      ignore,
+		Ignores:     ignores,
 	}
 
 	return &pb.GetCompressRequest{
@@ -166,7 +160,7 @@ func verifyStreamResults(tc util.TestCtx, results []*pb.Object, expected map[str
 	for _, result := range results {
 		object, ok := expected[result.Path]
 		if !ok {
-			tc.Fatalf("missing %v in stream results", result.Path)
+			tc.Errorf("did not expect %v in stream results", result.Path)
 		}
 
 		if string(result.Content) != object.content {
@@ -350,12 +344,13 @@ func TestGetWithIgnorePattern(t *testing.T) {
 	writeObject(tc, 1, 1, nil, "/a/b/d")
 	writeObject(tc, 1, 1, nil, "/a/e/f")
 	writeObject(tc, 1, 1, nil, "/a/e/g")
-	writeObject(tc, 1, 1, nil, "/h/i")
+	writeObject(tc, 1, 1, nil, "/a/h/i")
+	writeObject(tc, 1, 1, nil, "/j/k")
 
 	fs := tc.FsApi()
 	stream := &mockGetServer{ctx: tc.Context()}
 
-	err := fs.Get(prefixQuery(1, nil, "/a", "/a/b"), stream)
+	err := fs.Get(prefixQuery(1, nil, "/a", "/a/b", "/a/h"), stream)
 	if err != nil {
 		t.Fatalf("fs.Get: %v", err)
 	}

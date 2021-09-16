@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 )
 
@@ -65,17 +66,21 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 	}
 
 	path := objectQuery.Path
-	pathPredicate := "(o.path = $4 AND o.path != $5)"
+	pathPredicate := "o.path = $4"
 	if objectQuery.IsPrefix {
 		path = fmt.Sprintf("%s%%", objectQuery.Path)
-		pathPredicate = "(o.path LIKE $4 AND o.path NOT LIKE $5)"
+		pathPredicate = "o.path LIKE $4"
 	}
 
-	// Use an invalid file name for queries which don't ignore paths
-	ignore := ".."
-	if objectQuery.Ignore != nil {
-		ignore = fmt.Sprintf("%s%%", *objectQuery.Ignore)
+	// If the array is empty Postgres will ignore every result
+	// Ignoring the empty pattern is safe as object paths cannot be empty
+	ignorePatterns := []string{""}
+	for _, ignore := range objectQuery.Ignores {
+		ignorePatterns = append(ignorePatterns, fmt.Sprintf("%s%%", ignore))
 	}
+
+	ignoreArray := &pgtype.TextArray{}
+	ignoreArray.Set(ignorePatterns)
 
 	fetchDeleted := `
 		UNION
@@ -96,6 +101,7 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 			  AND o.start_version <= $3
 			  AND (o.stop_version IS NULL OR o.stop_version > $3)
 			  AND %s
+			  AND o.path NOT LIKE ALL($5::text[])
 			ORDER BY o.path
 		), removed_files AS (
 			SELECT o.path, o.mode, 0 AS size, ''::bytea as bytes, o.packed, true AS deleted
@@ -115,7 +121,7 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 	query := fmt.Sprintf(sqlTemplate, bytesSelector, joinClause, pathPredicate, fetchDeleted)
 
 	return query, []interface{}{
-		project, vrange.From, vrange.To, path, ignore,
+		project, vrange.From, vrange.To, path, ignoreArray,
 	}
 }
 
