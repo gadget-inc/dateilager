@@ -36,7 +36,7 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 
 	f.Log.Info("FS.NewProject[Init]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
 
-	err = db.CreateProject(ctx, tx, req.Id)
+	err = db.CreateProject(ctx, tx, req.Id, req.PackPaths)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS new project %v, %w", req.Id, err)
 	}
@@ -110,7 +110,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 
 	f.Log.Info("FS.Get[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
-	packedCache, err := db.NewPackedCache(ctx, tx, req.Project, vrange)
+	packedCache, err := db.NewPackedCache(ctx, tx, req.Project)
 	if err != nil {
 		return status.Errorf(codes.Internal, "FS create packed cache: %w", err)
 	}
@@ -264,7 +264,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			version = latest_version + 1
 			f.Log.Info("FS.Update[Init]", zap.Int64("project", project), zap.Int64("version", version))
 
-			packedCache, err = db.NewPackedCache(ctx, tx, project, db.VersionRange{From: 0, To: version})
+			packedCache, err = db.NewPackedCache(ctx, tx, project)
 			if err != nil {
 				return status.Errorf(codes.Internal, "FS create packed cache: %w", err)
 			}
@@ -317,80 +317,6 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	return stream.SendAndClose(&pb.UpdateResponse{Version: version})
 }
 
-func (f *Fs) Pack(ctx context.Context, req *pb.PackRequest) (*pb.PackResponse, error) {
-	tx, close, err := f.DbConn.Connect(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
-	}
-	defer close()
-
-	f.Log.Info("FS.Pack[Init]", zap.Int64("project", req.Project), zap.String("path", req.Path))
-
-	latest_version, err := db.LockLatestVersion(ctx, tx, req.Project)
-	if errors.Is(err, db.ErrNotFound) {
-		return nil, status.Errorf(codes.NotFound, "FS pack missing latest version: %w", err)
-	}
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS pack get latest version: %w", err)
-	}
-
-	vrange := db.VersionRange{From: 0, To: latest_version}
-	query := pb.ObjectQuery{
-		Path:        req.Path,
-		IsPrefix:    true,
-		WithContent: true,
-	}
-
-	packedCache, err := db.NewPackedCache(ctx, tx, req.Project, vrange)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS create packed cache: %w", err)
-	}
-
-	objects, err := db.GetObjects(ctx, tx, packedCache, req.Project, vrange, &query)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS get objects: %w", err)
-	}
-
-	fullTar, namesTar, err := db.PackObjects(objects)
-	if err == db.ErrEmptyPack {
-		f.Log.Info("FS.Pack[Empty]", zap.Int64("project", req.Project), zap.String("path", req.Path), zap.Int64("version", latest_version))
-
-		return &pb.PackResponse{
-			Version: latest_version,
-		}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	version := latest_version + 1
-
-	err = db.DeleteObjects(ctx, tx, req.Project, version, req.Path)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS delete objects: %w", err)
-	}
-
-	err = db.InsertPackedObject(ctx, tx, req.Project, version, req.Path, fullTar, namesTar)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS insert packed objects: %w", err)
-	}
-
-	err = db.UpdateLatestVersion(ctx, tx, req.Project, version)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS pack update latest version: %w", err)
-	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS pack commit tx: %w", err)
-	}
-	f.Log.Info("FS.Pack[Commit]", zap.Int64("project", req.Project), zap.String("path", req.Path), zap.Int64("version", version))
-
-	return &pb.PackResponse{
-		Version: version,
-	}, nil
-}
-
 func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectResponse, error) {
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
@@ -408,7 +334,7 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 		return nil, status.Errorf(codes.Internal, "FS inspect latest version: %w", err)
 	}
 
-	packedCache, err := db.NewPackedCache(ctx, tx, req.Project, vrange)
+	packedCache, err := db.NewPackedCache(ctx, tx, req.Project)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS create packed cache: %w", err)
 	}

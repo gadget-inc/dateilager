@@ -15,8 +15,6 @@ service Fs {
 
     rpc Update(stream UpdateRequest) returns (UpdateResponse);
 
-    rpc Pack(PackRequest) returns (PackResponse);
-
     rpc Inspect(InspectRequest) returns (InspectResponse);
 
     rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
@@ -27,6 +25,7 @@ service Fs {
 message NewProjectRequest {
     int64 id = 1;
     optional int64 template = 2;
+    repeated string pack_paths = 3;
 }
 
 message NewProjectResponse {};
@@ -92,15 +91,6 @@ message UpdateRequest {
 }
 
 message UpdateResponse {
-    int64 version = 1;
-}
-
-message PackRequest {
-    int64 project = 1;
-    string path = 2;
-}
-
-message PackResponse {
     int64 version = 1;
 }
 

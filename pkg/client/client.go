@@ -233,19 +233,6 @@ func (c *Client) Update(ctx context.Context, project int64, diffPath string, dir
 	return response.Version, len(diff.Updates), nil
 }
 
-func (c *Client) Pack(ctx context.Context, project int64, path string) (int64, error) {
-	response, err := c.fs.Pack(ctx, &pb.PackRequest{
-		Project: project,
-		Path:    path,
-	})
-
-	if err != nil {
-		return -1, fmt.Errorf("pack path %v in project %v: %w", path, project, err)
-	}
-
-	return response.Version, nil
-}
-
 func (c *Client) Inspect(ctx context.Context, project int64) (*pb.InspectResponse, error) {
 	inspect, err := c.fs.Inspect(ctx, &pb.InspectRequest{Project: project})
 	if err != nil {

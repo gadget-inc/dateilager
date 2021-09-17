@@ -164,45 +164,6 @@ func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client)
 	log.Info("updated objects", zap.Int64("project", a.project), zap.Int64("version", version), zap.Int("count", count))
 }
 
-type packArgs struct {
-	server  string
-	project int64
-	path    string
-}
-
-func parsePackArgs(log *zap.Logger, args []string) *packArgs {
-	set := flag.NewFlagSet("update", flag.ExitOnError)
-
-	server := set.String("server", "", "Server GRPC address")
-	project := set.Int64("project", -1, "Project ID (required)")
-	path := set.String("path", "", "Root of the object path to pack")
-
-	set.Parse(args)
-
-	if *project == -1 {
-		log.Fatal("-project required")
-	}
-
-	return &packArgs{
-		server:  *server,
-		project: *project,
-		path:    *path,
-	}
-}
-
-func (a *packArgs) serverAddr() string {
-	return a.server
-}
-
-func (a *packArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
-	version, err := c.Pack(ctx, a.project, a.path)
-	if err != nil {
-		log.Fatal("pack objects", zap.Int64("project", a.project), zap.String("path", a.path), zap.Error(err))
-	}
-
-	log.Info("packed objects", zap.Int64("project", a.project), zap.String("path", a.path), zap.Int64("version", version))
-}
-
 type inspectArgs struct {
 	server  string
 	project int64
@@ -324,8 +285,6 @@ func main() {
 		cmd = parseRebuildArgs(log, os.Args[2:])
 	case "update":
 		cmd = parseUpdateArgs(log, os.Args[2:])
-	case "pack":
-		cmd = parsePackArgs(log, os.Args[2:])
 	case "inspect":
 		cmd = parseInspectArgs(log, os.Args[2:])
 	case "snapshot":
