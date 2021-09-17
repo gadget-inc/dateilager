@@ -8,13 +8,13 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
-func CreateProject(ctx context.Context, tx pgx.Tx, project int64) error {
+func CreateProject(ctx context.Context, tx pgx.Tx, project int64, packPaths []string) error {
 	_, err := tx.Exec(ctx, `
-		INSERT INTO dl.projects (id, latest_version)
-		VALUES ($1, 0)
-	`, project)
+		INSERT INTO dl.projects (id, latest_version, pack_paths)
+		VALUES ($1, 0, $2)
+	`, project, packPaths)
 	if err != nil {
-		return fmt.Errorf("create project %v: %w", project, err)
+		return fmt.Errorf("create project %v, packPatterns %v: %w", project, packPaths, err)
 	}
 
 	return nil

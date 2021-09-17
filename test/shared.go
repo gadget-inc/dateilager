@@ -4,6 +4,7 @@ import (
 	"io/fs"
 
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 )
 
@@ -11,12 +12,17 @@ func i(i int64) *int64 {
 	return &i
 }
 
-func writeProject(tc util.TestCtx, id int32, latest_version int64) {
+type expectedObject struct {
+	content string
+	deleted bool
+}
+
+func writeProject(tc util.TestCtx, id int32, latest_version int64, packPaths ...string) {
 	conn := tc.Connect()
 	_, err := conn.Exec(tc.Context(), `
-		INSERT INTO dl.projects (id, latest_version)
-		VALUES ($1, $2)
-	`, id, latest_version)
+		INSERT INTO dl.projects (id, latest_version, pack_paths)
+		VALUES ($1, $2, $3)
+	`, id, latest_version, packPaths)
 	if err != nil {
 		tc.Fatalf("insert project: %v", err)
 	}
@@ -76,4 +82,66 @@ func writeSymlink(tc util.TestCtx, project int64, start int64, stop *int64, path
 	mode |= fs.ModeSymlink
 
 	writeObjectFull(tc, project, start, stop, path, target, mode)
+}
+
+func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64, path string, objects map[string]expectedObject) {
+	conn := tc.Connect()
+
+	contentsTar, namesTar := packObjects(tc, objects)
+	h1, h2 := db.HashContent(contentsTar)
+
+	_, err := conn.Exec(tc.Context(), `
+		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
+		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
+	`, project, start, stop, path, h1, h2, 0755, len(contentsTar), true)
+	if err != nil {
+		tc.Fatalf("insert object: %v", err)
+	}
+
+	_, err = conn.Exec(tc.Context(), `
+		INSERT INTO dl.contents (hash, bytes, names_tar)
+		VALUES (($1, $2), $3, $4)
+		ON CONFLICT
+		DO NOTHING
+	`, h1, h2, contentsTar, namesTar)
+	if err != nil {
+		tc.Fatalf("insert contents: %v", err)
+	}
+}
+
+func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []byte) {
+	contentWriter := db.NewTarWriter()
+	namesWriter := db.NewTarWriter()
+
+	for path, info := range objects {
+		object := &pb.Object{
+			Path:    path,
+			Mode:    0755,
+			Size:    int64(len(info.content)),
+			Content: []byte(info.content),
+			Deleted: info.deleted,
+		}
+
+		err := contentWriter.WriteObject(object, true)
+		if err != nil {
+			tc.Fatalf("write content to TAR: %v", err)
+		}
+
+		err = namesWriter.WriteObject(object, false)
+		if err != nil {
+			tc.Fatalf("write name to TAR: %v", err)
+		}
+	}
+
+	contentTar, err := contentWriter.BytesAndReset()
+	if err != nil {
+		tc.Fatalf("write content TAR to bytes: %v", err)
+	}
+
+	namesTar, err := namesWriter.BytesAndReset()
+	if err != nil {
+		tc.Fatalf("write names TAR to bytes: %v", err)
+	}
+
+	return contentTar, namesTar
 }

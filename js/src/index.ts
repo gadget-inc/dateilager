@@ -1,7 +1,7 @@
 import { ChannelCredentials } from "@grpc/grpc-js";
 import { GrpcTransport } from "@protobuf-ts/grpc-transport";
 import { ClientStreamingCall } from "@protobuf-ts/runtime-rpc";
-import { TextEncoder } from "util";
+import { TextDecoder, TextEncoder } from "util";
 import { Objekt, Project, UpdateRequest, UpdateResponse } from "./fs";
 import { FsClient } from "./fs.client";
 
@@ -39,6 +39,14 @@ export function encodeContent(content: string): Uint8Array {
 }
 
 /**
+ * Decode an array of bytes as an object's string contents.
+ */
+ export function decodeContent(bytes: Uint8Array | undefined): string {
+  const decoder = new TextDecoder();
+  return decoder.decode(bytes);
+}
+
+/**
  * A client class for interacting with DateiLager's GRPC API
  *
  * The library used to interact with GRPC creates connections lazily, this constructor will not
@@ -68,8 +76,11 @@ export class DateiLagerClient {
     };
   }
 
-  async newProject(project: bigint) {
-    await this.client.newProject({ id: project }, this._options());
+  async newProject(project: bigint, packPaths: string[], template?: bigint) {
+    await this.client.newProject(
+      { id: project, packPaths: packPaths, template: template },
+      this._options()
+    );
   }
 
   async *listObjects(project: bigint, path: string, ignores: string[] = []) {
@@ -89,7 +100,9 @@ export class DateiLagerClient {
     );
 
     for await (const response of call.responses) {
-      yield response.object;
+      if (response.object) {
+        yield response.object;
+      }
     }
   }
 

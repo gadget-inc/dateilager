@@ -13,11 +13,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-type expectedObject struct {
-	content string
-	deleted bool
-}
-
 type mockGetServer struct {
 	grpc.ServerStream
 	ctx     context.Context
@@ -624,29 +619,19 @@ func TestPack(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 
-	writeProject(tc, 1, 2)
-	writeObject(tc, 1, 1, nil, "/a/c", "a/c v1")
-	writeObject(tc, 1, 1, nil, "/a/d", "a/d v1")
-	writeObject(tc, 1, 2, nil, "/a/e", "a/e v2")
+	writeProject(tc, 1, 2, "/a/")
+
+	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+		"/a/d": {content: "a/d v1"},
+		"/a/e": {content: "a/e v1"},
+	})
 	writeObject(tc, 1, 2, nil, "/b", "b v2")
 
 	fs := tc.FsApi()
 
-	request := pb.PackRequest{
-		Project: 1,
-		Path:    "/a/",
-	}
-	response, err := fs.Pack(tc.Context(), &request)
-	if err != nil {
-		t.Fatalf("fs.Pack: %v", err)
-	}
-
-	if response.Version != 3 {
-		t.Errorf("expected version 3, got: %v", response.Version)
-	}
-
 	stream := &mockGetServer{ctx: tc.Context()}
-	err = fs.Get(prefixQuery(1, nil, "/a"), stream)
+	err := fs.Get(prefixQuery(1, nil, "/a"), stream)
 	if err != nil {
 		t.Fatalf("fs.Get: %v", err)
 	}
@@ -654,7 +639,7 @@ func TestPack(t *testing.T) {
 	verifyStreamResults(tc, stream.results, map[string]expectedObject{
 		"/a/c": {content: "a/c v1"},
 		"/a/d": {content: "a/d v1"},
-		"/a/e": {content: "a/e v2"},
+		"/a/e": {content: "a/e v1"},
 	})
 }
 
@@ -662,29 +647,18 @@ func TestGetPackedObjectsWithoutContent(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 
-	writeProject(tc, 1, 2)
-	writeObject(tc, 1, 1, nil, "/a/c", "a/c v1")
-	writeObject(tc, 1, 1, nil, "/a/d", "a/d v1")
-	writeObject(tc, 1, 2, nil, "/a/e", "a/e v2")
+	writeProject(tc, 1, 2, "/a/")
+	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+		"/a/d": {content: "a/d v1"},
+		"/a/e": {content: "a/e v1"},
+	})
 	writeObject(tc, 1, 2, nil, "/b", "b v2")
 
 	fs := tc.FsApi()
 
-	request := pb.PackRequest{
-		Project: 1,
-		Path:    "/a/",
-	}
-	response, err := fs.Pack(tc.Context(), &request)
-	if err != nil {
-		t.Fatalf("fs.Pack: %v", err)
-	}
-
-	if response.Version != 3 {
-		t.Errorf("expected version 3, got: %v", response.Version)
-	}
-
 	stream := &mockGetServer{ctx: tc.Context()}
-	err = fs.Get(noContentQuery(1, nil, "/a"), stream)
+	err := fs.Get(noContentQuery(1, nil, "/a"), stream)
 	if err != nil {
 		t.Fatalf("fs.Get: %v", err)
 	}
@@ -700,27 +674,16 @@ func TestGetObjectWithinPack(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 
-	writeProject(tc, 1, 1)
-	writeObject(tc, 1, 1, nil, "/a/b", "a/b v1")
-	writeObject(tc, 1, 1, nil, "/a/c", "a/c v1")
+	writeProject(tc, 1, 1, "/a/")
+	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
+		"/a/b": {content: "a/b v1"},
+		"/a/c": {content: "a/c v1"},
+	})
 
 	fs := tc.FsApi()
 
-	request := pb.PackRequest{
-		Project: 1,
-		Path:    "/a/",
-	}
-	response, err := fs.Pack(tc.Context(), &request)
-	if err != nil {
-		t.Fatalf("fs.Pack: %v", err)
-	}
-
-	if response.Version != 2 {
-		t.Errorf("expected version 2, got: %v", response.Version)
-	}
-
 	stream := &mockGetServer{ctx: tc.Context()}
-	err = fs.Get(exactQuery(1, nil, "/a/b"), stream)
+	err := fs.Get(exactQuery(1, nil, "/a/b"), stream)
 	if err != nil {
 		t.Fatalf("fs.Get: %v", err)
 	}
@@ -734,28 +697,17 @@ func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 
-	writeProject(tc, 1, 2)
-	writeObject(tc, 1, 1, nil, "/a/c", "a/c v1")
-	writeObject(tc, 1, 1, nil, "/a/d", "a/d v1")
+	writeProject(tc, 1, 2, "/a/")
+	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+		"/a/d": {content: "a/d v1"},
+	})
 	writeObject(tc, 1, 2, nil, "/b", "b v2")
 
 	fs := tc.FsApi()
 
-	request := pb.PackRequest{
-		Project: 1,
-		Path:    "/a/",
-	}
-	response, err := fs.Pack(tc.Context(), &request)
-	if err != nil {
-		t.Fatalf("fs.Pack: %v", err)
-	}
-
-	if response.Version != 3 {
-		t.Errorf("expected version 3, got: %v", response.Version)
-	}
-
 	stream := &mockGetCompressServer{ctx: tc.Context()}
-	err = fs.GetCompress(buildCompressRequest(1, nil, nil, ""), stream)
+	err := fs.GetCompress(buildCompressRequest(1, nil, nil, ""), stream)
 	if err != nil {
 		t.Fatalf("fs.GetCompress: %v", err)
 	}
@@ -775,36 +727,25 @@ func TestUpdatePackedObject(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 
-	writeProject(tc, 1, 1)
-	writeObject(tc, 1, 1, nil, "/a/c", "a/c v1")
-	writeObject(tc, 1, 1, nil, "/a/d", "a/d v1")
+	writeProject(tc, 1, 1, "/a/")
+	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+		"/a/d": {content: "a/d v1"},
+	})
 	writeObject(tc, 1, 2, nil, "/b", "b v1")
 
 	fs := tc.FsApi()
 
-	request := pb.PackRequest{
-		Project: 1,
-		Path:    "/a/",
-	}
-	response, err := fs.Pack(tc.Context(), &request)
-	if err != nil {
-		t.Fatalf("fs.Pack: %v", err)
-	}
-
-	if response.Version != 2 {
-		t.Errorf("expected version 2, got: %v", response.Version)
-	}
-
 	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
-		"/a/c": {content: "a/c v3"},
+		"/a/c": {content: "a/c v2"},
 	})
-	err = fs.Update(updateStream)
+	err := fs.Update(updateStream)
 	if err != nil {
 		t.Fatalf("fs.Update: %v", err)
 	}
 
-	if updateStream.response.Version != 3 {
-		tc.Errorf("expected version 3, got: %v", updateStream.response.Version)
+	if updateStream.response.Version != 2 {
+		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
 	}
 
 	stream := &mockGetServer{ctx: tc.Context()}
@@ -814,7 +755,7 @@ func TestUpdatePackedObject(t *testing.T) {
 	}
 
 	verifyStreamResults(tc, stream.results, map[string]expectedObject{
-		"/a/c": {content: "a/c v3"},
+		"/a/c": {content: "a/c v2"},
 	})
 }
 

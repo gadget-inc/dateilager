@@ -30,8 +30,12 @@ migrate:
 	migrate -database $(DB_URI)?sslmode=disable -path $(MIGRATE_DIR) up
 
 migrate-create:
+ifndef name
+	$(error name variable must be set)
+else
 	mkdir -p $(MIGRATE_DIR)
 	migrate create -ext sql -dir $(MIGRATE_DIR) -seq $(name)
+endif
 
 internal/pb/%.pb.go: internal/pb/%.proto
 	protoc --experimental_allow_proto3_optional --go_out=. --go_opt=paths=source_relative $^

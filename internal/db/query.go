@@ -348,39 +348,23 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange,
 }
 
 type PackedCache struct {
-	packs map[string]bool
+	paths []string
 }
 
-func NewPackedCache(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange) (*PackedCache, error) {
-	sql := `
-		SELECT o.path
-		FROM dl.objects o
-		WHERE o.project = $1
-		  AND o.start_version > $2
-		  AND o.start_version <= $3
-		  AND (o.stop_version IS NULL OR o.stop_version > $3)
-		  AND o.packed IS true
-	`
+func NewPackedCache(ctx context.Context, tx pgx.Tx, project int64) (*PackedCache, error) {
+	var paths []string
 
-	rows, err := tx.Query(ctx, sql, project, vrange.From, vrange.To)
+	err := tx.QueryRow(ctx, `
+		SELECT pack_paths
+		FROM dl.projects
+		WHERE id = $1
+	`, project).Scan(&paths)
 	if err != nil {
-		return nil, fmt.Errorf("packedCache query, project %v, vrange %v: %w", project, vrange, err)
-	}
-
-	packs := make(map[string]bool)
-
-	for rows.Next() {
-		var path string
-		err = rows.Scan(&path)
-		if err != nil {
-			return nil, fmt.Errorf("packedCache scan, project %v, vrange %v: %w", project, vrange, err)
-		}
-
-		packs[path] = true
+		return nil, fmt.Errorf("packedCache query, project %v: %w", project, err)
 	}
 
 	return &PackedCache{
-		packs: packs,
+		paths: paths,
 	}, nil
 }
 
@@ -390,9 +374,10 @@ func (p *PackedCache) IsParentPacked(path string) (string, bool) {
 	for _, split := range strings.Split(path, "/") {
 		currentPath = fmt.Sprintf("%v%v/", currentPath, split)
 
-		_, ok := p.packs[currentPath]
-		if ok {
-			return currentPath, true
+		for _, path := range p.paths {
+			if path == currentPath {
+				return currentPath, true
+			}
 		}
 	}
 
