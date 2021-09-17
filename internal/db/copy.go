@@ -8,17 +8,17 @@ import (
 )
 
 func CopyAllObjects(ctx context.Context, tx pgx.Tx, source int64, target int64) error {
-	var samePackPaths bool
+	var samePackPatterns bool
 	err := tx.QueryRow(ctx, `
-		SELECT COALESCE((SELECT pack_paths FROM dl.projects WHERE id = $1), '{}') =
-		       COALESCE((SELECT pack_paths FROM dl.projects WHERE id = $2), '{}');
-	`, source, target).Scan(&samePackPaths)
+		SELECT COALESCE((SELECT pack_patterns FROM dl.projects WHERE id = $1), '{}') =
+		       COALESCE((SELECT pack_patterns FROM dl.projects WHERE id = $2), '{}');
+	`, source, target).Scan(&samePackPatterns)
 	if err != nil {
-		return fmt.Errorf("check matching pack paths, source %v, target %v: %w", source, target, err)
+		return fmt.Errorf("check matching pack patterns, source %v, target %v: %w", source, target, err)
 	}
 
-	if !samePackPaths {
-		return fmt.Errorf("cannot copy paths because pack paths do not match for source %v and target %v", source, target)
+	if !samePackPatterns {
+		return fmt.Errorf("cannot copy paths because pack patterns do not match for source %v and target %v", source, target)
 	}
 
 	_, err = tx.Exec(ctx, `

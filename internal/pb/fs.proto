@@ -25,7 +25,7 @@ service Fs {
 message NewProjectRequest {
     int64 id = 1;
     optional int64 template = 2;
-    repeated string pack_paths = 3;
+    repeated string pack_patterns = 3;
 }
 
 message NewProjectResponse {};

@@ -581,41 +581,7 @@ func TestGetCompressWithIgnorePattern(t *testing.T) {
 	})
 }
 
-func TestUpdate(t *testing.T) {
-	tc := util.NewTestCtx(t)
-	defer tc.Close()
-
-	writeProject(tc, 1, 1)
-	writeObject(tc, 1, 1, nil, "/a", "v1")
-	writeObject(tc, 1, 1, nil, "/b", "v1")
-
-	fs := tc.FsApi()
-
-	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
-		"/a": {content: "v2"},
-	})
-	err := fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
-
-	if updateStream.response.Version != 2 {
-		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
-	}
-
-	stream := &mockGetServer{ctx: tc.Context()}
-	err = fs.Get(prefixQuery(1, nil, "/"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
-
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
-		"/a": {content: "v2"},
-		"/b": {content: "v1"},
-	})
-}
-
-func TestPack(t *testing.T) {
+func TestGetPackedObjects(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 
@@ -693,6 +659,33 @@ func TestGetObjectWithinPack(t *testing.T) {
 	})
 }
 
+func TestGetObjectWithinPatternPack(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "/a/.*/")
+	writePackedObjects(tc, 1, 1, nil, "/a/b/", map[string]expectedObject{
+		"/a/b/c": {content: "a/b/c v1"},
+		"/a/b/d": {content: "a/b/d v1"},
+	})
+	writePackedObjects(tc, 1, 1, nil, "/a/e/", map[string]expectedObject{
+		"/a/e/f": {content: "a/e/f v1"},
+		"/a/e/g": {content: "a/e/g v1"},
+	})
+
+	fs := tc.FsApi()
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err := fs.Get(exactQuery(1, nil, "/a/b/c"), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a/b/c": {content: "a/b/c v1"},
+	})
+}
+
 func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
@@ -720,6 +713,40 @@ func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
 		"/a/c": {content: "a/c v1"},
 		"/a/d": {content: "a/d v1"},
 		"/b":   {content: "b v2"},
+	})
+}
+
+func TestUpdate(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a", "v1")
+	writeObject(tc, 1, 1, nil, "/b", "v1")
+
+	fs := tc.FsApi()
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"/a": {content: "v2"},
+	})
+	err := fs.Update(updateStream)
+	if err != nil {
+		t.Fatalf("fs.Update: %v", err)
+	}
+
+	if updateStream.response.Version != 2 {
+		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
+	}
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(1, nil, "/"), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a": {content: "v2"},
+		"/b": {content: "v1"},
 	})
 }
 
@@ -756,6 +783,42 @@ func TestUpdatePackedObject(t *testing.T) {
 
 	verifyStreamResults(tc, stream.results, map[string]expectedObject{
 		"/a/c": {content: "a/c v2"},
+	})
+}
+
+func TestUpdateWithinPatternPackedObject(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "/a/.*/")
+	writePackedObjects(tc, 1, 1, nil, "/a/b/", map[string]expectedObject{
+		"/a/b/c": {content: "a/b/c v1"},
+		"/a/b/d": {content: "a/b/d v1"},
+	})
+	writeObject(tc, 1, 2, nil, "/b", "b v1")
+
+	fs := tc.FsApi()
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"/a/b/c": {content: "a/b/c v2"},
+	})
+	err := fs.Update(updateStream)
+	if err != nil {
+		t.Fatalf("fs.Update: %v", err)
+	}
+
+	if updateStream.response.Version != 2 {
+		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
+	}
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(exactQuery(1, nil, "/a/b/c"), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a/b/c": {content: "a/b/c v2"},
 	})
 }
 
