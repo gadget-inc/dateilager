@@ -1,2 +1,2 @@
 ALTER TABLE dl.projects
-ADD COLUMN pack_paths text[];
+ADD COLUMN pack_patterns text[];

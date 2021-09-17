@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
@@ -220,12 +221,12 @@ func filterObject(path string, objectQuery *pb.ObjectQuery, object *pb.Object) (
 	return nil, SKIP
 }
 
-func GetObjects(ctx context.Context, tx pgx.Tx, packedCache *PackedCache, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, error) {
-	parent, isPacked := packedCache.IsParentPacked(objectQuery.Path)
+func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, error) {
+	packParent := packManager.IsPathPacked(objectQuery.Path)
 
 	originalPath := objectQuery.Path
-	if isPacked {
-		objectQuery.Path = parent
+	if packParent != nil {
+		objectQuery.Path = *packParent
 	}
 
 	sql, args := buildQuery(project, vrange, objectQuery)
@@ -259,7 +260,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packedCache *PackedCache, projec
 			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: %w", project, vrange, err)
 		}
 
-		if isPacked {
+		if packParent != nil {
 			buffer, err = unpackObjects(encoded)
 			if err != nil {
 				return nil, err
@@ -347,39 +348,44 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange,
 	}, nil
 }
 
-type PackedCache struct {
-	paths []string
+type PackManager struct {
+	matchers []*regexp.Regexp
 }
 
-func NewPackedCache(ctx context.Context, tx pgx.Tx, project int64) (*PackedCache, error) {
-	var paths []string
+func NewPackManager(ctx context.Context, tx pgx.Tx, project int64) (*PackManager, error) {
+	var patterns []string
 
 	err := tx.QueryRow(ctx, `
-		SELECT pack_paths
+		SELECT pack_patterns
 		FROM dl.projects
 		WHERE id = $1
-	`, project).Scan(&paths)
+	`, project).Scan(&patterns)
 	if err != nil {
-		return nil, fmt.Errorf("packedCache query, project %v: %w", project, err)
+		return nil, fmt.Errorf("packManager query, project %v: %w", project, err)
 	}
 
-	return &PackedCache{
-		paths: paths,
+	var matchers []*regexp.Regexp
+	for _, pattern := range patterns {
+		matchers = append(matchers, regexp.MustCompile(pattern))
+	}
+
+	return &PackManager{
+		matchers: matchers,
 	}, nil
 }
 
-func (p *PackedCache) IsParentPacked(path string) (string, bool) {
+func (p *PackManager) IsPathPacked(path string) *string {
 	currentPath := ""
 
 	for _, split := range strings.Split(path, "/") {
 		currentPath = fmt.Sprintf("%v%v/", currentPath, split)
 
-		for _, path := range p.paths {
-			if path == currentPath {
-				return currentPath, true
+		for _, matcher := range p.matchers {
+			if matcher.MatchString(currentPath) {
+				return &currentPath
 			}
 		}
 	}
 
-	return "", false
+	return nil
 }

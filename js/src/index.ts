@@ -30,11 +30,13 @@ class UpdateInputStream {
   }
 }
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
 /**
  * Encode string object contents as an array of bytes.
  */
 export function encodeContent(content: string): Uint8Array {
-  const encoder = new TextEncoder();
   return encoder.encode(content);
 }
 
@@ -42,7 +44,6 @@ export function encodeContent(content: string): Uint8Array {
  * Decode an array of bytes as an object's string contents.
  */
  export function decodeContent(bytes: Uint8Array | undefined): string {
-  const decoder = new TextDecoder();
   return decoder.decode(bytes);
 }
 
@@ -76,9 +77,9 @@ export class DateiLagerClient {
     };
   }
 
-  async newProject(project: bigint, packPaths: string[], template?: bigint) {
+  async newProject(project: bigint, packPatterns: string[], template?: bigint) {
     await this.client.newProject(
-      { id: project, packPaths: packPaths, template: template },
+      { id: project, packPatterns: packPatterns, template: template },
       this._options()
     );
   }
