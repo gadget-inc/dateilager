@@ -20,6 +20,19 @@ func CreateProject(ctx context.Context, tx pgx.Tx, project int64) error {
 	return nil
 }
 
+func UpdateLatestVersion(ctx context.Context, tx pgx.Tx, project int64, version int64) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE dl.projects
+		SET latest_version = $1
+		WHERE id = $2
+	`, version, project)
+	if err != nil {
+		return fmt.Errorf("update project %v latest version to %v: %w", project, version, err)
+	}
+
+	return nil
+}
+
 func DeleteObject(ctx context.Context, tx pgx.Tx, project int64, version int64, path string) error {
 	_, err := tx.Exec(ctx, `
 		UPDATE dl.objects

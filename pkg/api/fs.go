@@ -13,7 +13,6 @@ import (
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/pb"
-	"github.com/jackc/pgx/v4"
 )
 
 var (
@@ -78,76 +77,6 @@ func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb
 	}, nil
 }
 
-func (f *Fs) getLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
-	var latest_version int64
-
-	err := tx.QueryRow(ctx, `
-		SELECT latest_version
-		FROM dl.projects WHERE id = $1
-	`, project).Scan(&latest_version)
-	if err == pgx.ErrNoRows {
-		return -1, status.Errorf(codes.NotFound, "FS project not found %v, err: %w", project, err)
-	}
-	if err != nil {
-		return -1, status.Errorf(codes.Internal, "FS get latest version, project %v: %w", project, err)
-	}
-
-	return latest_version, nil
-}
-
-func (f *Fs) lockLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
-	var latest_version int64
-
-	err := tx.QueryRow(ctx, `
-		SELECT latest_version
-		FROM dl.projects WHERE id = $1
-		FOR UPDATE
-	`, project).Scan(&latest_version)
-	if err == pgx.ErrNoRows {
-		return -1, status.Errorf(codes.NotFound, "FS project not found %v, err: %w", project, err)
-	}
-	if err != nil {
-		return -1, status.Errorf(codes.Internal, "FS lock latest version, project %v: %w", project, err)
-	}
-
-	return latest_version, nil
-}
-
-func (f *Fs) updateLatestVersion(ctx context.Context, tx pgx.Tx, project int64, version int64) error {
-	_, err := tx.Exec(ctx, `
-		UPDATE dl.projects
-		SET latest_version = $1
-		WHERE id = $2
-	`, version, project)
-	if err != nil {
-		return status.Errorf(codes.Internal, "FS update latest version, project %v version %v: %w", project, version, err)
-	}
-
-	return nil
-}
-
-func (f *Fs) buildVersionRange(ctx context.Context, tx pgx.Tx, project int64, from *int64, to *int64) (db.VersionRange, error) {
-	vrange := db.VersionRange{}
-
-	if from == nil {
-		vrange.From = 0
-	} else {
-		vrange.From = *from
-	}
-
-	if to == nil {
-		latest, err := f.getLatestVersion(ctx, tx, project)
-		if err != nil {
-			return vrange, err
-		}
-		vrange.To = latest
-	} else {
-		vrange.To = *to
-	}
-
-	return vrange, nil
-}
-
 func validateObjectQuery(query *pb.ObjectQuery) error {
 	if !query.IsPrefix && len(query.Ignores) > 0 {
 		return status.Error(codes.InvalidArgument, "Invalid ObjectQuery: cannot mix unprefixed queries with ignore predicates")
@@ -171,10 +100,14 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	}
 	defer close()
 
-	vrange, err := f.buildVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
-	if err != nil {
-		return err
+	vrange, err := db.NewVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
+	if errors.Is(err, db.ErrNotFound) {
+		return status.Errorf(codes.NotFound, "FS get missing latest version: %w", err)
 	}
+	if err != nil {
+		return status.Errorf(codes.Internal, "FS get latest version: %w", err)
+	}
+
 	f.Log.Info("FS.Get[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
 	packedCache, err := db.NewPackedCache(ctx, tx, req.Project, vrange)
@@ -233,10 +166,14 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	}
 	defer close()
 
-	vrange, err := f.buildVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
-	if err != nil {
-		return err
+	vrange, err := db.NewVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
+	if errors.Is(err, db.ErrNotFound) {
+		return status.Errorf(codes.NotFound, "FS get compress missing latest version: %w", err)
 	}
+	if err != nil {
+		return status.Errorf(codes.Internal, "FS get compress latest version: %w", err)
+	}
+
 	f.Log.Info("FS.GetCompress[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
 	for _, query := range req.Queries {
@@ -316,9 +253,12 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		if project == -1 {
 			project = req.Project
 
-			latest_version, err := f.lockLatestVersion(ctx, tx, project)
+			latest_version, err := db.LockLatestVersion(ctx, tx, project)
+			if errors.Is(err, db.ErrNotFound) {
+				return status.Errorf(codes.NotFound, "FS update missing latest version: %w", err)
+			}
 			if err != nil {
-				return err
+				return status.Errorf(codes.Internal, "FS update lock latest version: %w", err)
 			}
 
 			version = latest_version + 1
@@ -362,9 +302,9 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		}
 	}
 
-	err = f.updateLatestVersion(ctx, tx, project, version)
+	err = db.UpdateLatestVersion(ctx, tx, project, version)
 	if err != nil {
-		return err
+		return status.Errorf(codes.Internal, "FS update latest version: %w", err)
 	}
 
 	err = tx.Commit(ctx)
@@ -386,9 +326,12 @@ func (f *Fs) Pack(ctx context.Context, req *pb.PackRequest) (*pb.PackResponse, e
 
 	f.Log.Info("FS.Pack[Init]", zap.Int64("project", req.Project), zap.String("path", req.Path))
 
-	latest_version, err := f.lockLatestVersion(ctx, tx, req.Project)
+	latest_version, err := db.LockLatestVersion(ctx, tx, req.Project)
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, status.Errorf(codes.NotFound, "FS pack missing latest version: %w", err)
+	}
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "FS pack get latest version: %w", err)
 	}
 
 	vrange := db.VersionRange{From: 0, To: latest_version}
@@ -432,9 +375,9 @@ func (f *Fs) Pack(ctx context.Context, req *pb.PackRequest) (*pb.PackResponse, e
 		return nil, status.Errorf(codes.Internal, "FS insert packed objects: %w", err)
 	}
 
-	err = f.updateLatestVersion(ctx, tx, req.Project, version)
+	err = db.UpdateLatestVersion(ctx, tx, req.Project, version)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "FS pack update latest version: %w", err)
 	}
 
 	err = tx.Commit(ctx)
@@ -457,9 +400,12 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 
 	f.Log.Info("FS.Inspect[Query]", zap.Int64("project", req.Project))
 
-	vrange, err := f.buildVersionRange(ctx, tx, req.Project, nil, nil)
+	vrange, err := db.NewVersionRange(ctx, tx, req.Project, nil, nil)
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, status.Errorf(codes.NotFound, "FS inspect missing latest version: %w", err)
+	}
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "FS inspect latest version: %w", err)
 	}
 
 	packedCache, err := db.NewPackedCache(ctx, tx, req.Project, vrange)
