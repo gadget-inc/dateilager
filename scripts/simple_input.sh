@@ -22,6 +22,9 @@ v1() {
     echo "a" > "${dir}/a"
     echo "b" > "${dir}/b"
 
+    mkdir -p "${dir}/n1/n2"
+    echo "g" > "${dir}/n1/g"
+
     log "wrote v1 to ${dir}"
 }
 
@@ -33,6 +36,11 @@ v2() {
     echo "c" > "${dir}/c"
     ln -s a "${dir}/e"
     mkdir -p "${dir}/f"
+
+    (
+        cd "${dir}/n1/n2"
+        ln -s "../g" h
+    )
 
     log "wrote v2 to ${dir}"
 }

@@ -336,8 +336,10 @@ func TestRebuildWithEmptyDirAndSymlink(t *testing.T) {
 
 	writeProject(tc, 1, 2)
 	writeObject(tc, 1, 1, nil, "/a", "a v1")
+	writeObject(tc, 1, 1, nil, "/d/e", "e v1")
 	writeEmptyDir(tc, 1, 1, nil, "/b/")
 	writeSymlink(tc, 1, 2, nil, "/c", "/a")
+	writeSymlink(tc, 1, 2, nil, "/f/g/h", "/d/e")
 
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
@@ -351,9 +353,11 @@ func TestRebuildWithEmptyDirAndSymlink(t *testing.T) {
 	}
 
 	verifyDir(tc, tmpDir, map[string]expectedFile{
-		"/a":  {content: "a v1"},
-		"/b/": {content: "", fileType: typeDirectory},
-		"/c":  {content: "/a", fileType: typeSymlink},
+		"/a":     {content: "a v1"},
+		"/d/e":   {content: "e v1"},
+		"/b/":    {content: "", fileType: typeDirectory},
+		"/c":     {content: "/a", fileType: typeSymlink},
+		"/f/g/h": {content: "/d/e", fileType: typeSymlink},
 	})
 }
 

@@ -165,6 +165,11 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 				}
 
 			case tar.TypeSymlink:
+				err = os.MkdirAll(filepath.Dir(path), 0777)
+				if err != nil {
+					return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
+				}
+
 				err = os.Symlink(header.Linkname, path)
 				if err != nil {
 					return fmt.Errorf("ln -s %v %v: %w", header.Linkname, path, err)
