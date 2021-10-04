@@ -188,16 +188,39 @@ func PackObjects(objects ObjectStream) ([]byte, []byte, error) {
 }
 
 func updateObjects(before []byte, updates []*pb.Object) ([]byte, []byte, error) {
+	seenPaths := make(map[string]bool)
+	idxHint := 0
+
 	reader := NewTarReader(before)
+	readerObjectsRemaining := true
 
 	stream := func() (*pb.Object, error) {
+		// Yield unseen updates as new objects if we've finished walking the original pack
+		if !readerObjectsRemaining {
+			for idx, object := range updates[idxHint:] {
+				if _, ok := seenPaths[object.Path]; !ok {
+					seenPaths[object.Path] = true
+					idxHint = idx
+
+					if object.Deleted {
+						return nil, SKIP
+					}
+					return object, nil
+				}
+			}
+			return nil, io.EOF
+		}
+
 		header, err := reader.Next()
 		if err == io.EOF {
-			return nil, io.EOF
+			readerObjectsRemaining = false
+			return nil, SKIP
 		}
 		if err != nil {
 			return nil, err
 		}
+
+		seenPaths[header.Name] = true
 
 		update := findUpdate(updates, header.Name)
 		if update != nil {

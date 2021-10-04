@@ -759,7 +759,7 @@ func TestUpdatePackedObject(t *testing.T) {
 		"/a/c": {content: "a/c v1"},
 		"/a/d": {content: "a/d v1"},
 	})
-	writeObject(tc, 1, 2, nil, "/b", "b v1")
+	writeObject(tc, 1, 1, nil, "/b", "b v1")
 
 	fs := tc.FsApi()
 
@@ -786,7 +786,39 @@ func TestUpdatePackedObject(t *testing.T) {
 	})
 }
 
-func TestUpdateWithinPatternPackedObject(t *testing.T) {
+func TestUpdateWithNewPatternPackedObject(t *testing.T) {
+	tc := util.NewTestCtx(t)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "/a/.*/")
+	writeObject(tc, 1, 1, nil, "/b", "b v1")
+
+	fs := tc.FsApi()
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"/a/b/c": {content: "a/b/c v2"},
+	})
+	err := fs.Update(updateStream)
+	if err != nil {
+		t.Fatalf("fs.Update: %v", err)
+	}
+
+	if updateStream.response.Version != 2 {
+		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
+	}
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(exactQuery(1, nil, "/a/b/c"), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a/b/c": {content: "a/b/c v2"},
+	})
+}
+
+func TestUpdateWithExistingPatternPackedObject(t *testing.T) {
 	tc := util.NewTestCtx(t)
 	defer tc.Close()
 

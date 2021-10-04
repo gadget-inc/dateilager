@@ -123,26 +123,34 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 	var h1, h2 []byte
 	var content []byte
 
-	err := tx.QueryRow(ctx, `
+	rows, err := tx.Query(ctx, `
 		UPDATE dl.objects SET stop_version = $1
 		WHERE project = $2
 		  AND path = $3
 		  AND packed IS true
 		  AND stop_version IS NULL
 		RETURNING (hash).h1, (hash).h2
-	`, version, project, parent).Scan(&h1, &h2)
+	`, version, project, parent)
 	if err != nil {
-		return fmt.Errorf("update latest version, project %v, version %v, parent %v: %w", project, version, parent, err)
+		return fmt.Errorf("update latest packed object version, project %v, version %v, parent %v: %w", project, version, parent, err)
 	}
 
-	err = tx.QueryRow(ctx, `
-		SELECT bytes
-		FROM dl.contents
-		WHERE (hash).h1 = $1
-		  AND (hash).h2 = $2
-	`, h1, h2).Scan(&content)
-	if err != nil {
-		return fmt.Errorf("fetch latest packed content, hash %x-%x: %w", h1, h2, err)
+	if rows.Next() {
+		err = rows.Scan(&h1, &h2)
+		if err != nil {
+			return fmt.Errorf("scan hash from updated packed object, project %v, version %v, parent %v: %w", project, version, parent, err)
+		}
+		rows.Close()
+
+		err = tx.QueryRow(ctx, `
+			SELECT bytes
+			FROM dl.contents
+			WHERE (hash).h1 = $1
+			AND (hash).h2 = $2
+		`, h1, h2).Scan(&content)
+		if err != nil {
+			return fmt.Errorf("fetch latest packed content, hash %x-%x: %w", h1, h2, err)
+		}
 	}
 
 	updated, namesTar, err := updateObjects(content, updates)
