@@ -162,6 +162,7 @@ func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client)
 	}
 
 	log.Info("updated objects", zap.Int64("project", a.project), zap.Int64("version", version), zap.Int("count", count))
+	fmt.Println(version)
 }
 
 type inspectArgs struct {
