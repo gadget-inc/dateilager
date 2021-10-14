@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/server"
@@ -20,6 +21,7 @@ type ServerArgs struct {
 	port  int
 	dbUri string
 	prof  string
+	level zapcore.Level
 }
 
 func parseArgs() ServerArgs {
@@ -27,21 +29,23 @@ func parseArgs() ServerArgs {
 	dbUri := flag.String("dburi", "postgres://postgres@127.0.0.1:5432/dl", "Postgres URI")
 	prof := flag.String("prof", "", "Output CPU profile to this path")
 
+	level := zap.LevelFlag("log", zap.DebugLevel, "Set the log level")
+
 	flag.Parse()
 
 	return ServerArgs{
 		port:  *port,
 		dbUri: *dbUri,
 		prof:  *prof,
+		level: *level,
 	}
 }
 
 func main() {
 	ctx := context.Background()
-	log, _ := zap.NewDevelopment()
-	defer log.Sync()
-
 	args := parseArgs()
+	log, _ := zap.NewDevelopment(zap.IncreaseLevel(args.level))
+	defer log.Sync()
 
 	if args.prof != "" {
 		file, err := os.Create(args.prof)

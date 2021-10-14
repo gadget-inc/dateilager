@@ -34,7 +34,7 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 	}
 	defer close()
 
-	f.Log.Info("FS.NewProject[Init]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
+	f.Log.Debug("FS.NewProject[Init]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
 
 	err = db.CreateProject(ctx, tx, req.Id, req.PackPatterns)
 	if err != nil {
@@ -53,7 +53,7 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 		return nil, status.Errorf(codes.Internal, "FS new project commit tx: %w", err)
 	}
 
-	f.Log.Info("FS.NewProject[Commit]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
+	f.Log.Debug("FS.NewProject[Commit]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
 
 	return &pb.NewProjectResponse{}, nil
 }
@@ -65,7 +65,7 @@ func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb
 	}
 	defer close()
 
-	f.Log.Info("FS.ListProjects[Query]")
+	f.Log.Debug("FS.ListProjects[Query]")
 
 	projects, err := db.ListProjects(ctx, tx)
 	if err != nil {
@@ -108,7 +108,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 		return status.Errorf(codes.Internal, "FS get latest version: %w", err)
 	}
 
-	f.Log.Info("FS.Get[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
+	f.Log.Debug("FS.Get[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
 	packManager, err := db.NewPackManager(ctx, tx, req.Project)
 	if err != nil {
@@ -121,7 +121,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 			return err
 		}
 
-		f.Log.Info("FS.Get[Query]",
+		f.Log.Debug("FS.Get[Query]",
 			zap.Int64("project", req.Project),
 			zap.Any("vrange", vrange),
 			zap.String("path", query.Path),
@@ -174,7 +174,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 		return status.Errorf(codes.Internal, "FS get compress latest version: %w", err)
 	}
 
-	f.Log.Info("FS.GetCompress[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
+	f.Log.Debug("FS.GetCompress[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
 	for _, query := range req.Queries {
 		err = validateObjectQuery(query)
@@ -182,7 +182,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			return err
 		}
 
-		f.Log.Info("FS.GetCompress[Query]",
+		f.Log.Debug("FS.GetCompress[Query]",
 			zap.Int64("project", req.Project),
 			zap.Any("vrange", vrange),
 			zap.String("path", query.Path),
@@ -262,7 +262,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			}
 
 			version = latest_version + 1
-			f.Log.Info("FS.Update[Init]", zap.Int64("project", project), zap.Int64("version", version))
+			f.Log.Debug("FS.Update[Init]", zap.Int64("project", project), zap.Int64("version", version))
 
 			packManager, err = db.NewPackManager(ctx, tx, project)
 			if err != nil {
@@ -280,7 +280,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			continue
 		}
 
-		f.Log.Info("FS.Update[Object]", zap.Int64("project", project), zap.Int64("version", version), zap.String("path", req.Object.Path))
+		f.Log.Debug("FS.Update[Object]", zap.Int64("project", project), zap.Int64("version", version), zap.String("path", req.Object.Path))
 
 		if req.Object.Deleted {
 			err = db.DeleteObject(ctx, tx, project, version, req.Object.Path)
@@ -294,7 +294,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	}
 
 	for parent, objects := range buffer {
-		f.Log.Info("FS.Update[PackedObject]", zap.Int64("project", project), zap.Int64("version", version), zap.String("parent", parent), zap.Int("object_count", len(objects)))
+		f.Log.Debug("FS.Update[PackedObject]", zap.Int64("project", project), zap.Int64("version", version), zap.String("parent", parent), zap.Int("object_count", len(objects)))
 
 		err = db.UpdatePackedObjects(ctx, tx, project, version, parent, objects)
 		if err != nil {
@@ -312,7 +312,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return status.Errorf(codes.Internal, "FS update commit tx: %w", err)
 	}
 
-	f.Log.Info("FS.Update[Commit]", zap.Int64("project", project), zap.Int64("version", version))
+	f.Log.Debug("FS.Update[Commit]", zap.Int64("project", project), zap.Int64("version", version))
 
 	return stream.SendAndClose(&pb.UpdateResponse{Version: version})
 }
@@ -324,7 +324,7 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 	}
 	defer close()
 
-	f.Log.Info("FS.Inspect[Query]", zap.Int64("project", req.Project))
+	f.Log.Debug("FS.Inspect[Query]", zap.Int64("project", req.Project))
 
 	vrange, err := db.NewVersionRange(ctx, tx, req.Project, nil, nil)
 	if errors.Is(err, db.ErrNotFound) {
@@ -389,7 +389,7 @@ func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.Snapsho
 	}
 	defer close()
 
-	f.Log.Info("FS.Snapshot[Query]")
+	f.Log.Debug("FS.Snapshot[Query]")
 
 	projects, err := db.ListProjects(ctx, tx)
 	if err != nil {
@@ -412,10 +412,10 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 	}
 	defer close()
 
-	f.Log.Info("FS.Reset[Init]")
+	f.Log.Debug("FS.Reset[Init]")
 
 	if len(req.Projects) == 0 {
-		f.Log.Info("FS.Reset[All]")
+		f.Log.Debug("FS.Reset[All]")
 
 		err = db.ResetAll(ctx, tx)
 		if err != nil {
@@ -425,7 +425,7 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 		var projects []int64
 
 		for _, project := range req.Projects {
-			f.Log.Info("FS.Reset[Project]", zap.Int64("project", project.Id), zap.Int64("version", project.Version))
+			f.Log.Debug("FS.Reset[Project]", zap.Int64("project", project.Id), zap.Int64("version", project.Version))
 			err = db.ResetProject(ctx, tx, project.Id, project.Version)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "FS reset project %v: %w", project.Id, err)
@@ -443,7 +443,7 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS reset commit tx: %w", err)
 	}
-	f.Log.Info("FS.Reset[Commit]")
+	f.Log.Debug("FS.Reset[Commit]")
 
 	return &pb.ResetResponse{}, nil
 }
