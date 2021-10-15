@@ -2,12 +2,11 @@ package auth
 
 import (
 	"context"
+	"crypto/ed25519"
 	"fmt"
-	"os"
 	"strconv"
-	"strings"
 
-	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/o1egl/paseto"
 )
 
 type ctxKey string
@@ -48,59 +47,37 @@ var (
 )
 
 type AuthValidator struct {
-	dbConn     db.DbConnector
-	adminToken string
+	pasetoKey ed25519.PublicKey
 }
 
-func NewAuthValidator(dbConn db.DbConnector) (*AuthValidator, error) {
-	adminToken := os.Getenv("DL_ADMIN_TOKEN")
+func NewAuthValidator(pasetoKey ed25519.PublicKey) *AuthValidator {
+	return &AuthValidator{
+		pasetoKey: pasetoKey,
+	}
+}
 
-	if adminToken == "" {
-		return nil, fmt.Errorf("missing DL_ADMIN_TOKEN")
+func (av *AuthValidator) Validate(ctx context.Context, token string) (Auth, error) {
+	var payload paseto.JSONToken
+	var footer string
+
+	v2 := paseto.NewV2()
+
+	err := v2.Verify(token, av.pasetoKey, &payload, &footer)
+	if err != nil {
+		return noAuth, fmt.Errorf("verify token %v: %w", token, err)
 	}
 
-	return &AuthValidator{
-		dbConn:     dbConn,
-		adminToken: adminToken,
-	}, nil
-}
-
-func (av *AuthValidator) Validate(ctx context.Context, fullToken string) (Auth, error) {
-	if fullToken == av.adminToken {
+	if payload.Subject == "admin" {
 		return adminAuth, nil
 	}
 
-	splits := strings.Split(fullToken, ":")
-	project, err := strconv.ParseInt(splits[0], 10, 64)
-	if err != nil || len(splits) != 2 {
-		return noAuth, fmt.Errorf("missing project ID prefix in auth token")
-	}
-
-	token := splits[1]
-
-	tx, close, err := av.dbConn.Connect(ctx)
+	project, err := strconv.ParseInt(payload.Subject, 10, 64)
 	if err != nil {
-		return noAuth, fmt.Errorf("auth db connect: %w", err)
-	}
-	defer close()
-
-	var expectedToken string
-
-	err = tx.QueryRow(ctx, `
-		SELECT token
-		FROM dl.projects
-		WHERE id = $1
-	`, project).Scan(&expectedToken)
-	if err != nil {
-		return noAuth, fmt.Errorf("auth reading project token: %w", err)
+		return noAuth, fmt.Errorf("parse Paseto subject %v: %w", payload.Subject, err)
 	}
 
-	if expectedToken == token {
-		return Auth{
-			Role:    Project,
-			Project: &project,
-		}, nil
-	}
-
-	return noAuth, fmt.Errorf("invalid auth token for project %v", project)
+	return Auth{
+		Role:    Project,
+		Project: &project,
+	}, nil
 }

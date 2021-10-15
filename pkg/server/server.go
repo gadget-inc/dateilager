@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -76,13 +77,10 @@ type Server struct {
 	Env    environment.Env
 }
 
-func NewServer(ctx context.Context, log *zap.Logger, dbConn *DbPoolConnector, cert *tls.Certificate) (*Server, error) {
+func NewServer(ctx context.Context, log *zap.Logger, dbConn *DbPoolConnector, cert *tls.Certificate, pasetoKey ed25519.PublicKey) *Server {
 	creds := credentials.NewServerTLSFromCert(cert)
 
-	validator, err := auth.NewAuthValidator(dbConn)
-	if err != nil {
-		return nil, fmt.Errorf("build auth validator: %w", err)
-	}
+	validator := auth.NewAuthValidator(pasetoKey)
 
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(
@@ -97,12 +95,6 @@ func NewServer(ctx context.Context, log *zap.Logger, dbConn *DbPoolConnector, ce
 				grpc_zap.StreamServerInterceptor(log),
 				grpc_recovery.StreamServerInterceptor(),
 				grpc.StreamServerInterceptor(validateTokenStream(log, validator)),
-			),
-		),
-		grpc.StreamInterceptor(
-			grpc_middleware.ChainStreamServer(
-				grpc_zap.StreamServerInterceptor(log),
-				grpc_recovery.StreamServerInterceptor(),
 			),
 		),
 		grpc.MaxRecvMsgSize(50*MB),
@@ -123,7 +115,7 @@ func NewServer(ctx context.Context, log *zap.Logger, dbConn *DbPoolConnector, ce
 
 	server.monitorDbPool(ctx, dbConn)
 
-	return server, nil
+	return server
 }
 
 func (s *Server) monitorDbPool(ctx context.Context, dbConn *DbPoolConnector) {

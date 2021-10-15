@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -15,14 +16,12 @@ import (
 type WebUIArgs struct {
 	port      int
 	server    string
-	token     string
 	assetsDir string
 }
 
 func parseArgs() WebUIArgs {
 	port := flag.Int("port", 3333, "web server port")
 	server := flag.String("server", "localhost:5051", "GRPC server address and port")
-	token := flag.String("token", "", "Auth token ")
 	assetsDir := flag.String("assets", "assets", "Assets directory")
 
 	flag.Parse()
@@ -30,7 +29,6 @@ func parseArgs() WebUIArgs {
 	return WebUIArgs{
 		port:      *port,
 		server:    *server,
-		token:     *token,
 		assetsDir: *assetsDir,
 	}
 }
@@ -44,7 +42,12 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()
 
-	c, err := client.NewClient(ctx, args.server, args.token)
+	token := os.Getenv("DL_TOKEN")
+	if token == "" {
+		log.Fatal("missing token: set the DL_TOKEN environment variable")
+	}
+
+	c, err := client.NewClient(ctx, args.server, token)
 	if err != nil {
 		log.Fatal("could not connect to server", zap.String("server", args.server))
 	}
