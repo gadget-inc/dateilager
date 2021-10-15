@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"net"
@@ -19,12 +22,13 @@ import (
 )
 
 type ServerArgs struct {
-	port     int
-	dbUri    string
-	certFile string
-	keyFile  string
-	prof     string
-	level    zapcore.Level
+	port       int
+	dbUri      string
+	certFile   string
+	keyFile    string
+	pasetoFile string
+	prof       string
+	level      zapcore.Level
 }
 
 func parseArgs() ServerArgs {
@@ -32,6 +36,7 @@ func parseArgs() ServerArgs {
 	dbUri := flag.String("dburi", "postgres://postgres@127.0.0.1:5432/dl", "Postgres URI")
 	certFile := flag.String("cert", "dev/server.crt", "TLS cert file")
 	keyFile := flag.String("key", "dev/server.key", "TLS key file")
+	pasetoFile := flag.String("paseto", "dev/paseto.pub", "Paseto public key file")
 	prof := flag.String("prof", "", "Output CPU profile to this path")
 
 	level := zap.LevelFlag("log", zap.DebugLevel, "Set the log level")
@@ -39,13 +44,33 @@ func parseArgs() ServerArgs {
 	flag.Parse()
 
 	return ServerArgs{
-		port:     *port,
-		dbUri:    *dbUri,
-		certFile: *certFile,
-		keyFile:  *keyFile,
-		prof:     *prof,
-		level:    *level,
+		port:       *port,
+		dbUri:      *dbUri,
+		certFile:   *certFile,
+		keyFile:    *keyFile,
+		pasetoFile: *pasetoFile,
+		prof:       *prof,
+		level:      *level,
 	}
+}
+
+func parsePublicKey(log *zap.Logger, path string) ed25519.PublicKey {
+	pubKeyBytes, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatal("cannot open Paseto public key file", zap.String("path", path), zap.Error(err))
+	}
+
+	block, _ := pem.Decode(pubKeyBytes)
+	if block == nil || block.Type != "PUBLIC KEY" {
+		log.Fatal("error decoding Paseto public key PEM")
+	}
+
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		log.Fatal("error parsing Paseto public key", zap.Error(err))
+	}
+
+	return pub.(ed25519.PublicKey)
 }
 
 func main() {
@@ -65,12 +90,12 @@ func main() {
 
 	listen, err := net.Listen("tcp", fmt.Sprintf(":%d", args.port))
 	if err != nil {
-		log.Fatal("failed to listen", zap.String("protocol", "tcp"), zap.Int("port", args.port))
+		log.Fatal("failed to listen", zap.String("protocol", "tcp"), zap.Int("port", args.port), zap.Error(err))
 	}
 
 	dbConn, err := server.NewDbPoolConnector(ctx, args.dbUri)
 	if err != nil {
-		log.Fatal("cannot connect to DB", zap.String("dburi", args.dbUri))
+		log.Fatal("cannot connect to DB", zap.String("dburi", args.dbUri), zap.Error(err))
 	}
 	defer dbConn.Close()
 
@@ -79,10 +104,9 @@ func main() {
 		log.Fatal("cannot open TLS cert and key files", zap.String("cert", args.certFile), zap.String("key", args.keyFile), zap.Error(err))
 	}
 
-	s, err := server.NewServer(ctx, log, dbConn, &cert)
-	if err != nil {
-		log.Fatal("cannot start server", zap.Error(err))
-	}
+	pasetoKey := parsePublicKey(log, args.pasetoFile)
+
+	s := server.NewServer(ctx, log, dbConn, &cert, pasetoKey)
 
 	log.Info("register Fs")
 	fs := &api.Fs{
