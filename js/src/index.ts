@@ -1,4 +1,4 @@
-import { ChannelCredentials } from "@grpc/grpc-js";
+import { credentials, ChannelCredentials, Metadata } from "@grpc/grpc-js";
 import { GrpcTransport } from "@protobuf-ts/grpc-transport";
 import { ClientStreamingCall } from "@protobuf-ts/runtime-rpc";
 import { TextDecoder, TextEncoder } from "util";
@@ -59,10 +59,21 @@ export function encodeContent(content: string): Uint8Array {
 export class DateiLagerClient {
   client: FsClient;
 
-  constructor(host: string, port: number) {
+  constructor(host: string, port: number, rootCert: Buffer, token: string) {
+    const tokenMetaGenerator = (_params: any, callback: (err: Error | null, meta: Metadata) => void) => {
+      const meta = new Metadata();
+      meta.add("authorization", `Bearer ${token}`);
+      callback(null, meta);
+    }
+
+    const creds = credentials.combineChannelCredentials(
+      ChannelCredentials.createSsl(rootCert),
+      credentials.createFromMetadataGenerator(tokenMetaGenerator),
+    )
+
     const transport = new GrpcTransport({
       host: host + ":" + port,
-      channelCredentials: ChannelCredentials.createInsecure(),
+      channelCredentials: creds, // ChannelCredentials.createSsl(null, key, cert),
       clientOptions: {
         'grpc.max_send_message_length': 50 * MB,
         'grpc.max_receive_message_length': 50 * MB,
