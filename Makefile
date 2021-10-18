@@ -125,14 +125,17 @@ k8s-clear:
 	kubectl -n $(PROJECT) delete --all service
 	kubectl -n $(PROJECT) delete --all pod --grace-period 0 --force
 	kubectl -n $(PROJECT) delete --all configmap
-	kubectl delete ns $(PROJECT)
+	kubectl delete ns $(PROJECT) || true
 
 k8s-build: build
-	podman build -f Dockerfile -t "$(PROJECT):server"
-	podman save -o /tmp/$(PROJECT)_server.tar --format oci-archive "$(PROJECT):server"
+	docker build -f Dockerfile -t "localhost/$(PROJECT):server" .
+	docker save -o /tmp/$(PROJECT)_server.tar "localhost/$(PROJECT):server"
 	sudo ctr -n k8s.io images import /tmp/$(PROJECT)_server.tar
 
-k8s-deploy: k8s-build
+k8s/server.properties:
+	scripts/generate_k8s_config.sh $(DB_URI)
+
+k8s-deploy: k8s/server.properties k8s-build
 	kubectl create -f k8s/namespace.yaml
 	kubectl -n $(PROJECT) create configmap server-config --from-env-file=k8s/server.properties
 	kubectl -n $(PROJECT) apply -f k8s/pod.yaml

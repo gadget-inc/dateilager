@@ -163,8 +163,8 @@ The K8S tools assume a local K8S install using Containerd and Podman.
 
 ### Requriements
 
+- docker
 - kubectl
-- podman
 - ctr
 
 ### Build

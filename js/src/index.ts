@@ -73,7 +73,7 @@ export class DateiLagerClient {
 
     const transport = new GrpcTransport({
       host: host + ":" + port,
-      channelCredentials: creds, // ChannelCredentials.createSsl(null, key, cert),
+      channelCredentials: creds,
       clientOptions: {
         'grpc.max_send_message_length': 50 * MB,
         'grpc.max_receive_message_length': 50 * MB,

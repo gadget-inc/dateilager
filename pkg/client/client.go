@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
@@ -37,7 +38,7 @@ type Client struct {
 	fs   pb.FsClient
 }
 
-func NewClientConn(ctx context.Context, log *zap.Logger, conn *grpc.ClientConn) *Client {
+func NewClientConn(log *zap.Logger, conn *grpc.ClientConn) *Client {
 	return &Client{log: log, conn: conn, fs: pb.NewFsClient(conn)}
 }
 
@@ -54,17 +55,20 @@ func NewClient(ctx context.Context, server, token string) (*Client, error) {
 		AccessToken: token,
 	})
 
-	conn, err := grpc.DialContext(ctx, server,
+	connectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	conn, err := grpc.DialContext(connectCtx, server,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(auth),
 		grpc.WithBlock(),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(50*MB), grpc.MaxCallSendMsgSize(50*MB)),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(100*MB), grpc.MaxCallSendMsgSize(100*MB)),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewClientConn(ctx, log, conn), nil
+	return NewClientConn(log, conn), nil
 }
 
 func (c *Client) Close() {

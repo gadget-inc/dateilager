@@ -17,6 +17,8 @@ RUN useradd -ms /bin/bash main
 USER main
 WORKDIR /home/main
 
+VOLUME /home/main/secrets
+
 COPY bin/server server
 COPY migrations migrations
 COPY scripts/entrypoint.sh entrypoint.sh
