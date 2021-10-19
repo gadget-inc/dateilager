@@ -97,8 +97,8 @@ func NewServer(ctx context.Context, log *zap.Logger, dbConn *DbPoolConnector, ce
 				grpc.StreamServerInterceptor(validateTokenStream(log, validator)),
 			),
 		),
-		grpc.MaxRecvMsgSize(50*MB),
-		grpc.MaxSendMsgSize(50*MB),
+		grpc.MaxRecvMsgSize(100*MB),
+		grpc.MaxSendMsgSize(100*MB),
 		grpc.Creds(creds),
 	)
 
