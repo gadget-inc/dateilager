@@ -70,10 +70,11 @@ main() {
         migrate -path "${HOME}/migrations" -database "${appdb}?sslmode=disable" up
     fi
 
+    local log_level="${DL_LOG_LEVEL:-info}"
     local secrets="${HOME}/secrets"
 
     log "start dateilager server"
-    "${HOME}/server" -dburi "${appdb}" -port "${port}" -cert "${secrets}/server.crt" -key "${secrets}/server.key" -paseto "${secrets}/paseto.pub"
+    "${HOME}/server" -dburi "${appdb}" -port "${port}" -log "${log_level}" -cert "${secrets}/server.crt" -key "${secrets}/server.key" -paseto "${secrets}/paseto.pub"
 }
 
 main "$@"

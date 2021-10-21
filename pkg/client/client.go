@@ -55,7 +55,7 @@ func NewClient(ctx context.Context, server, token string) (*Client, error) {
 		AccessToken: token,
 	})
 
-	connectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	conn, err := grpc.DialContext(connectCtx, server,
