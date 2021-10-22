@@ -78,7 +78,7 @@ test: migrate
 	cd test && go test
 
 reset-db: migrate
-	psql $(DB_URI) -c "truncate dl.objects; truncate dl.contents; truncate dl.projects; insert into dl.projects (id, latest_version) values (1, 0);"
+	psql $(DB_URI) -c "truncate dl.objects; truncate dl.contents; truncate dl.projects; insert into dl.projects (id, latest_version, pack_patterns) values (1, 0, '{\"node_modules/.*/\"}');"
 
 setup-local: reset-db
 	scripts/simple_input.sh

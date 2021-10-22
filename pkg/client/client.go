@@ -149,7 +149,6 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 		}
 
 		tarReader := db.NewTarReader(response.Bytes)
-		defer tarReader.Close()
 
 		for {
 			header, err := tarReader.Next()

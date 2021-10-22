@@ -121,6 +121,9 @@ func main() {
 	go func() {
 		<-osSignals
 		s.Grpc.Stop()
+		if args.prof != "" {
+			pprof.StopCPUProfile()
+		}
 		os.Exit(0)
 	}()
 

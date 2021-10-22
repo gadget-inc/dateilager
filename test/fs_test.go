@@ -10,7 +10,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
-	"github.com/klauspost/compress/zstd"
+	"github.com/klauspost/compress/s2"
 	"google.golang.org/grpc"
 )
 
@@ -173,13 +173,8 @@ func verifyTarResults(tc util.TestCtx, results [][]byte, expected map[string]exp
 	count := 0
 
 	for _, result := range results {
-		zstdReader, err := zstd.NewReader(bytes.NewBuffer(result))
-		if err != nil {
-			tc.Fatalf("failed to create zstdReader %v", err)
-		}
-		defer zstdReader.Close()
-
-		tarReader := tar.NewReader(zstdReader)
+		s2Reader := s2.NewReader(bytes.NewBuffer(result))
+		tarReader := tar.NewReader(s2Reader)
 
 		for {
 			header, err := tarReader.Next()

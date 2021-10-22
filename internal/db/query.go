@@ -187,7 +187,6 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 func unpackObjects(content []byte) ([]*pb.Object, error) {
 	var objects []*pb.Object
 	tarReader := NewTarReader(content)
-	defer tarReader.Close()
 
 	for {
 		header, err := tarReader.Next()

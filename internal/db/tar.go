@@ -8,7 +8,7 @@ import (
 	"io"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
-	"github.com/klauspost/compress/zstd"
+	"github.com/klauspost/compress/s2"
 )
 
 var (
@@ -16,25 +16,21 @@ var (
 )
 
 type TarWriter struct {
-	size       int
-	buffer     *bytes.Buffer
-	zstdWriter *zstd.Encoder
-	tarWriter  *tar.Writer
+	size      int
+	buffer    *bytes.Buffer
+	s2Writer  *s2.Writer
+	tarWriter *tar.Writer
 }
 
 func NewTarWriter() *TarWriter {
 	var buffer bytes.Buffer
-
-	zstdWriter, err := zstd.NewWriter(&buffer)
-	if err != nil {
-		panic("assert not reached: invalid ZSTD writer options")
-	}
+	s2Writer := s2.NewWriter(&buffer)
 
 	return &TarWriter{
-		size:       0,
-		buffer:     &buffer,
-		zstdWriter: zstdWriter,
-		tarWriter:  tar.NewWriter(zstdWriter),
+		size:      0,
+		buffer:    &buffer,
+		s2Writer:  s2Writer,
+		tarWriter: tar.NewWriter(s2Writer),
 	}
 }
 
@@ -44,17 +40,17 @@ func (t *TarWriter) BytesAndReset() ([]byte, error) {
 		return nil, fmt.Errorf("close TarWriter.tarWriter: %w", err)
 	}
 
-	err = t.zstdWriter.Close()
+	err = t.s2Writer.Close()
 	if err != nil {
-		return nil, fmt.Errorf("close TarWriter.zstdWriter: %w", err)
+		return nil, fmt.Errorf("close TarWriter.s2Writer: %w", err)
 	}
 
 	output := t.buffer.Bytes()
 
 	t.size = 0
 	t.buffer.Truncate(0)
-	t.zstdWriter.Reset(t.buffer)
-	t.tarWriter = tar.NewWriter(t.zstdWriter)
+	t.s2Writer.Reset(t.buffer)
+	t.tarWriter = tar.NewWriter(t.s2Writer)
 
 	return output, nil
 }
@@ -101,19 +97,16 @@ func (t *TarWriter) WriteObject(object *pb.Object, writeContent bool) error {
 }
 
 type TarReader struct {
-	zstdReader *zstd.Decoder
-	tarReader  *tar.Reader
+	s2Reader  *s2.Reader
+	tarReader *tar.Reader
 }
 
 func NewTarReader(content []byte) *TarReader {
-	zstdReader, err := zstd.NewReader(bytes.NewBuffer(content))
-	if err != nil {
-		panic("assert not reached: invalid ZSTD reader options")
-	}
+	s2Reader := s2.NewReader(bytes.NewBuffer(content))
 
 	return &TarReader{
-		zstdReader: zstdReader,
-		tarReader:  tar.NewReader(zstdReader),
+		s2Reader:  s2Reader,
+		tarReader: tar.NewReader(s2Reader),
 	}
 }
 
@@ -134,10 +127,6 @@ func (t *TarReader) ReadContent() ([]byte, error) {
 func (t *TarReader) CopyContent(buffer io.Writer) error {
 	_, err := io.Copy(buffer, t.tarReader)
 	return err
-}
-
-func (t *TarReader) Close() {
-	t.zstdReader.Close()
 }
 
 func PackObjects(objects ObjectStream) ([]byte, []byte, error) {

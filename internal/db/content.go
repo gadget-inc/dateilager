@@ -2,8 +2,9 @@ package db
 
 import (
 	"bytes"
+	"io"
 
-	"github.com/klauspost/compress/zstd"
+	"github.com/klauspost/compress/s2"
 	"github.com/minio/sha256-simd"
 )
 
@@ -14,15 +15,12 @@ func HashContent(data []byte) ([]byte, []byte) {
 
 type ContentEncoder struct {
 	buffer *bytes.Buffer
-	writer *zstd.Encoder
+	writer *s2.Writer
 }
 
 func NewContentEncoder() *ContentEncoder {
 	var buffer bytes.Buffer
-	writer, err := zstd.NewWriter(&buffer, zstd.WithEncoderLevel(zstd.SpeedFastest))
-	if err != nil {
-		panic("assert not reached: invalid ZSTD writer options")
-	}
+	writer := s2.NewWriter(&buffer)
 
 	return &ContentEncoder{
 		buffer: &buffer,
@@ -54,14 +52,11 @@ func (c *ContentEncoder) Encode(content []byte) ([]byte, error) {
 }
 
 type ContentDecoder struct {
-	reader *zstd.Decoder
+	reader *s2.Reader
 }
 
 func NewContentDecoder() *ContentDecoder {
-	reader, err := zstd.NewReader(nil)
-	if err != nil {
-		panic("assert not reached: invalid ZSTD reader options")
-	}
+	reader := s2.NewReader(nil)
 
 	return &ContentDecoder{
 		reader: reader,
@@ -69,7 +64,8 @@ func NewContentDecoder() *ContentDecoder {
 }
 
 func (c *ContentDecoder) Decoder(encoded []byte) ([]byte, error) {
-	output, err := c.reader.DecodeAll(encoded, make([]byte, 0))
+	c.reader.Reset(bytes.NewBuffer(encoded))
+	output, err := io.ReadAll(c.reader)
 	if err != nil {
 		return nil, err
 	}
