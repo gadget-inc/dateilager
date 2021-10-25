@@ -3,6 +3,7 @@ package client
 import (
 	"archive/tar"
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"io"
@@ -49,7 +50,9 @@ func NewClient(ctx context.Context, server, token string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load system cert pool: %w", err)
 	}
-	creds := credentials.NewClientTLSFromCert(pool, "")
+
+	sslVerification := os.Getenv("DL_SKIP_SSL_VERIFICATION")
+	creds := credentials.NewTLS(&tls.Config{RootCAs: pool, InsecureSkipVerify: sslVerification == "1"})
 
 	auth := oauth.NewOauthAccess(&oauth2.Token{
 		AccessToken: token,
