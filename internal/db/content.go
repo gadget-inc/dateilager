@@ -20,7 +20,7 @@ type ContentEncoder struct {
 
 func NewContentEncoder() *ContentEncoder {
 	var buffer bytes.Buffer
-	writer := s2.NewWriter(&buffer)
+	writer := s2.NewWriter(&buffer, s2.WriterConcurrency(1))
 
 	return &ContentEncoder{
 		buffer: &buffer,

@@ -24,7 +24,7 @@ type TarWriter struct {
 
 func NewTarWriter() *TarWriter {
 	var buffer bytes.Buffer
-	s2Writer := s2.NewWriter(&buffer)
+	s2Writer := s2.NewWriter(&buffer, s2.WriterConcurrency(1))
 
 	return &TarWriter{
 		size:      0,

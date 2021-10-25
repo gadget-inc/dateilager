@@ -188,35 +188,3 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 
 	return nil
 }
-
-func InsertPackedObject(ctx context.Context, tx pgx.Tx, project int64, version int64, path string, contentTar, namesTar []byte) error {
-	h1, h2 := HashContent(contentTar)
-	batch := &pgx.Batch{}
-
-	batch.Queue(`
-		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
-		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
-	`, project, version, path, h1, h2, 0, len(contentTar), true)
-
-	batch.Queue(`
-		INSERT INTO dl.contents (hash, bytes, names_tar)
-		VALUES (($1, $2), $3, $4)
-		ON CONFLICT
-		DO NOTHING
-	`, h1, h2, contentTar, namesTar)
-
-	results := tx.SendBatch(ctx, batch)
-	defer results.Close()
-
-	_, err := results.Exec()
-	if err != nil {
-		return fmt.Errorf("insert new packed object, project %v, version %v, parent %v: %w", project, version, path, err)
-	}
-
-	_, err = results.Exec()
-	if err != nil {
-		return fmt.Errorf("insert content, hash %x-%x: %w", h1, h2, err)
-	}
-
-	return nil
-}
