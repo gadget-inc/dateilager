@@ -25,26 +25,28 @@ spec:
           name: server-config
           key: env
     command: ["./server"]
-    args: ["-port=$(PORT)", "-dburi=$(DBURI)", "-cert=secrets/server.crt", "-key=secrets/server.key", "-paseto=secrets/paseto.pub"]
+    args: ["-port=$(PORT)", "-dburi=$(DBURI)", "-cert=secrets/tls/tls.crt", "-key=secrets/tls/tls.key", "-paseto=secrets/paseto/paseto.pub"]
     ports:
     - name: api
       containerPort: 5051
       protocol: TCP
-    # FIXME: Auth & TLS broke the probes
-    # readinessProbe:
-    #   exec:
-    #     command: ["/bin/grpc_health_probe", "-addr=:5051", "-service=dateilager.server"]
-    #   initialDelaySeconds: 3
-    # livenessProbe:
-    #   exec:
-    #     command: ["/bin/grpc_health_probe", "-addr=:5051"]
-    #   initialDelaySeconds: 3
+    readinessProbe:
+      exec:
+        command: ["/bin/grpc_health_probe", "-addr=:5051", "-tls", "-tls-no-verify", "-service=dateilager.server"]
+      initialDelaySeconds: 3
+    livenessProbe:
+      exec:
+        command: ["/bin/grpc_health_probe", "-addr=:5051", "-tls", "-tls-no-verify"]
+      initialDelaySeconds: 3
     volumeMounts:
-    - mountPath: /home/main/secrets
-      name: secrets
+    - mountPath: /home/main/secrets/tls
+      name: tls-secrets
+    - mountPath: /home/main/secrets/paseto
+      name: paseto-secrets
   volumes:
-  - name: secrets
-    hostPath:
-      # FIXME: remove hard coded path
-      path: /home/alex/repos/dateilager/dev
-      type: Directory
+  - name: tls-secrets
+    secret:
+      secretName: server-tls
+  - name: paseto-secrets
+    secret:
+      secretName: server-paseto

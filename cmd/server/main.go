@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/server"
 )
@@ -73,10 +74,28 @@ func parsePublicKey(log *zap.Logger, path string) ed25519.PublicKey {
 	return pub.(ed25519.PublicKey)
 }
 
+func buildLogger(env environment.Env, level zapcore.LevelEnabler) *zap.Logger {
+	var log *zap.Logger
+	var err error
+
+	if env == environment.Prod {
+		log, err = zap.NewProduction(zap.IncreaseLevel(level))
+	} else {
+		log, err = zap.NewDevelopment(zap.IncreaseLevel(level))
+	}
+
+	if err != nil {
+		panic(fmt.Sprintf("Cannot setup logger: %v", err))
+	}
+	return log
+}
+
 func main() {
 	ctx := context.Background()
 	args := parseArgs()
-	log, _ := zap.NewDevelopment(zap.IncreaseLevel(args.level))
+
+	env := environment.LoadEnvironment()
+	log := buildLogger(env, args.level)
 	defer log.Sync()
 
 	if args.prof != "" {
@@ -110,7 +129,7 @@ func main() {
 
 	log.Info("register Fs")
 	fs := &api.Fs{
-		Env:    s.Env,
+		Env:    env,
 		Log:    log,
 		DbConn: dbConn,
 	}
@@ -127,7 +146,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	log.Info("start server", zap.Int("port", args.port), zap.String("env", s.Env.String()))
+	log.Info("start server", zap.Int("port", args.port), zap.String("env", env.String()))
 	if err := s.Serve(listen); err != nil {
 		log.Fatal("failed to serve", zap.Error(err))
 	}

@@ -137,28 +137,30 @@ k8s/server.properties:
 
 k8s-deploy: k8s/server.properties k8s-build
 	kubectl create -f k8s/namespace.yaml
+	kubectl -n $(PROJECT) create secret tls server-tls --cert=dev/server.crt --key=dev/server.key
+	kubectl -n $(PROJECT) create secret generic server-paseto --from-file=dev/paseto.pub
 	kubectl -n $(PROJECT) create configmap server-config --from-env-file=k8s/server.properties
 	kubectl -n $(PROJECT) apply -f k8s/pod.yaml
 	kubectl -n $(PROJECT) apply -f k8s/service.yaml
 
 k8s: k8s-clear k8s-build k8s-deploy
 
+k8s-client-update: export DL_SKIP_SSL_VERIFICATION=1
 k8s-client-update: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
 k8s-client-update: client-update
 
+k8s-client-get: export DL_SKIP_SSL_VERIFICATION=1
 k8s-client-get: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
 k8s-client-get: client-get
 
+k8s-client-rebuild: DL_SKIP_SSL_VERIFICATION=1
 k8s-client-rebuild: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
 k8s-client-rebuild: client-rebuild
 
-k8s-client-pack: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
-k8s-client-pack: client-rebuild
-
 k8s-health: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
 k8s-health:
-	grpc-health-probe -addr $(GRPC_SERVER)
-	grpc-health-probe -addr $(GRPC_SERVER) -service $(SERVICE)
+	grpc_health_probe -addr $(GRPC_SERVER) -tls -tls-no-verify
+	grpc_health_probe -addr $(GRPC_SERVER) -tls -tls-no-verify -service $(SERVICE)
 
 upload-container-image: build
 ifndef version

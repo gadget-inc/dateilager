@@ -11,7 +11,6 @@ import (
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
-	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -74,7 +73,6 @@ type Server struct {
 	log    *zap.Logger
 	Grpc   *grpc.Server
 	Health *health.Server
-	Env    environment.Env
 }
 
 func NewServer(ctx context.Context, log *zap.Logger, dbConn *DbPoolConnector, cert *tls.Certificate, pasetoKey ed25519.PublicKey) *Server {
@@ -82,17 +80,24 @@ func NewServer(ctx context.Context, log *zap.Logger, dbConn *DbPoolConnector, ce
 
 	validator := auth.NewAuthValidator(pasetoKey)
 
+	zapOption := grpc_zap.WithDecider(func(fullMethodName string, err error) bool {
+		if err == nil && fullMethodName == "/grpc.health.v1.Health/Check" {
+			return false
+		}
+		return true
+	})
+
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(
 			grpc_middleware.ChainUnaryServer(
-				grpc_zap.UnaryServerInterceptor(log),
+				grpc_zap.UnaryServerInterceptor(log, zapOption),
 				grpc_recovery.UnaryServerInterceptor(),
 				grpc.UnaryServerInterceptor(validateTokenUnary(log, validator)),
 			),
 		),
 		grpc.StreamInterceptor(
 			grpc_middleware.ChainStreamServer(
-				grpc_zap.StreamServerInterceptor(log),
+				grpc_zap.StreamServerInterceptor(log, zapOption),
 				grpc_recovery.StreamServerInterceptor(),
 				grpc.StreamServerInterceptor(validateTokenStream(log, validator)),
 			),
@@ -110,7 +115,6 @@ func NewServer(ctx context.Context, log *zap.Logger, dbConn *DbPoolConnector, ce
 		log:    log,
 		Grpc:   grpcServer,
 		Health: healthServer,
-		Env:    environment.LoadEnvironment(),
 	}
 
 	server.monitorDbPool(ctx, dbConn)
@@ -151,10 +155,14 @@ func (s *Server) Serve(lis net.Listener) error {
 }
 
 func validateTokenUnary(log *zap.Logger, validator *auth.AuthValidator) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
 			return nil, status.Errorf(codes.InvalidArgument, "missing request metadata")
+		}
+
+		if info.FullMethod == "/grpc.health.v1.Health/Check" {
+			return handler(ctx, req)
 		}
 
 		token, err := getToken(md["authorization"])
