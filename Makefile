@@ -46,7 +46,7 @@ internal/pb/%.pb.go: internal/pb/%.proto
 internal/pb/%_grpc.pb.go: internal/pb/%.proto
 	protoc --experimental_allow_proto3_optional --go-grpc_out=. --go-grpc_opt=paths=source_relative $^
 
-bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES)
+bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 go build -o $@ $<
 
 js/src/%.client.ts: internal/pb/%.proto
@@ -59,10 +59,10 @@ dev/server.cert: dev/server.key
 
 build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui js/src/fs.client.ts dev/server.cert
 
-release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES)
+release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $@ $<
 
-release/%_macos_amd64: cmd/%/main.go $(PKG_GO_FILES)
+release/%_macos_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o $@ $<
 
 release/migrations.tar.gz: migrations/*
@@ -89,7 +89,7 @@ server:
 
 server-profile: export DL_ENV=dev
 server-profile:
-	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT) -prof cpu.prof
+	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT) -prof cpu.prof -log info
 
 client-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-update:
