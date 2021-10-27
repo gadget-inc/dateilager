@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
@@ -154,6 +155,10 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 	}
 
 	updated, namesTar, err := updateObjects(content, updates)
+	if errors.Is(err, ErrEmptyPack) {
+		// The object was marked as deleted earlier in this function, do not create a new object if the pack is empty
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("update packed object: %w", err)
 	}

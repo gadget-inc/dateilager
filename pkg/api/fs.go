@@ -350,6 +350,17 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		}
 	}
 
+	// No updates were received from the stream which prevented us from detecting the project and version
+	if version == -1 {
+		err = tx.Rollback(ctx)
+		if err != nil {
+			return status.Errorf(codes.Internal, "FS rollback empty update: %w", err)
+		}
+
+		f.Log.Debug("FS.Update[Empty]")
+		return stream.SendAndClose(&pb.UpdateResponse{Version: -1})
+	}
+
 	for parent, objects := range buffer {
 		f.Log.Debug("FS.Update[PackedObject]", zap.Int64("project", project), zap.Int64("version", version), zap.String("parent", parent), zap.Int("object_count", len(objects)))
 

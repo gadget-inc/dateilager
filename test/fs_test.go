@@ -746,6 +746,38 @@ func TestUpdate(t *testing.T) {
 	})
 }
 
+func TestEmptyUpdate(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a", "v1")
+	writeObject(tc, 1, 1, nil, "/b", "v1")
+
+	fs := tc.FsApi()
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{})
+	err := fs.Update(updateStream)
+	if err != nil {
+		t.Fatalf("fs.Update: %v", err)
+	}
+
+	if updateStream.response.Version != -1 {
+		tc.Errorf("expected version -1, got: %v", updateStream.response.Version)
+	}
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(1, nil, "/"), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a": {content: "v1"},
+		"/b": {content: "v1"},
+	})
+}
+
 func TestUpdatePackedObject(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
@@ -780,6 +812,73 @@ func TestUpdatePackedObject(t *testing.T) {
 	verifyStreamResults(tc, stream.results, map[string]expectedObject{
 		"/a/c": {content: "a/c v2"},
 	})
+}
+
+func TestEmptyUpdatePackedObject(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "/a/")
+	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+		"/a/d": {content: "a/d v1"},
+	})
+	writeObject(tc, 1, 1, nil, "/b", "b v1")
+
+	fs := tc.FsApi()
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{})
+	err := fs.Update(updateStream)
+	if err != nil {
+		t.Fatalf("fs.Update: %v", err)
+	}
+
+	if updateStream.response.Version != -1 {
+		tc.Errorf("expected version -1, got: %v", updateStream.response.Version)
+	}
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(exactQuery(1, nil, "/a/c"), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+	})
+}
+
+func TestUpdateDeletePackedObject(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "/a/")
+	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+	})
+	writeObject(tc, 1, 1, nil, "/b", "b v1")
+
+	fs := tc.FsApi()
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"/a/c": {deleted: true},
+	})
+	err := fs.Update(updateStream)
+	if err != nil {
+		t.Fatalf("fs.Update: %v", err)
+	}
+
+	if updateStream.response.Version != 2 {
+		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
+	}
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(exactQuery(1, nil, "/a/c"), stream)
+	if err != nil {
+		t.Fatalf("fs.Get: %v", err)
+	}
+
+	verifyStreamResults(tc, stream.results, map[string]expectedObject{})
 }
 
 func TestUpdateWithNewPatternPackedObject(t *testing.T) {
