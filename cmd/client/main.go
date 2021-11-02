@@ -16,6 +16,52 @@ type Command interface {
 	serverAddr() string
 }
 
+type newArgs struct {
+	server   string
+	id       int64
+	template *int64
+	patterns string
+}
+
+func parseNewArgs(log *zap.Logger, args []string) *newArgs {
+	set := flag.NewFlagSet("new", flag.ExitOnError)
+
+	server := set.String("server", "", "Server GRPC address")
+	id := set.Int64("id", -1, "Project ID (required)")
+	template := set.Int64("template", -1, "Template ID")
+	patterns := set.String("patterns", "", "Comma separated pack patterns")
+
+	set.Parse(args)
+
+	if *id == -1 {
+		log.Fatal("-id required")
+	}
+
+	if *template == -1 {
+		template = nil
+	}
+
+	return &newArgs{
+		server:   *server,
+		id:       *id,
+		template: template,
+		patterns: *patterns,
+	}
+}
+
+func (a *newArgs) serverAddr() string {
+	return a.server
+}
+
+func (a *newArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+	err := c.NewProject(ctx, a.id, a.template, a.patterns)
+	if err != nil {
+		log.Fatal("could not create new project", zap.Error(err))
+	}
+
+	log.Info("created new project", zap.Int64("id", a.id))
+}
+
 type getArgs struct {
 	server  string
 	project int64
@@ -171,7 +217,7 @@ type inspectArgs struct {
 }
 
 func parseInspectArgs(log *zap.Logger, args []string) *inspectArgs {
-	set := flag.NewFlagSet("update", flag.ExitOnError)
+	set := flag.NewFlagSet("inspect", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
 	project := set.Int64("project", -1, "Project ID (required)")
@@ -211,7 +257,7 @@ type snapshotArgs struct {
 }
 
 func parseSnapshotArgs(log *zap.Logger, args []string) *snapshotArgs {
-	set := flag.NewFlagSet("update", flag.ExitOnError)
+	set := flag.NewFlagSet("snapshot", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
 
@@ -243,7 +289,7 @@ type resetArgs struct {
 }
 
 func parseResetArgs(log *zap.Logger, args []string) *resetArgs {
-	set := flag.NewFlagSet("update", flag.ExitOnError)
+	set := flag.NewFlagSet("reset", flag.ExitOnError)
 
 	server := set.String("server", "", "Server GRPC address")
 	state := set.String("state", "", "State string from a snapshot command")
@@ -274,12 +320,14 @@ func main() {
 	defer log.Sync()
 
 	if len(os.Args) < 2 {
-		log.Fatal("requires a subcommand: [get, rebuild, update, inspect, snapshot, reset]")
+		log.Fatal("requires a subcommand: [new, get, rebuild, update, inspect, snapshot, reset]")
 	}
 
 	var cmd Command
 
 	switch os.Args[1] {
+	case "new":
+		cmd = parseNewArgs(log, os.Args[2:])
 	case "get":
 		cmd = parseGetArgs(log, os.Args[2:])
 	case "rebuild":
@@ -293,7 +341,7 @@ func main() {
 	case "reset":
 		cmd = parseResetArgs(log, os.Args[2:])
 	default:
-		log.Fatal("requires a subcommand: [get, rebuild, update, inspect, snapshot, reset]")
+		log.Fatal("requires a subcommand: [new, get, rebuild, update, inspect, snapshot, reset]")
 	}
 
 	token := os.Getenv("DL_TOKEN")

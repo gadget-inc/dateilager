@@ -18,12 +18,12 @@ type expectedObject struct {
 	deleted bool
 }
 
-func writeProject(tc util.TestCtx, id int32, latest_version int64, packPatterns ...string) {
+func writeProject(tc util.TestCtx, id int32, latestVersion int64, packPatterns ...string) {
 	conn := tc.Connect()
 	_, err := conn.Exec(tc.Context(), `
 		INSERT INTO dl.projects (id, latest_version, pack_patterns)
 		VALUES ($1, $2, $3)
-	`, id, latest_version, packPatterns)
+	`, id, latestVersion, packPatterns)
 	if err != nil {
 		tc.Fatalf("insert project: %v", err)
 	}
@@ -164,14 +164,14 @@ func debugProjects(tc util.TestCtx) {
 	fmt.Println("id,\tlatest_version,\tpack_patterns")
 
 	for rows.Next() {
-		var id, latest_version int64
-		var pack_patterns []string
-		err = rows.Scan(&id, &latest_version, &pack_patterns)
+		var id, latestVersion int64
+		var packPatterns []string
+		err = rows.Scan(&id, &latestVersion, &packPatterns)
 		if err != nil {
 			tc.Fatalf("debug scan project: %v", err)
 		}
 
-		fmt.Printf("%d,\t%d,\t\t%v\n", id, latest_version, pack_patterns)
+		fmt.Printf("%d,\t%d,\t\t%v\n", id, latestVersion, packPatterns)
 	}
 
 	fmt.Println()

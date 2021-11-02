@@ -310,7 +310,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 				project = req.Project
 			}
 
-			latest_version, err := db.LockLatestVersion(ctx, tx, project)
+			latestVersion, err := db.LockLatestVersion(ctx, tx, project)
 			if errors.Is(err, db.ErrNotFound) {
 				return status.Errorf(codes.NotFound, "FS update missing latest version: %w", err)
 			}
@@ -318,7 +318,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 				return status.Errorf(codes.Internal, "FS update lock latest version: %w", err)
 			}
 
-			version = latest_version + 1
+			version = latestVersion + 1
 			f.Log.Debug("FS.Update[Init]", zap.Int64("project", project), zap.Int64("version", version))
 
 			packManager, err = db.NewPackManager(ctx, tx, project)

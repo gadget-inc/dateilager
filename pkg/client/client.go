@@ -87,6 +87,21 @@ func (c *Client) ListProjects(ctx context.Context) ([]*pb.Project, error) {
 	return resp.Projects, nil
 }
 
+func (c *Client) NewProject(ctx context.Context, id int64, template *int64, packPatterns string) error {
+	request := &pb.NewProjectRequest{
+		Id:           id,
+		Template:     template,
+		PackPatterns: strings.Split(packPatterns, ","),
+	}
+
+	_, err := c.fs.NewProject(ctx, request)
+	if err != nil {
+		return fmt.Errorf("create new project: %w", err)
+	}
+
+	return nil
+}
+
 func (c *Client) Get(ctx context.Context, project int64, prefix string, vrange VersionRange) ([]*pb.Object, error) {
 	var objects []*pb.Object
 

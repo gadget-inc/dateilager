@@ -47,12 +47,12 @@ func ListProjects(ctx context.Context, tx pgx.Tx) ([]*pb.Project, error) {
 }
 
 func getLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
-	var latest_version int64
+	var latestVersion int64
 
 	err := tx.QueryRow(ctx, `
 		SELECT latest_version
 		FROM dl.projects WHERE id = $1
-	`, project).Scan(&latest_version)
+	`, project).Scan(&latestVersion)
 	if err == pgx.ErrNoRows {
 		return -1, fmt.Errorf("get latest version for %v: %w", project, ErrNotFound)
 	}
@@ -60,17 +60,17 @@ func getLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, err
 		return -1, fmt.Errorf("get latest version for %v: %w", project, err)
 	}
 
-	return latest_version, nil
+	return latestVersion, nil
 }
 
 func LockLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
-	var latest_version int64
+	var latestVersion int64
 
 	err := tx.QueryRow(ctx, `
 		SELECT latest_version
 		FROM dl.projects WHERE id = $1
 		FOR UPDATE
-	`, project).Scan(&latest_version)
+	`, project).Scan(&latestVersion)
 	if err == pgx.ErrNoRows {
 		return -1, fmt.Errorf("lock latest version for %v: %w", project, ErrNotFound)
 	}
@@ -78,7 +78,7 @@ func LockLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, er
 		return -1, fmt.Errorf("lock latest version for %v: %w", project, err)
 	}
 
-	return latest_version, nil
+	return latestVersion, nil
 }
 
 type VersionRange struct {
