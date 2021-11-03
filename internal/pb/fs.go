@@ -2,6 +2,7 @@ package pb
 
 import (
 	"archive/tar"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -25,6 +26,14 @@ func ObjectFromFilePath(directory, path string) (*Object, error) {
 	fullPath := filepath.Join(directory, path)
 
 	info, err := os.Lstat(fullPath)
+	// If the file has been deleted since the fsdiff run,
+	// send a deleted object update instead of trying to read it from disk.
+	if errors.Is(err, fs.ErrNotExist) {
+		return &Object{
+			Path:    path,
+			Deleted: true,
+		}, nil
+	}
 	if err != nil {
 		return nil, err
 	}

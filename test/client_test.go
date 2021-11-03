@@ -486,3 +486,58 @@ func TestUpdateObjects(t *testing.T) {
 		"/d": "d v2",
 	})
 }
+
+func TestUpdateObjectsWithMissingFile(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a", "a v1")
+	writeObject(tc, 1, 1, nil, "/b", "b v1")
+	writeObject(tc, 1, 1, nil, "/c", "c v1")
+
+	tmpDir := writeTmpFiles(tc, map[string]string{
+		"/a": "a v2",
+		"/c": "c v2",
+		"/d": "d v2",
+	})
+	defer os.RemoveAll(tmpDir)
+
+	diffPath := writeDiffFile(tc, map[string]fsdiff_pb.Update_Action{
+		"/a": fsdiff_pb.Update_CHANGE,
+		"/c": fsdiff_pb.Update_CHANGE,
+		"/d": fsdiff_pb.Update_ADD,
+	})
+	defer os.Remove(diffPath)
+
+	// Remove "/c" even though it was marked as changed by the diff
+	os.Remove(filepath.Join(tmpDir, "c"))
+	// Remove "/d" even though it was marked as added by the diff
+	os.Remove(filepath.Join(tmpDir, "d"))
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	version, count, err := c.Update(tc.Context(), 1, diffPath, tmpDir)
+	if err != nil {
+		t.Fatalf("client.UpdateObjects: %v", err)
+	}
+
+	if version != 2 {
+		t.Errorf("expected version to increment to 2, got: %v", version)
+	}
+
+	if count != 3 {
+		t.Errorf("expected count to be 3, got: %v", count)
+	}
+
+	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
+	if err != nil {
+		t.Fatalf("client.GetLatest after update: %v", err)
+	}
+
+	verifyObjects(tc, objects, map[string]string{
+		"/a": "a v2",
+		"/b": "b v1",
+	})
+}
