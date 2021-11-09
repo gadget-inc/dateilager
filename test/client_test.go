@@ -322,8 +322,10 @@ func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
 	writeObject(tc, 1, 1, i(2), "/a", "a v1")
 	writeObject(tc, 1, 1, i(2), "/b", "b v1")
 	writeObject(tc, 1, 1, nil, "/c", "c v1")
+	writeObject(tc, 1, 1, i(2), "/e", "e v1")
 	writeObject(tc, 1, 2, nil, "/a", "a v2")
 	writeObject(tc, 1, 2, nil, "/d", "d v2")
+	writeSymlink(tc, 1, 2, nil, "/e", "/a")
 
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
@@ -332,6 +334,7 @@ func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
 		"/a": "a v1",
 		"/b": "b v1",
 		"/c": "c v1",
+		"/e": "e v1",
 	})
 	defer os.RemoveAll(tmpDir)
 
@@ -344,6 +347,7 @@ func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
 		"/a": {content: "a v2"},
 		"/c": {content: "c v1"},
 		"/d": {content: "d v2"},
+		"/e": {content: "a v2"},
 	})
 }
 

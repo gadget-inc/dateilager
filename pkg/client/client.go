@@ -208,6 +208,14 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 					return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
 				}
 
+				// Remove existing link
+				if _, err = os.Stat(path); err == nil {
+					err = os.Remove(path)
+					if err != nil {
+						return fmt.Errorf("rm %v before symlinking %v: %w", path, header.Linkname, err)
+					}
+				}
+
 				err = os.Symlink(header.Linkname, path)
 				if err != nil {
 					return fmt.Errorf("ln -s %v %v: %w", header.Linkname, path, err)
