@@ -26,6 +26,7 @@ install:
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.1
 	go install github.com/grpc-ecosystem/grpc-health-probe@v0.4
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.14
+	go install github.com/bojand/ghz/cmd/ghz@v0.105.0
 	go install github.com/gadget-inc/fsdiff/cmd/fsdiff@v0.1
 	cd js && npm install
 
@@ -78,9 +79,10 @@ test: migrate
 	cd test && go test
 
 reset-db: migrate
-	psql $(DB_URI) -c "truncate dl.objects; truncate dl.contents; truncate dl.projects; insert into dl.projects (id, latest_version, pack_patterns) values (1, 0, '{\"node_modules/.*/\"}');"
+	psql $(DB_URI) -c "truncate dl.objects; truncate dl.contents; truncate dl.projects;"
 
 setup-local: reset-db
+	psql $(DB_URI) -c "insert into dl.projects (id, latest_version, pack_patterns) values (1, 0, '{\"node_modules/.*/\"}');"
 	scripts/simple_input.sh
 
 server: export DL_ENV=dev
@@ -169,3 +171,21 @@ else
 	docker build -t gcr.io/gadget-core-production/dateilager:$(version) .
 	docker push gcr.io/gadget-core-production/dateilager:$(version)
 endif
+
+define load-test
+	ghz --cert=dev/server.crt --key=dev/server.key \
+		--proto internal/pb/fs.proto --call "pb.Fs.$(1)" \
+		--total $(3) --concurrency $(4) --rps $(if $5,$5,0) \
+		--data-file "scripts/load-tests/$(2)" \
+		--metadata '{"authorization": "Bearer $(DEV_TOKEN_ADMIN)"}' \
+		localhost:$(GRPC_PORT)
+endef
+
+load-test-new:
+	$(call load-test,NewProject,new.json,100,1)
+
+load-test-get:
+	$(call load-test,Get,get_all.json,100000,50,5000)
+
+load-test-update:
+	$(call load-test,Update,update_increment.json,10000,1)
