@@ -30,6 +30,7 @@ type ServerArgs struct {
 	pasetoFile string
 	prof       string
 	level      zapcore.Level
+	encoding   string
 }
 
 func parseArgs() ServerArgs {
@@ -40,7 +41,8 @@ func parseArgs() ServerArgs {
 	pasetoFile := flag.String("paseto", "dev/paseto.pub", "Paseto public key file")
 	prof := flag.String("prof", "", "Output CPU profile to this path")
 
-	level := zap.LevelFlag("log", zap.DebugLevel, "Set the log level")
+	level := zap.LevelFlag("log", zap.DebugLevel, "Log level")
+	encoding := flag.String("encoding", "console", "Log encoding (console | json)")
 
 	flag.Parse()
 
@@ -52,6 +54,7 @@ func parseArgs() ServerArgs {
 		pasetoFile: *pasetoFile,
 		prof:       *prof,
 		level:      *level,
+		encoding:   *encoding,
 	}
 }
 
@@ -74,11 +77,14 @@ func parsePublicKey(log *zap.Logger, path string) ed25519.PublicKey {
 	return pub.(ed25519.PublicKey)
 }
 
-func buildLogger(env environment.Env, level zapcore.LevelEnabler) *zap.Logger {
+func buildLogger(env environment.Env, level zapcore.LevelEnabler, encoding string) *zap.Logger {
 	var log *zap.Logger
 	var err error
 
 	if env == environment.Prod {
+		if level == zapcore.DebugLevel {
+			level = zapcore.InfoLevel
+		}
 		log, err = zap.NewProduction(zap.IncreaseLevel(level))
 	} else {
 		log, err = zap.NewDevelopment(zap.IncreaseLevel(level))
@@ -95,7 +101,7 @@ func main() {
 	args := parseArgs()
 
 	env := environment.LoadEnvironment()
-	log := buildLogger(env, args.level)
+	log := buildLogger(env, args.level, args.encoding)
 	defer log.Sync()
 
 	if args.prof != "" {

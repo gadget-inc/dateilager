@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -9,24 +10,43 @@ import (
 
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type Command interface {
 	run(context.Context, *zap.Logger, *client.Client)
-	serverAddr() string
+}
+
+type sharedArgs struct {
+	server   *string
+	level    *zapcore.Level
+	encoding *string
+}
+
+func parseSharedArgs(set *flag.FlagSet) *sharedArgs {
+	level := zapcore.DebugLevel
+
+	server := set.String("server", "", "Server GRPC address")
+	set.Var(&level, "log", "Log level")
+	encoding := set.String("encoding", "console", "Log encoding (console | json)")
+
+	return &sharedArgs{
+		server:   server,
+		level:    &level,
+		encoding: encoding,
+	}
 }
 
 type newArgs struct {
-	server   string
 	id       int64
 	template *int64
 	patterns string
 }
 
-func parseNewArgs(log *zap.Logger, args []string) *newArgs {
+func parseNewArgs(args []string) (*sharedArgs, *newArgs, error) {
 	set := flag.NewFlagSet("new", flag.ExitOnError)
 
-	server := set.String("server", "", "Server GRPC address")
+	shared := parseSharedArgs(set)
 	id := set.Int64("id", -1, "Project ID (required)")
 	template := set.Int64("template", -1, "Template ID")
 	patterns := set.String("patterns", "", "Comma separated pack patterns")
@@ -34,23 +54,18 @@ func parseNewArgs(log *zap.Logger, args []string) *newArgs {
 	set.Parse(args)
 
 	if *id == -1 {
-		log.Fatal("-id required")
+		return nil, nil, errors.New("required arg: -id")
 	}
 
 	if *template == -1 {
 		template = nil
 	}
 
-	return &newArgs{
-		server:   *server,
+	return shared, &newArgs{
 		id:       *id,
 		template: template,
 		patterns: *patterns,
-	}
-}
-
-func (a *newArgs) serverAddr() string {
-	return a.server
+	}, nil
 }
 
 func (a *newArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
@@ -63,16 +78,15 @@ func (a *newArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
 }
 
 type getArgs struct {
-	server  string
 	project int64
 	vrange  client.VersionRange
 	prefix  string
 }
 
-func parseGetArgs(log *zap.Logger, args []string) *getArgs {
+func parseGetArgs(args []string) (*sharedArgs, *getArgs, error) {
 	set := flag.NewFlagSet("get", flag.ExitOnError)
 
-	server := set.String("server", "", "Server GRPC address")
+	shared := parseSharedArgs(set)
 	project := set.Int64("project", -1, "Project ID (required)")
 	from := set.Int64("from", -1, "From version ID (optional)")
 	to := set.Int64("to", -1, "To version ID (optional)")
@@ -81,7 +95,7 @@ func parseGetArgs(log *zap.Logger, args []string) *getArgs {
 	set.Parse(args)
 
 	if *project == -1 {
-		log.Fatal("-project required")
+		return nil, nil, errors.New("required arg: -project")
 	}
 
 	if *from == -1 {
@@ -91,16 +105,11 @@ func parseGetArgs(log *zap.Logger, args []string) *getArgs {
 		to = nil
 	}
 
-	return &getArgs{
-		server:  *server,
+	return shared, &getArgs{
 		project: *project,
 		vrange:  client.VersionRange{From: from, To: to},
 		prefix:  *prefix,
-	}
-}
-
-func (a *getArgs) serverAddr() string {
-	return a.server
+	}, nil
 }
 
 func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
@@ -116,17 +125,16 @@ func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
 }
 
 type rebuildArgs struct {
-	server  string
 	project int64
 	vrange  client.VersionRange
 	prefix  string
 	output  string
 }
 
-func parseRebuildArgs(log *zap.Logger, args []string) *rebuildArgs {
+func parseRebuildArgs(args []string) (*sharedArgs, *rebuildArgs, error) {
 	set := flag.NewFlagSet("rebuild", flag.ExitOnError)
 
-	server := set.String("server", "", "Server GRPC address")
+	shared := parseSharedArgs(set)
 	project := set.Int64("project", -1, "Project ID (required)")
 	from := set.Int64("from", -1, "From version ID (optional)")
 	to := set.Int64("to", -1, "To version ID (optional)")
@@ -136,7 +144,7 @@ func parseRebuildArgs(log *zap.Logger, args []string) *rebuildArgs {
 	set.Parse(args)
 
 	if *project == -1 {
-		log.Fatal("-project required")
+		return nil, nil, errors.New("required arg: -project")
 	}
 
 	if *from == -1 {
@@ -146,39 +154,34 @@ func parseRebuildArgs(log *zap.Logger, args []string) *rebuildArgs {
 		to = nil
 	}
 
-	return &rebuildArgs{
-		server:  *server,
+	return shared, &rebuildArgs{
 		project: *project,
 		vrange:  client.VersionRange{From: from, To: to},
 		prefix:  *prefix,
 		output:  *output,
-	}
-}
-
-func (a *rebuildArgs) serverAddr() string {
-	return a.server
+	}, nil
 }
 
 func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
-	err := c.Rebuild(ctx, a.project, a.prefix, a.vrange, a.output)
+	version, count, err := c.Rebuild(ctx, a.project, a.prefix, a.vrange, a.output)
 	if err != nil {
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
 
-	log.Info("wrote files", zap.Int64("project", a.project), zap.String("output", a.output))
+	log.Info("wrote files", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int("diff_count", count))
+	fmt.Println(version)
 }
 
 type updateArgs struct {
-	server    string
 	project   int64
 	diff      string
 	directory string
 }
 
-func parseUpdateArgs(log *zap.Logger, args []string) *updateArgs {
+func parseUpdateArgs(args []string) (*sharedArgs, *updateArgs, error) {
 	set := flag.NewFlagSet("update", flag.ExitOnError)
 
-	server := set.String("server", "", "Server GRPC address")
+	shared := parseSharedArgs(set)
 	project := set.Int64("project", -1, "Project ID (required)")
 	diff := set.String("diff", "", "Diff file listing changed file names")
 	directory := set.String("directory", "", "Directory containing updated files")
@@ -186,19 +189,14 @@ func parseUpdateArgs(log *zap.Logger, args []string) *updateArgs {
 	set.Parse(args)
 
 	if *project == -1 {
-		log.Fatal("-project required")
+		return nil, nil, errors.New("required arg: -project")
 	}
 
-	return &updateArgs{
-		server:    *server,
+	return shared, &updateArgs{
 		project:   *project,
 		diff:      *diff,
 		directory: *directory,
-	}
-}
-
-func (a *updateArgs) serverAddr() string {
-	return a.server
+	}, nil
 }
 
 func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
@@ -212,30 +210,24 @@ func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client)
 }
 
 type inspectArgs struct {
-	server  string
 	project int64
 }
 
-func parseInspectArgs(log *zap.Logger, args []string) *inspectArgs {
+func parseInspectArgs(args []string) (*sharedArgs, *inspectArgs, error) {
 	set := flag.NewFlagSet("inspect", flag.ExitOnError)
 
-	server := set.String("server", "", "Server GRPC address")
+	shared := parseSharedArgs(set)
 	project := set.Int64("project", -1, "Project ID (required)")
 
 	set.Parse(args)
 
 	if *project == -1 {
-		log.Fatal("-project required")
+		return nil, nil, errors.New("required arg: -project")
 	}
 
-	return &inspectArgs{
-		server:  *server,
+	return shared, &inspectArgs{
 		project: *project,
-	}
-}
-
-func (a *inspectArgs) serverAddr() string {
-	return a.server
+	}, nil
 }
 
 func (a *inspectArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
@@ -252,24 +244,16 @@ func (a *inspectArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 	)
 }
 
-type snapshotArgs struct {
-	server string
-}
+type snapshotArgs struct{}
 
-func parseSnapshotArgs(log *zap.Logger, args []string) *snapshotArgs {
+func parseSnapshotArgs(args []string) (*sharedArgs, *snapshotArgs, error) {
 	set := flag.NewFlagSet("snapshot", flag.ExitOnError)
 
-	server := set.String("server", "", "Server GRPC address")
+	shared := parseSharedArgs(set)
 
 	set.Parse(args)
 
-	return &snapshotArgs{
-		server: *server,
-	}
-}
-
-func (a *snapshotArgs) serverAddr() string {
-	return a.server
+	return shared, &snapshotArgs{}, nil
 }
 
 func (a *snapshotArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
@@ -279,31 +263,24 @@ func (a *snapshotArgs) run(ctx context.Context, log *zap.Logger, c *client.Clien
 	}
 
 	log.Info("successful snapshot")
-	fmt.Println("reset with:")
-	fmt.Printf("  dlc reset -server %v -state '%v'\n", a.server, state)
+	fmt.Println(state)
 }
 
 type resetArgs struct {
-	server string
-	state  string
+	state string
 }
 
-func parseResetArgs(log *zap.Logger, args []string) *resetArgs {
+func parseResetArgs(args []string) (*sharedArgs, *resetArgs, error) {
 	set := flag.NewFlagSet("reset", flag.ExitOnError)
 
-	server := set.String("server", "", "Server GRPC address")
+	shared := parseSharedArgs(set)
 	state := set.String("state", "", "State string from a snapshot command")
 
 	set.Parse(args)
 
-	return &resetArgs{
-		server: *server,
-		state:  *state,
-	}
-}
-
-func (a *resetArgs) serverAddr() string {
-	return a.server
+	return shared, &resetArgs{
+		state: *state,
+	}, nil
 }
 
 func (a *resetArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
@@ -315,33 +292,48 @@ func (a *resetArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) 
 	log.Info("successful reset", zap.String("state", a.state))
 }
 
-func main() {
-	log, _ := zap.NewDevelopment()
-	defer log.Sync()
+func buildLogger(level zapcore.Level, encoding string) *zap.Logger {
+	config := zap.NewProductionConfig()
+	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	config.Level = zap.NewAtomicLevelAt(level)
+	config.Encoding = encoding
 
-	if len(os.Args) < 2 {
-		log.Fatal("requires a subcommand: [new, get, rebuild, update, inspect, snapshot, reset]")
+	log, err := config.Build()
+	if err != nil {
+		panic(fmt.Sprintf("Cannot setup logger: %v", err))
 	}
 
+	return log
+}
+
+func main() {
+	var shared *sharedArgs
 	var cmd Command
+	var err error
 
 	switch os.Args[1] {
 	case "new":
-		cmd = parseNewArgs(log, os.Args[2:])
+		shared, cmd, err = parseNewArgs(os.Args[2:])
 	case "get":
-		cmd = parseGetArgs(log, os.Args[2:])
+		shared, cmd, err = parseGetArgs(os.Args[2:])
 	case "rebuild":
-		cmd = parseRebuildArgs(log, os.Args[2:])
+		shared, cmd, err = parseRebuildArgs(os.Args[2:])
 	case "update":
-		cmd = parseUpdateArgs(log, os.Args[2:])
+		shared, cmd, err = parseUpdateArgs(os.Args[2:])
 	case "inspect":
-		cmd = parseInspectArgs(log, os.Args[2:])
+		shared, cmd, err = parseInspectArgs(os.Args[2:])
 	case "snapshot":
-		cmd = parseSnapshotArgs(log, os.Args[2:])
+		shared, cmd, err = parseSnapshotArgs(os.Args[2:])
 	case "reset":
-		cmd = parseResetArgs(log, os.Args[2:])
+		shared, cmd, err = parseResetArgs(os.Args[2:])
 	default:
-		log.Fatal("requires a subcommand: [new, get, rebuild, update, inspect, snapshot, reset]")
+		err = errors.New("requires a subcommand: [new, get, rebuild, update, inspect, snapshot, reset]")
+	}
+
+	log := buildLogger(*shared.level, *shared.encoding)
+
+	if err != nil {
+		log.Fatal(err.Error())
 	}
 
 	token := os.Getenv("DL_TOKEN")
@@ -352,9 +344,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()
 
-	c, err := client.NewClient(ctx, cmd.serverAddr(), token)
+	c, err := client.NewClient(ctx, *shared.server, token)
 	if err != nil {
-		log.Fatal("could not connect to server", zap.String("server", cmd.serverAddr()), zap.Error(err))
+		log.Fatal("could not connect to server", zap.String("server", *shared.server), zap.Error(err))
 	}
 	defer c.Close()
 

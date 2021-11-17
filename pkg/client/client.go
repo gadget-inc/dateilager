@@ -138,7 +138,7 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, vrange V
 	return objects, nil
 }
 
-func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vrange VersionRange, output string) error {
+func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vrange VersionRange, output string) (int64, int, error) {
 	query := &pb.ObjectQuery{
 		Path:        prefix,
 		IsPrefix:    true,
@@ -152,9 +152,12 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 		Queries:     []*pb.ObjectQuery{query},
 	}
 
+	version := int64(-1)
+	diffCount := 0
+
 	stream, err := c.fs.GetCompress(ctx, request)
 	if err != nil {
-		return fmt.Errorf("connect fs.GetCompress: %w", err)
+		return -1, diffCount, fmt.Errorf("connect fs.GetCompress: %w", err)
 	}
 
 	for {
@@ -163,9 +166,10 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("receive fs.GetCompress: %w", err)
+			return -1, diffCount, fmt.Errorf("receive fs.GetCompress: %w", err)
 		}
 
+		version = response.Version
 		tarReader := db.NewTarReader(response.Bytes)
 
 		for {
@@ -174,57 +178,58 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 				break
 			}
 			if err != nil {
-				return fmt.Errorf("next TAR header: %w", err)
+				return -1, diffCount, fmt.Errorf("next TAR header: %w", err)
 			}
 
+			diffCount += 1
 			path := filepath.Join(output, header.Name)
 
 			switch header.Typeflag {
 			case tar.TypeReg:
 				err = os.MkdirAll(filepath.Dir(path), 0777)
 				if err != nil {
-					return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
+					return -1, diffCount, fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
 				}
 
 				file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
 				if err != nil {
-					return fmt.Errorf("open file %v: %w", path, err)
+					return -1, diffCount, fmt.Errorf("open file %v: %w", path, err)
 				}
 
 				err = tarReader.CopyContent(file)
 				if err != nil {
-					return fmt.Errorf("write %v to disk: %w", path, err)
+					return -1, diffCount, fmt.Errorf("write %v to disk: %w", path, err)
 				}
 
 			case tar.TypeDir:
 				err = os.MkdirAll(path, os.FileMode(header.Mode))
 				if err != nil {
-					return fmt.Errorf("mkdir -p %v: %w", path, err)
+					return -1, diffCount, fmt.Errorf("mkdir -p %v: %w", path, err)
 				}
 
 			case tar.TypeSymlink:
 				err = os.MkdirAll(filepath.Dir(path), 0777)
 				if err != nil {
-					return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
+					return -1, diffCount, fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
 				}
 
 				// Remove existing link
 				if _, err = os.Stat(path); err == nil {
 					err = os.Remove(path)
 					if err != nil {
-						return fmt.Errorf("rm %v before symlinking %v: %w", path, header.Linkname, err)
+						return -1, diffCount, fmt.Errorf("rm %v before symlinking %v: %w", path, header.Linkname, err)
 					}
 				}
 
 				err = os.Symlink(header.Linkname, path)
 				if err != nil {
-					return fmt.Errorf("ln -s %v %v: %w", header.Linkname, path, err)
+					return -1, diffCount, fmt.Errorf("ln -s %v %v: %w", header.Linkname, path, err)
 				}
 
 			case 'D':
 				err = os.Remove(path)
 				if err != nil {
-					return fmt.Errorf("remove %v from disk: %w", path, err)
+					return -1, diffCount, fmt.Errorf("remove %v from disk: %w", path, err)
 				}
 
 			default:
@@ -233,7 +238,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 		}
 	}
 
-	return nil
+	return version, diffCount, nil
 }
 
 func (c *Client) Update(ctx context.Context, project int64, diffPath string, directory string) (int64, int, error) {
