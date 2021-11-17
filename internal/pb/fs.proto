@@ -78,7 +78,7 @@ message GetCompressRequest {
 
 message GetCompressResponse {
     enum Format {
-        ZSTD_TAR = 0;
+        S2_TAR = 0;
     }
     int64 version = 1;
     Format format = 2;

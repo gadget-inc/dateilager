@@ -263,7 +263,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 
 			err = stream.Send(&pb.GetCompressResponse{
 				Version: vrange.To,
-				Format:  pb.GetCompressResponse_ZSTD_TAR,
+				Format:  pb.GetCompressResponse_S2_TAR,
 				Bytes:   tar,
 			})
 			if err != nil {
