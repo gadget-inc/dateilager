@@ -302,9 +302,15 @@ func TestRebuild(t *testing.T) {
 	tmpDir := writeTmpFiles(tc, map[string]string{})
 	defer os.RemoveAll(tmpDir)
 
-	err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
+	version, count, err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
 	if err != nil {
 		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 1 {
+		t.Errorf("expected rebuild version to be 1, got: %v", version)
+	}
+	if count != 3 {
+		t.Errorf("expected rebuild count to be 3, got: %v", version)
 	}
 
 	verifyDir(tc, tmpDir, map[string]expectedFile{
@@ -338,9 +344,15 @@ func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
 	})
 	defer os.RemoveAll(tmpDir)
 
-	err := c.Rebuild(tc.Context(), 1, "", fromVersion(1), tmpDir)
+	version, count, err := c.Rebuild(tc.Context(), 1, "", fromVersion(1), tmpDir)
 	if err != nil {
 		t.Fatalf("client.Rebuild with overwrites and deletes: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected rebuild version to be 2, got: %v", version)
+	}
+	if count != 4 {
+		t.Errorf("expected rebuild count to be 4, got: %v", count)
 	}
 
 	verifyDir(tc, tmpDir, map[string]expectedFile{
@@ -368,9 +380,15 @@ func TestRebuildWithEmptyDirAndSymlink(t *testing.T) {
 	tmpDir := writeTmpFiles(tc, map[string]string{})
 	defer os.RemoveAll(tmpDir)
 
-	err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
+	version, count, err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
 	if err != nil {
 		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected rebuild version to be 2, got: %v", version)
+	}
+	if count != 5 {
+		t.Errorf("expected rebuild count to be 5, got: %v", count)
 	}
 
 	verifyDir(tc, tmpDir, map[string]expectedFile{
@@ -396,9 +414,15 @@ func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
 	tmpDir := writeTmpFiles(tc, map[string]string{})
 	defer os.RemoveAll(tmpDir)
 
-	err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
+	version, count, err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
 	if err != nil {
 		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 1 {
+		t.Errorf("expected rebuild version to be 1, got: %v", version)
+	}
+	if count != 2 {
+		t.Errorf("expected rebuild count to be 2, got: %v", count)
 	}
 
 	verifyDir(tc, tmpDir, map[string]expectedFile{
@@ -415,22 +439,26 @@ func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
 		"/a/c": fsdiff_pb.Update_ADD,
 	})
 
-	version, count, err := c.Update(tc.Context(), 1, diffPath, tmpDir)
+	version, count, err = c.Update(tc.Context(), 1, diffPath, tmpDir)
 	if err != nil {
 		t.Fatalf("client.UpdateObjects: %v", err)
 	}
-
 	if version != 2 {
-		t.Errorf("expected version to increment to 2, got: %v", version)
+		t.Errorf("expected update version to be 2, got: %v", version)
 	}
-
 	if count != 1 {
-		t.Errorf("expected count to be 1, got: %v", count)
+		t.Errorf("expected update count to be 1, got: %v", count)
 	}
 
-	err = c.Rebuild(tc.Context(), 1, "", fromVersion(1), tmpDir)
+	version, count, err = c.Rebuild(tc.Context(), 1, "", fromVersion(1), tmpDir)
 	if err != nil {
 		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected rebuild version to be 2, got: %v", version)
+	}
+	if count != 1 {
+		t.Errorf("expected rebuild count to be 1, got: %v", count)
 	}
 
 	verifyDir(tc, tmpDir, map[string]expectedFile{
@@ -469,13 +497,11 @@ func TestUpdateObjects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("client.UpdateObjects: %v", err)
 	}
-
 	if version != 2 {
-		t.Errorf("expected version to increment to 2, got: %v", version)
+		t.Errorf("expected update version to be 2, got: %v", version)
 	}
-
 	if count != 3 {
-		t.Errorf("expected count to be 3, got: %v", count)
+		t.Errorf("expected update count to be 3, got: %v", count)
 	}
 
 	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
@@ -526,13 +552,11 @@ func TestUpdateObjectsWithMissingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("client.UpdateObjects: %v", err)
 	}
-
 	if version != 2 {
-		t.Errorf("expected version to increment to 2, got: %v", version)
+		t.Errorf("expected update version to be 2, got: %v", version)
 	}
-
 	if count != 3 {
-		t.Errorf("expected count to be 3, got: %v", count)
+		t.Errorf("expected update count to be 3, got: %v", count)
 	}
 
 	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)

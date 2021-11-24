@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	stdlog "log"
 	"os"
 	"time"
 
@@ -168,7 +169,7 @@ func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
 
-	log.Info("wrote files", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int("diff_count", count))
+	log.Info("wrote files", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64("version", version), zap.Int("diff_count", count))
 	fmt.Println(version)
 }
 
@@ -311,6 +312,10 @@ func main() {
 	var cmd Command
 	var err error
 
+	if len(os.Args) < 2 {
+		stdlog.Fatal("requires a subcommand: [new, get, rebuild, update, inspect, snapshot, reset]")
+	}
+
 	switch os.Args[1] {
 	case "new":
 		shared, cmd, err = parseNewArgs(os.Args[2:])
@@ -327,14 +332,14 @@ func main() {
 	case "reset":
 		shared, cmd, err = parseResetArgs(os.Args[2:])
 	default:
-		err = errors.New("requires a subcommand: [new, get, rebuild, update, inspect, snapshot, reset]")
+		stdlog.Fatal("requires a subcommand: [new, get, rebuild, update, inspect, snapshot, reset]")
+	}
+
+	if err != nil {
+		stdlog.Fatal(err.Error())
 	}
 
 	log := buildLogger(*shared.level, *shared.encoding)
-
-	if err != nil {
-		log.Fatal(err.Error())
-	}
 
 	token := os.Getenv("DL_TOKEN")
 	if token == "" {

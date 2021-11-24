@@ -78,8 +78,8 @@ main() {
     v3 "${v2_dir}" "${v3_dir}"
 
     generate_diff "${v1_dir}" "" "${v1_dir}_state"
-    generate_diff "${v2_dir}" "${v1_dir}_state/sum.zst" "${v2_dir}_state"
-    generate_diff "${v3_dir}" "${v2_dir}_state/sum.zst" "${v3_dir}_state"
+    generate_diff "${v2_dir}" "${v1_dir}_state/sum.s2" "${v2_dir}_state"
+    generate_diff "${v3_dir}" "${v2_dir}_state/sum.s2" "${v3_dir}_state"
 
     log "wrote files and diffs"
 }

@@ -95,9 +95,9 @@ server-profile:
 
 client-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-update:
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v1_state/diff.zst -directory input/v1
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v2_state/diff.zst -directory input/v2
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v3_state/diff.zst -directory input/v3
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v1_state/diff.s2 -directory input/v1
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v2_state/diff.s2 -directory input/v2
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v3_state/diff.s2 -directory input/v3
 
 client-get: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-get:
