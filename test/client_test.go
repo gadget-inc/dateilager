@@ -24,7 +24,10 @@ import (
 type Type int
 
 const (
-	bufSize          = 1024 * 1024
+	bufSize = 1024 * 1024
+)
+
+const (
 	typeRegular Type = iota
 	typeDirectory
 	typeSymlink
@@ -166,6 +169,7 @@ func verifyDir(tc util.TestCtx, dir string, files map[string]expectedFile) {
 			if !info.IsDir() {
 				tc.Errorf("%v is not a directory", name)
 			}
+
 		case typeSymlink:
 			if info.Mode()&fs.ModeSymlink != fs.ModeSymlink {
 				tc.Errorf("%v is not a symlink", name)
@@ -325,19 +329,19 @@ func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
 	defer tc.Close()
 
 	writeProject(tc, 1, 2)
-	writeObject(tc, 1, 1, i(2), "/a", "a v1")
+	writeObject(tc, 1, 1, i(2), "/a", "a v1 - long buffer of content")
 	writeObject(tc, 1, 1, i(2), "/b", "b v1")
 	writeObject(tc, 1, 1, nil, "/c", "c v1")
 	writeObject(tc, 1, 1, i(2), "/e", "e v1")
 	writeObject(tc, 1, 2, nil, "/a", "a v2")
 	writeObject(tc, 1, 2, nil, "/d", "d v2")
-	writeSymlink(tc, 1, 2, nil, "/e", "/a")
+	writeSymlink(tc, 1, 2, nil, "/e", "a")
 
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
 
 	tmpDir := writeTmpFiles(tc, map[string]string{
-		"/a": "a v1",
+		"/a": "a v1 - long buffer of content",
 		"/b": "b v1",
 		"/c": "c v1",
 		"/e": "e v1",

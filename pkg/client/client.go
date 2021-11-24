@@ -191,7 +191,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 					return -1, diffCount, fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
 				}
 
-				file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
+				file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
 				if err != nil {
 					return -1, diffCount, fmt.Errorf("open file %v: %w", path, err)
 				}
