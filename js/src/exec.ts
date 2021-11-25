@@ -61,13 +61,13 @@ export class DateiLagerBinaryClient {
   }
 
   async update(project: bigint, diff: string, directory: string): Promise<bigint | null> {
-    const stdout = await this._call("update", project, directory, DL_UPDATE_TIMEOUT, ["-diff", diff, "-directory", directory]);
+    const result = await this._call("update", project, directory, DL_UPDATE_TIMEOUT, ["-diff", diff, "-directory", directory]);
 
-    if (stdout.stdout == "-1") {
+    if (result.stdout == "-1") {
       return null;
     }
 
-    const version = BigInt(stdout.stdout);
+    const version = BigInt(result.stdout);
     await this._updateVersionFile(directory, version);
     return version;
   }
@@ -79,13 +79,13 @@ export class DateiLagerBinaryClient {
     }
 
     await fse.mkdirp(output);
-    const stdout = await this._call("rebuild", project, output, DL_REBUILD_TIMEOUT, args);
+    const result = await this._call("rebuild", project, output, DL_REBUILD_TIMEOUT, args);
 
-    if (stdout.stdout == "-1") {
+    if (result.stdout == "-1") {
       return null;
     }
 
-    const version = BigInt(stdout.stdout);
+    const version = BigInt(result.stdout);
     await this._updateVersionFile(output, version);
     return version;
   }

@@ -4,9 +4,9 @@
   "private": true,
   "dependencies": {
     "@grpc/grpc-js": "^1.1.0",
-    "@protobuf-ts/grpc-transport": "^2.0.2",
-    "@protobuf-ts/plugin": "^2.0.2",
-    "@protobuf-ts/runtime-rpc": "^2.0.2",
+    "@protobuf-ts/grpc-transport": "^2.0.7",
+    "@protobuf-ts/plugin": "^2.0.7",
+    "@protobuf-ts/runtime-rpc": "^2.0.7",
     "@types/fs-extra": "^9.0.13",
     "@types/node": "^16.1.0",
     "@types/pino": "^6.3.11",

@@ -59,7 +59,7 @@ export function encodeContent(content: string): Uint8Array {
 export class DateiLagerClient {
   client: FsClient;
 
-  constructor(host: string, port: number, rootCert: Buffer, token: string) {
+  constructor(host: string, port: number, token: string, rootCert?: Buffer) {
     const tokenMetaGenerator = (_params: any, callback: (err: Error | null, meta: Metadata) => void) => {
       const meta = new Metadata();
       meta.add("authorization", `Bearer ${token}`);
