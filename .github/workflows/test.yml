@@ -51,7 +51,7 @@ jobs:
 
     - name: Install mkcert
       run: |
-        sudo apt install libnss3-tools
+        sudo apt-get update && sudo apt-get install libnss3-tools
         curl -o /usr/local/bin/mkcert -L 'https://github.com/FiloSottile/mkcert/releases/download/v1.4.3/mkcert-v1.4.3-linux-amd64'
         chmod +x /usr/local/bin/mkcert
         mkcert -install
