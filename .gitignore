@@ -1,6 +1,7 @@
 bin/
 dev/server.crt
 dev/server.key
+dist/
 input/
 input_old/
 rebuild/

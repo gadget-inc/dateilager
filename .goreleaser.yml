@@ -1,0 +1,63 @@
+before:
+  hooks:
+    - go mod download
+    - make install
+    - make internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go dev/server.cert js/src/fs.client.ts
+
+builds:
+  - main: ./cmd/client/main.go
+    id: client
+    binary: client
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+  - main: ./cmd/server/main.go
+    id: server
+    binary: server
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    hooks:
+      post:
+        - tar -zcf dist/migrations.tar.gz migrations
+  - main: ./cmd/webui/main.go
+    id: webui
+    binary: webui
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    hooks:
+      post:
+        - tar -zcf dist/assets.tar.gz assets
+
+changelog:
+  skip: true
+
+checksum:
+  name_template: 'checksums.txt'
+  extra_files:
+    - glob: ./dist/assets.tar.gz
+    - glob: ./dist/migrations.tar.gz
+
+archives:
+  - name_template: '{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}'
+
+release:
+  extra_files:
+    - glob: ./dist/assets.tar.gz
+    - glob: ./dist/migrations.tar.gz

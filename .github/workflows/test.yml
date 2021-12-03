@@ -1,0 +1,63 @@
+name: Test
+
+on:
+  push:
+
+jobs:
+  build:
+    # Multi OS builds will require nix for Postgres
+    runs-on: ubuntu-20.04
+
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: "password"
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
+    - uses: actions/setup-node@v2
+      with:
+        node-version: 16
+    - uses: arduino/setup-protoc@v1
+
+    - name: Cache go mods
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    - name: Cache npm packages
+      uses: actions/cache@v2
+      with:
+        path: ~/.npm
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+    - run: go mod download
+
+    - name: Install mkcert
+      run: |
+        sudo apt install libnss3-tools
+        curl -o /usr/local/bin/mkcert -L 'https://github.com/FiloSottile/mkcert/releases/download/v1.4.3/mkcert-v1.4.3-linux-amd64'
+        chmod +x /usr/local/bin/mkcert
+        mkcert -install
+    - run: make install
+
+    - run: make build
+    - run: make DB_URI=$DB_URI test
+      env:
+        DB_URI: postgres://postgres:password@localhost:5432/postgres
