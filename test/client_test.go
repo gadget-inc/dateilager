@@ -130,7 +130,7 @@ func writeDiffFile(tc util.TestCtx, updates map[string]fsdiff_pb.Update_Action) 
 	}
 	fileName := file.Name()
 
-	diff := &fsdiff_pb.Diff{CreatedAt: 0}
+	diff := &fsdiff_pb.Diff{}
 	for path, action := range updates {
 		diff.Updates = append(diff.Updates, &fsdiff_pb.Update{
 			Path:   path,

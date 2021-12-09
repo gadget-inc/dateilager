@@ -28,8 +28,8 @@ github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1m
 github.com/envoyproxy/go-control-plane v0.9.9-0.20201210154907-fd9021fe5dad/go.mod h1:cXg6YxExXjJnVBQHBLXeUAgxn2UodCpnH306RInaBQk=
 github.com/envoyproxy/go-control-plane v0.9.9-0.20210217033140-668b12f5399d/go.mod h1:cXg6YxExXjJnVBQHBLXeUAgxn2UodCpnH306RInaBQk=
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
-github.com/gadget-inc/fsdiff v0.3.2 h1:qXM9AneeeBFp88VgtxRI3iy8d4orP25hmSDTucri2YA=
-github.com/gadget-inc/fsdiff v0.3.2/go.mod h1:FTFTkLGCBk5v6e/hrICfQsQi9tMTEzvQkXbVOAT7bTA=
+github.com/gadget-inc/fsdiff v0.3.7 h1:VPix4+zN4wyrk6UuV+kLb6eU5NbvmHpY7oSxW13kceA=
+github.com/gadget-inc/fsdiff v0.3.7/go.mod h1:FTFTkLGCBk5v6e/hrICfQsQi9tMTEzvQkXbVOAT7bTA=
 github.com/go-chi/chi/v5 v5.0.4 h1:5e494iHzsYBiyXQAHHuI4tyJS9M3V84OuX3ufIIGHFo=
 github.com/go-chi/chi/v5 v5.0.4/go.mod h1:DslCQbL2OYiznFReuXYUmQ2hGd1aDpCnlMNITLSKoi8=
 github.com/go-kit/kit v0.9.0/go.mod h1:xBxKIO96dXMWWy0MnWVtmwkA9/13aqxPnvrjFYMA2as=
