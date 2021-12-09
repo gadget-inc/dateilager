@@ -36,6 +36,10 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-node-
 
+    - run: go mod download
+    - run: make install
+    - run: make internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go js/src/fs.client.ts
+
     - uses: goreleaser/goreleaser-action@v2
       with:
         version: latest
