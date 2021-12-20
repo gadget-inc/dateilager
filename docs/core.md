@@ -79,7 +79,7 @@ While it is possible to track every single object in a project with their own da
 
 In order to keep the data within Postgres manageable, Gadget can choose to `Pack` certain paths within the filesystem. A good example of a path that may be packed is something like: `node_modules/lodash/*`.
 
-When a path is packed, all objects with a matching prefix are considered deleted and the entirety of that path prefix is stored as a single object. The content for that object is a compressed TAR file with all objects within that pack included within. We also keep an index of every file within that pack to ensure fast directory listing.
+To manage packing rules, when creating a new project you can include a list of pack patterns, these regexes will be used to decide if a path is packed or not.
 
 When updates are made to a packed object, it is decompressed on the fly, the updates are applied and it is then recompressed. This trades off read and write performance to these individual objects to offer a large reduction in total rows within Postgres.
 

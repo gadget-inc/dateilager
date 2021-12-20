@@ -136,22 +136,14 @@ console.log("[updateObject] version: " + version);
 
 New versions are released and hosted on Github. (https://github.com/gadget-inc/dateilager/releases)
 
-As a first step build all the files necessary for a release.
-
-```bash
-$ make release
-```
-
-Then create a new git tag and push it to Github.
+Create a new tag and push it to Github, Goreleaser will handle building it.
 
 ```bash
 $ git tag v0.0.x
 $ git push origin v0.0.x
 ```
 
-Then navigate to the release page (https://github.com/gadget-inc/dateilager/releases/edit/v0.0.x), add a description and upload all files found in the `release` directory.
-
-Finally we need to build and push the Docker image to it's repository.
+We also need to build the server docker image and push it to Gadget's container registry.
 
 ```bash
 $ make upload-container-image version=0.0.x
