@@ -15,7 +15,6 @@ import (
 
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
-	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
 	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
@@ -241,15 +240,10 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 	return version, diffCount, nil
 }
 
-func (c *Client) Update(ctx context.Context, project int64, diffPath string, directory string) (int64, int, error) {
+func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff, directory string) (int64, int, error) {
 	stream, err := c.fs.Update(ctx)
 	if err != nil {
 		return -1, 0, fmt.Errorf("connect fs.Update: %w", err)
-	}
-
-	diff, err := fsdiff.ReadDiff(diffPath)
-	if err != nil {
-		return -1, 0, fmt.Errorf("parse diff file: %w", err)
 	}
 
 	var object *pb.Object

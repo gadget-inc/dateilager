@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/dateilager/pkg/client"
+	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -169,7 +170,12 @@ func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 		log.Fatal("could not fetch data", zap.Error(err))
 	}
 
-	log.Info("wrote files", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64("version", version), zap.Int("diff_count", count))
+	if version == -1 {
+		log.Info("latest version already checked out", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64("version", *a.vrange.From))
+	} else {
+		log.Info("wrote files", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64("version", version), zap.Int("diff_count", count))
+	}
+
 	fmt.Println(version)
 }
 
@@ -201,13 +207,24 @@ func parseUpdateArgs(args []string) (*sharedArgs, *updateArgs, error) {
 }
 
 func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
-	version, count, err := c.Update(ctx, a.project, a.diff, a.directory)
+	fmt.Printf("diff path: %v\n", a.diff)
+	diff, err := fsdiff.ReadDiff(a.diff)
 	if err != nil {
-		log.Fatal("update objects", zap.Error(err))
+		log.Fatal("parse diff file", zap.Error(err))
 	}
 
-	log.Info("updated objects", zap.Int64("project", a.project), zap.Int64("version", version), zap.Int("count", count))
-	fmt.Println(version)
+	if len(diff.Updates) == 0 {
+		log.Info("diff file empty, nothing to update", zap.Int64("project", a.project))
+		fmt.Println(-1)
+	} else {
+		version, count, err := c.Update(ctx, a.project, diff, a.directory)
+		if err != nil {
+			log.Fatal("update objects", zap.Error(err))
+		}
+
+		log.Info("updated objects", zap.Int64("project", a.project), zap.Int64("version", version), zap.Int("count", count))
+		fmt.Println(version)
+	}
 }
 
 type inspectArgs struct {

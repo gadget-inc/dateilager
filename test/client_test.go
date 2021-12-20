@@ -14,7 +14,6 @@ import (
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/client"
-	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
 	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"google.golang.org/grpc"
@@ -123,13 +122,7 @@ func writeTmpFiles(tc util.TestCtx, files map[string]string) string {
 	return dir
 }
 
-func writeDiffFile(tc util.TestCtx, updates map[string]fsdiff_pb.Update_Action) string {
-	file, err := os.CreateTemp("", "dateilager_tests_diff_")
-	if err != nil {
-		tc.Fatalf("create temp file: %v", err)
-	}
-	fileName := file.Name()
-
+func buildDiff(tc util.TestCtx, updates map[string]fsdiff_pb.Update_Action) *fsdiff_pb.Diff {
 	diff := &fsdiff_pb.Diff{}
 	for path, action := range updates {
 		diff.Updates = append(diff.Updates, &fsdiff_pb.Update{
@@ -138,12 +131,7 @@ func writeDiffFile(tc util.TestCtx, updates map[string]fsdiff_pb.Update_Action) 
 		})
 	}
 
-	err = fsdiff.WriteDiff(fileName, diff)
-	if err != nil {
-		tc.Fatalf("write diff file: %v", err)
-	}
-
-	return fileName
+	return diff
 }
 
 func verifyDir(tc util.TestCtx, dir string, files map[string]expectedFile) {
@@ -439,11 +427,11 @@ func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
 		tc.Fatalf("write file %v: %v", filepath.Join(tmpDir, "/a/c"), err)
 	}
 
-	diffPath := writeDiffFile(tc, map[string]fsdiff_pb.Update_Action{
+	diff := buildDiff(tc, map[string]fsdiff_pb.Update_Action{
 		"/a/c": fsdiff_pb.Update_ADD,
 	})
 
-	version, count, err = c.Update(tc.Context(), 1, diffPath, tmpDir)
+	version, count, err = c.Update(tc.Context(), 1, diff, tmpDir)
 	if err != nil {
 		t.Fatalf("client.UpdateObjects: %v", err)
 	}
@@ -487,17 +475,16 @@ func TestUpdateObjects(t *testing.T) {
 	})
 	defer os.RemoveAll(tmpDir)
 
-	diffPath := writeDiffFile(tc, map[string]fsdiff_pb.Update_Action{
+	diff := buildDiff(tc, map[string]fsdiff_pb.Update_Action{
 		"/a": fsdiff_pb.Update_CHANGE,
 		"/c": fsdiff_pb.Update_CHANGE,
 		"/d": fsdiff_pb.Update_ADD,
 	})
-	defer os.Remove(diffPath)
 
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
 
-	version, count, err := c.Update(tc.Context(), 1, diffPath, tmpDir)
+	version, count, err := c.Update(tc.Context(), 1, diff, tmpDir)
 	if err != nil {
 		t.Fatalf("client.UpdateObjects: %v", err)
 	}
@@ -537,12 +524,11 @@ func TestUpdateObjectsWithMissingFile(t *testing.T) {
 	})
 	defer os.RemoveAll(tmpDir)
 
-	diffPath := writeDiffFile(tc, map[string]fsdiff_pb.Update_Action{
+	diff := buildDiff(tc, map[string]fsdiff_pb.Update_Action{
 		"/a": fsdiff_pb.Update_CHANGE,
 		"/c": fsdiff_pb.Update_CHANGE,
 		"/d": fsdiff_pb.Update_ADD,
 	})
-	defer os.Remove(diffPath)
 
 	// Remove "/c" even though it was marked as changed by the diff
 	os.Remove(filepath.Join(tmpDir, "c"))
@@ -552,7 +538,7 @@ func TestUpdateObjectsWithMissingFile(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close()
 
-	version, count, err := c.Update(tc.Context(), 1, diffPath, tmpDir)
+	version, count, err := c.Update(tc.Context(), 1, diff, tmpDir)
 	if err != nil {
 		t.Fatalf("client.UpdateObjects: %v", err)
 	}
