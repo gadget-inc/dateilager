@@ -207,7 +207,6 @@ func parseUpdateArgs(args []string) (*sharedArgs, *updateArgs, error) {
 }
 
 func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
-	fmt.Printf("diff path: %v\n", a.diff)
 	diff, err := fsdiff.ReadDiff(a.diff)
 	if err != nil {
 		log.Fatal("parse diff file", zap.Error(err))
