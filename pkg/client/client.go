@@ -137,6 +137,51 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, vrange V
 	return objects, nil
 }
 
+func (c *Client) FetchArchives(ctx context.Context, project int64, prefix string, vrange VersionRange, output string) (int64, error) {
+	query := &pb.ObjectQuery{
+		Path:        prefix,
+		IsPrefix:    true,
+		WithContent: true,
+	}
+
+	request := &pb.GetCompressRequest{
+		Project:     project,
+		FromVersion: vrange.From,
+		ToVersion:   vrange.To,
+		Queries:     []*pb.ObjectQuery{query},
+	}
+
+	index := 0
+	version := int64(-1)
+
+	stream, err := c.fs.GetCompress(ctx, request)
+	if err != nil {
+		return -1, fmt.Errorf("connect fs.GetCompress: %w", err)
+	}
+
+	for {
+		response, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return -1, fmt.Errorf("receive fs.GetCompress: %w", err)
+		}
+
+		version = response.Version
+		path := filepath.Join(output, fmt.Sprintf("%v.tar.s2", index))
+
+		err = os.WriteFile(path, response.Bytes, 0644)
+		if err != nil {
+			return version, fmt.Errorf("writing archive: %w", err)
+		}
+
+		index += 1
+	}
+
+	return version, nil
+}
+
 func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vrange VersionRange, output string) (int64, int, error) {
 	query := &pb.ObjectQuery{
 		Path:        prefix,

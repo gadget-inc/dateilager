@@ -127,10 +127,11 @@ func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
 }
 
 type rebuildArgs struct {
-	project int64
-	vrange  client.VersionRange
-	prefix  string
-	output  string
+	project        int64
+	vrange         client.VersionRange
+	prefix         string
+	output         string
+	skipDecompress bool
 }
 
 func parseRebuildArgs(args []string) (*sharedArgs, *rebuildArgs, error) {
@@ -142,6 +143,7 @@ func parseRebuildArgs(args []string) (*sharedArgs, *rebuildArgs, error) {
 	to := set.Int64("to", -1, "To version ID (optional)")
 	prefix := set.String("prefix", "", "Search prefix")
 	output := set.String("output", "", "Output directory")
+	skipDecompress := set.Bool("skip_decompress", false, "Skip decompression and write archives to disk")
 
 	set.Parse(args)
 
@@ -157,17 +159,28 @@ func parseRebuildArgs(args []string) (*sharedArgs, *rebuildArgs, error) {
 	}
 
 	return shared, &rebuildArgs{
-		project: *project,
-		vrange:  client.VersionRange{From: from, To: to},
-		prefix:  *prefix,
-		output:  *output,
+		project:        *project,
+		vrange:         client.VersionRange{From: from, To: to},
+		prefix:         *prefix,
+		output:         *output,
+		skipDecompress: *skipDecompress,
 	}, nil
 }
 
 func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+	if a.skipDecompress {
+		version, err := c.FetchArchives(ctx, a.project, a.prefix, a.vrange, a.output)
+		if err != nil {
+			log.Fatal("could not fetch archives", zap.Error(err), zap.String("output", a.output), zap.Int64("version", version))
+		}
+
+		log.Info("wrote archives", zap.Int64("project", a.project))
+		return
+	}
+
 	version, count, err := c.Rebuild(ctx, a.project, a.prefix, a.vrange, a.output)
 	if err != nil {
-		log.Fatal("could not fetch data", zap.Error(err))
+		log.Fatal("could not rebuild project", zap.Error(err))
 	}
 
 	if version == -1 {
