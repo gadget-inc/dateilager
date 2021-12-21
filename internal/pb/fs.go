@@ -3,6 +3,7 @@ package pb
 import (
 	"archive/tar"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -53,6 +54,9 @@ func ObjectFromFilePath(directory, path string) (*Object, error) {
 		target, err := os.Readlink(fullPath)
 		if err != nil {
 			return nil, err
+		}
+		if target == "" {
+			return nil, fmt.Errorf("empty link target for %v", fullPath)
 		}
 		content = []byte(target)
 	}
