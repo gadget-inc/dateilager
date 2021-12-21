@@ -140,21 +140,22 @@ type Object struct {
 }
 
 type VersionData struct {
-	Project int64
-	Version int64
-	Objects []Object
+	Project  int64
+	Version  int64
+	Versions []int64
+	Objects  []Object
 }
 
 func fetchVersionData(ctx context.Context, dlc *client.Client, project, version int64) (*VersionData, error) {
 	vrange := client.VersionRange{From: nil, To: &version}
-	resp, err := dlc.Get(ctx, project, "", vrange)
+	get, err := dlc.Get(ctx, project, "", vrange)
 	if err != nil {
 		return nil, err
 	}
 
 	var objects []Object
 
-	for _, object := range resp {
+	for _, object := range get {
 		mode := fs.FileMode(object.Mode)
 		truncated := len(object.Content) > 2000
 
@@ -172,10 +173,21 @@ func fetchVersionData(ctx context.Context, dlc *client.Client, project, version 
 		})
 	}
 
+	inspect, err := dlc.Inspect(ctx, project)
+	if err != nil {
+		return nil, err
+	}
+
+	versions := make([]int64, inspect.LatestVersion)
+	for i := int64(1); i <= inspect.LatestVersion; i++ {
+		versions[i-1] = i
+	}
+
 	return &VersionData{
-		Project: project,
-		Version: version,
-		Objects: objects,
+		Project:  project,
+		Version:  version,
+		Versions: versions,
+		Objects:  objects,
 	}, nil
 }
 

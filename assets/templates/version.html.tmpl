@@ -1,7 +1,14 @@
 {{ template "header.html.tmpl" "DL project" }}
 
 <h1>Project: {{ .Project }}</h1>
-<h3>Version: {{ .Version }}</h3>
+<div>
+    <label for="version">Version: </label>
+    <select id="version" autocomplete="off">
+        {{ range $v := .Versions }}
+            <option value="{{ $v }}"  {{ if eq $v $.Version }}selected{{ end }}>{{ $v }}</option>
+        {{ end }}
+    </select>
+</div>
 <ul>
     {{ range .Objects }}
         <li>
@@ -16,5 +23,16 @@
         </li>
     {{ end }}
 </ul>
+
+<script>
+const action = "/projects/{{ .Project }}/versions/";
+const select = document.getElementById("version");
+
+select.addEventListener("change", (option) => {
+    console.log(window.location.host + action + option.target.value);
+    window.location.href = window.location.origin + action + option.target.value;
+    return false;
+});
+</script>
 
 {{ template "footer.html.tmpl" }}
