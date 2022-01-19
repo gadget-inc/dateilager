@@ -184,7 +184,7 @@ func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 	}
 
 	if version == -1 {
-		log.Info("latest version already checked out", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64("version", *a.vrange.From))
+		log.Debug("latest version already checked out", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64("version", *a.vrange.From))
 	} else {
 		log.Info("wrote files", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64("version", version), zap.Int("diff_count", count))
 	}
@@ -226,7 +226,7 @@ func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client)
 	}
 
 	if len(diff.Updates) == 0 {
-		log.Info("diff file empty, nothing to update", zap.Int64("project", a.project))
+		log.Debug("diff file empty, nothing to update", zap.Int64("project", a.project))
 		fmt.Println(-1)
 	} else {
 		version, count, err := c.Update(ctx, a.project, diff, a.directory)
