@@ -88,6 +88,33 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 	return &pb.NewProjectResponse{}, nil
 }
 
+func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*pb.DeleteProjectResponse, error) {
+	err := requireAdminAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+	}
+	defer close()
+
+	f.Log.Debug("FS.DeleteProject[Init]", zap.Int64("project", req.Project))
+	err = db.DeleteProject(ctx, tx, req.Project)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS delete project %v: %w", req.Project, err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS delete commit tx: %w", err)
+	}
+	f.Log.Debug("FS.DeleteProject[Commit]")
+
+	return &pb.DeleteProjectResponse{}, nil
+}
+
 func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb.ListProjectsResponse, error) {
 	err := requireAdminAuth(ctx)
 	if err != nil {
