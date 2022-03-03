@@ -279,6 +279,19 @@ func TestGetVersion(t *testing.T) {
 	})
 }
 
+func TestGetVersionMissingProject(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	objects, err := c.Get(tc.Context(), 1, "", toVersion(1))
+	if err == nil {
+		t.Fatalf("client.GetLatest didn't error accessing objects: %v", objects)
+	}
+}
+
 func TestRebuild(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
@@ -558,4 +571,37 @@ func TestUpdateObjectsWithMissingFile(t *testing.T) {
 		"/a": "a v2",
 		"/b": "b v1",
 	})
+}
+
+func TestDeleteProject(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2)
+	writeObject(tc, 1, 1, i(2), "/a", "a v1")
+	writeObject(tc, 1, 1, nil, "/b", "b v1")
+	writeObject(tc, 1, 2, nil, "/c", "c v2")
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
+	if err != nil {
+		t.Fatalf("client.GetLatest with results: %v", err)
+	}
+
+	verifyObjects(tc, objects, map[string]string{
+		"/b": "b v1",
+		"/c": "c v2",
+	})
+
+	err = c.DeleteProject(tc.Context(), 1)
+	if err != nil {
+		t.Fatalf("client.DeleteProject with results: %v", err)
+	}
+
+	objects, err = c.Get(tc.Context(), 1, "", toVersion(1))
+	if err == nil {
+		t.Fatalf("client.GetLatest didn't error accessing objects: %v", objects)
+	}
 }

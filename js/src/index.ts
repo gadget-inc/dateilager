@@ -43,7 +43,7 @@ export function encodeContent(content: string): Uint8Array {
 /**
  * Decode an array of bytes as an object's string contents.
  */
- export function decodeContent(bytes: Uint8Array | undefined): string {
+export function decodeContent(bytes: Uint8Array | undefined): string {
   return decoder.decode(bytes);
 }
 
@@ -93,6 +93,10 @@ export class DateiLagerClient {
       { id: project, packPatterns: packPatterns, template: template },
       this._options()
     );
+  }
+
+  async deleteProject(project: bigint): Promise<void> {
+    await this.client.deleteProject({ project }, this._options());
   }
 
   async *listObjects(project: bigint, path: string, ignores: string[] = []) {

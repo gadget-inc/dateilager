@@ -101,6 +101,18 @@ func (c *Client) NewProject(ctx context.Context, id int64, template *int64, pack
 	return nil
 }
 
+func (c *Client) DeleteProject(ctx context.Context, project int64) error {
+	_, err := c.fs.DeleteProject(ctx, &pb.DeleteProjectRequest{
+		Project: project,
+	})
+
+	if err != nil {
+		return fmt.Errorf("delete project: %w", err)
+	}
+
+	return nil
+}
+
 func (c *Client) Get(ctx context.Context, project int64, prefix string, vrange VersionRange) ([]*pb.Object, error) {
 	var objects []*pb.Object
 

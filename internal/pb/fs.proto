@@ -7,6 +7,8 @@ option go_package = "github.com/gadget-inc/dateilager/pkg/pb";
 service Fs {
     rpc NewProject(NewProjectRequest) returns (NewProjectResponse);
 
+    rpc DeleteProject(DeleteProjectRequest) returns (DeleteProjectResponse);
+
     rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
 
     rpc Get(GetRequest) returns (stream GetResponse);
@@ -29,6 +31,13 @@ message NewProjectRequest {
 }
 
 message NewProjectResponse {};
+
+
+message DeleteProjectRequest {
+    int64 project = 1;
+}
+
+message DeleteProjectResponse {};
 
 message Project {
     int64 id = 1;
