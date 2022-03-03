@@ -21,7 +21,7 @@ RUN mkdir -p /home/main/secrets
 VOLUME /home/main/secrets/tls
 VOLUME /home/main/secrets/paseto
 
-COPY bin/server server
+COPY release/server_linux_amd64 server
 COPY migrations migrations
 COPY scripts/entrypoint.sh entrypoint.sh
 

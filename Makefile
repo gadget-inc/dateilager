@@ -66,13 +66,20 @@ release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 release/%_macos_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o $@ $<
 
+release/%_macos_arm64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o $@ $<
+
 release/migrations.tar.gz: migrations/*
 	tar -zcf $@ migrations
 
 release/assets.tar.gz: assets/*
 	tar -zcf $@ assets
 
-release: build release/server_linux_amd64 release/server_macos_amd64 release/client_linux_amd64 release/client_macos_amd64 release/webui_macos_amd64 release/webui_linux_amd64 release/assets.tar.gz release/migrations.tar.gz
+release: build
+release: release/server_linux_amd64 release/server_macos_amd64 release/server_macos_arm64
+release: release/client_linux_amd64 release/client_macos_amd64 release/client_macos_arm64
+release: release/webui_linux_amd64 release/webui_macos_amd64 release/webui_macos_arm64
+release: release/assets.tar.gz release/migrations.tar.gz
 
 test: export DB_URI = postgres://$(DB_USER)@$(DB_HOST):5432/dl_tests
 test: migrate
