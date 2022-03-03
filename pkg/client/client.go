@@ -241,6 +241,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 				}
 
 				err = tarReader.CopyContent(file)
+				file.Close()
 				if err != nil {
 					return -1, diffCount, fmt.Errorf("write %v to disk: %w", path, err)
 				}
