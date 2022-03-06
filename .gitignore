@@ -5,6 +5,7 @@ dist/
 input/
 input_old/
 rebuild/
+output/
 release/
 *.prof
 *.pb.go

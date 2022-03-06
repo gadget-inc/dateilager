@@ -130,6 +130,7 @@ func (s *Server) monitorDbPool(ctx context.Context, dbConn *DbPoolConnector) {
 			select {
 			case <-ctx.Done():
 				s.Health.SetServingStatus("dateilager.server", healthpb.HealthCheckResponse_NOT_SERVING)
+				return
 			case <-ticker.C:
 				ctxTimeout, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 
