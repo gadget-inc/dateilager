@@ -18,16 +18,14 @@ readonly INPUT_DIR="${ROOT_DIR}/input"
 build_node_modules() {
     local package_json="${1}"
     local output="${2}"
-    local tmpdir="$(mktemp -d -t dl-XXXXXXXXXX)"
 
-    cp "${package_json}" "${tmpdir}/package.json"
+    mkdir -p "${output}/node_modules"
+
+    cp "${package_json}" "${output}/package.json"
     (
-        cd "${tmpdir}"
+        cd "${output}"
         npm install &> /dev/null
-        cp -r ./node_modules/* "${output}"
     )
-
-    rm -rf "${tmpdir:?}"
 }
 
 v1() {

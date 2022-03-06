@@ -15,6 +15,7 @@ require (
 	go.uber.org/zap v1.16.0
 	golang.org/x/net v0.0.0-20210510120150-4163338589ed // indirect
 	golang.org/x/oauth2 v0.0.0-20190226205417-e64efc72b421
+	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
 	google.golang.org/genproto v0.0.0-20210518161634-ec7691c0a37d // indirect
 	google.golang.org/grpc v1.38.0
 	google.golang.org/protobuf v1.26.0

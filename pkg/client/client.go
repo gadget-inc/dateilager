@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gadget-inc/dateilager/internal/db"
@@ -18,6 +19,7 @@ import (
 	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
@@ -194,7 +196,66 @@ func (c *Client) FetchArchives(ctx context.Context, project int64, prefix string
 	return version, nil
 }
 
-func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vrange VersionRange, output string) (int64, int, error) {
+func writeObject(outputDir string, reader *db.TarReader, header *tar.Header) error {
+	path := filepath.Join(outputDir, header.Name)
+
+	switch header.Typeflag {
+	case tar.TypeReg:
+		err := os.MkdirAll(filepath.Dir(path), 0777)
+		if err != nil {
+			return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
+		}
+
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
+		if err != nil {
+			return fmt.Errorf("open file %v: %w", path, err)
+		}
+
+		err = reader.CopyContent(file)
+		file.Close()
+		if err != nil {
+			return fmt.Errorf("write %v to disk: %w", path, err)
+		}
+
+	case tar.TypeDir:
+		err := os.MkdirAll(path, os.FileMode(header.Mode))
+		if err != nil {
+			return fmt.Errorf("mkdir -p %v: %w", path, err)
+		}
+
+	case tar.TypeSymlink:
+		err := os.MkdirAll(filepath.Dir(path), 0777)
+		if err != nil {
+			return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
+		}
+
+		// Remove existing link
+		if _, err = os.Stat(path); err == nil {
+			err = os.Remove(path)
+			if err != nil {
+				return fmt.Errorf("rm %v before symlinking %v: %w", path, header.Linkname, err)
+			}
+		}
+
+		err = os.Symlink(header.Linkname, path)
+		if err != nil {
+			return fmt.Errorf("ln -s %v %v: %w", header.Linkname, path, err)
+		}
+
+	case 'D':
+		err := os.Remove(path)
+		if err != nil {
+			return fmt.Errorf("remove %v from disk: %w", path, err)
+		}
+
+	default:
+		return fmt.Errorf("unhandle TAR type: %v", header.Typeflag)
+	}
+
+	return nil
+}
+
+func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vrange VersionRange, output string) (int64, uint32, error) {
 	query := &pb.ObjectQuery{
 		Path:        prefix,
 		IsPrefix:    true,
@@ -209,11 +270,47 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 	}
 
 	version := int64(-1)
-	diffCount := 0
+	var diffCount uint32
 
 	stream, err := c.fs.GetCompress(ctx, request)
 	if err != nil {
 		return -1, diffCount, fmt.Errorf("connect fs.GetCompress: %w", err)
+	}
+
+	tarBytesChan := make(chan []byte, 16)
+	group, ctx := errgroup.WithContext(ctx)
+
+	for i := 1; i <= 4; i++ {
+		group.Go(func() error {
+			for {
+				select {
+				case <-ctx.Done():
+					return nil
+				case tarBytes, ok := <-tarBytesChan:
+					if !ok {
+						return nil
+					}
+
+					tarReader := db.NewTarReader(tarBytes)
+
+					for {
+						header, err := tarReader.Next()
+						if err == io.EOF {
+							break
+						}
+						if err != nil {
+							return fmt.Errorf("next TAR header: %w", err)
+						}
+
+						atomic.AddUint32(&diffCount, 1)
+						err = writeObject(output, tarReader, header)
+						if err != nil {
+							return err
+						}
+					}
+				}
+			}
+		})
 	}
 
 	for {
@@ -226,79 +323,18 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 		}
 
 		version = response.Version
-		tarReader := db.NewTarReader(response.Bytes)
+		tarBytesChan <- response.Bytes
+	}
 
-		for {
-			header, err := tarReader.Next()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				return -1, diffCount, fmt.Errorf("next TAR header: %w", err)
-			}
-
-			diffCount += 1
-			path := filepath.Join(output, header.Name)
-
-			switch header.Typeflag {
-			case tar.TypeReg:
-				err = os.MkdirAll(filepath.Dir(path), 0777)
-				if err != nil {
-					return -1, diffCount, fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
-				}
-
-				file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
-				if err != nil {
-					return -1, diffCount, fmt.Errorf("open file %v: %w", path, err)
-				}
-
-				err = tarReader.CopyContent(file)
-				file.Close()
-				if err != nil {
-					return -1, diffCount, fmt.Errorf("write %v to disk: %w", path, err)
-				}
-
-			case tar.TypeDir:
-				err = os.MkdirAll(path, os.FileMode(header.Mode))
-				if err != nil {
-					return -1, diffCount, fmt.Errorf("mkdir -p %v: %w", path, err)
-				}
-
-			case tar.TypeSymlink:
-				err = os.MkdirAll(filepath.Dir(path), 0777)
-				if err != nil {
-					return -1, diffCount, fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
-				}
-
-				// Remove existing link
-				if _, err = os.Stat(path); err == nil {
-					err = os.Remove(path)
-					if err != nil {
-						return -1, diffCount, fmt.Errorf("rm %v before symlinking %v: %w", path, header.Linkname, err)
-					}
-				}
-
-				err = os.Symlink(header.Linkname, path)
-				if err != nil {
-					return -1, diffCount, fmt.Errorf("ln -s %v %v: %w", header.Linkname, path, err)
-				}
-
-			case 'D':
-				err = os.Remove(path)
-				if err != nil {
-					return -1, diffCount, fmt.Errorf("remove %v from disk: %w", path, err)
-				}
-
-			default:
-				c.log.Warn("skipping unhandled TAR type", zap.Any("flag", header.Typeflag))
-			}
-		}
+	close(tarBytesChan)
+	if err = group.Wait(); err != nil {
+		return -1, diffCount, err
 	}
 
 	return version, diffCount, nil
 }
 
-func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff, directory string) (int64, int, error) {
+func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff, directory string) (int64, uint32, error) {
 	stream, err := c.fs.Update(ctx)
 	if err != nil {
 		return -1, 0, fmt.Errorf("connect fs.Update: %w", err)
@@ -333,7 +369,7 @@ func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff
 		return -1, 0, fmt.Errorf("close fs.Update: %w", err)
 	}
 
-	return response.Version, len(diff.Updates), nil
+	return response.Version, uint32(len(diff.Updates)), nil
 }
 
 func (c *Client) Inspect(ctx context.Context, project int64) (*pb.InspectResponse, error) {
