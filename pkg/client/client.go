@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -279,10 +280,20 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 		return -1, diffCount, fmt.Errorf("connect fs.GetCompress: %w", err)
 	}
 
+	// Pull one response before booting workers
+	// This is a short circuit for cases where there are no diffs to apply
+	response, err := stream.Recv()
+	if err == io.EOF {
+		return version, diffCount, nil
+	}
+	if err != nil {
+		return -1, diffCount, fmt.Errorf("receive fs.GetCompress: %w", err)
+	}
+
 	tarBytesChan := make(chan []byte, 16)
 	group, ctx := errgroup.WithContext(ctx)
 
-	for i := 1; i <= 4; i++ {
+	for i := 1; i <= runtime.NumCPU()/2; i++ {
 		group.Go(func() error {
 			for {
 				select {
@@ -316,16 +327,16 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 	}
 
 	for {
-		response, err := stream.Recv()
+		version = response.Version
+		tarBytesChan <- response.Bytes
+
+		response, err = stream.Recv()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return -1, diffCount, fmt.Errorf("receive fs.GetCompress: %w", err)
 		}
-
-		version = response.Version
-		tarBytesChan <- response.Bytes
 	}
 
 	close(tarBytesChan)
