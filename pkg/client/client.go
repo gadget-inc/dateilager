@@ -74,6 +74,9 @@ func NewClient(ctx context.Context, server, token string) (*Client, error) {
 }
 
 func (c *Client) Close() {
+	// Give a chance for the upstream socket to finish writing it's response
+	// https://github.com/grpc/grpc-go/issues/2869#issuecomment-503310136
+	time.Sleep(1 * time.Millisecond)
 	c.conn.Close()
 }
 
@@ -105,7 +108,6 @@ func (c *Client) DeleteProject(ctx context.Context, project int64) error {
 	_, err := c.fs.DeleteProject(ctx, &pb.DeleteProjectRequest{
 		Project: project,
 	})
-
 	if err != nil {
 		return fmt.Errorf("delete project: %w", err)
 	}
