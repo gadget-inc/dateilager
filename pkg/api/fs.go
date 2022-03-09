@@ -60,7 +60,7 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
 	defer close()
 
@@ -68,19 +68,19 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 
 	err = db.CreateProject(ctx, tx, req.Id, req.PackPatterns)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS new project %v, %w", req.Id, err)
+		return nil, status.Errorf(codes.Internal, "FS new project %v, %v", req.Id, err)
 	}
 
 	if req.Template != nil {
 		err = db.CopyAllObjects(ctx, tx, *req.Template, req.Id)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "FS new project copy from template %v to %v, %w", req.Template, req.Id, err)
+			return nil, status.Errorf(codes.Internal, "FS new project copy from template %v to %v, %v", req.Template, req.Id, err)
 		}
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS new project commit tx: %w", err)
+		return nil, status.Errorf(codes.Internal, "FS new project commit tx: %v", err)
 	}
 
 	f.Log.Debug("FS.NewProject[Commit]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
@@ -96,19 +96,19 @@ func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*
 
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
 	defer close()
 
 	f.Log.Debug("FS.DeleteProject[Init]", zap.Int64("project", req.Project))
 	err = db.DeleteProject(ctx, tx, req.Project)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS delete project %v: %w", req.Project, err)
+		return nil, status.Errorf(codes.Internal, "FS delete project %v: %v", req.Project, err)
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS delete commit tx: %w", err)
+		return nil, status.Errorf(codes.Internal, "FS delete commit tx: %v", err)
 	}
 	f.Log.Debug("FS.DeleteProject[Commit]")
 
@@ -123,7 +123,7 @@ func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb
 
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
 	defer close()
 
@@ -131,7 +131,7 @@ func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb
 
 	projects, err := db.ListProjects(ctx, tx)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS snapshot: %w", err)
+		return nil, status.Errorf(codes.Internal, "FS snapshot: %v", err)
 	}
 
 	return &pb.ListProjectsResponse{
@@ -167,23 +167,23 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
-		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
 	defer close()
 
 	vrange, err := db.NewVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
 	if errors.Is(err, db.ErrNotFound) {
-		return status.Errorf(codes.NotFound, "FS get missing latest version: %w", err)
+		return status.Errorf(codes.NotFound, "FS get missing latest version: %v", err)
 	}
 	if err != nil {
-		return status.Errorf(codes.Internal, "FS get latest version: %w", err)
+		return status.Errorf(codes.Internal, "FS get latest version: %v", err)
 	}
 
 	f.Log.Debug("FS.Get[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
 	packManager, err := db.NewPackManager(ctx, tx, req.Project)
 	if err != nil {
-		return status.Errorf(codes.Internal, "FS create packed cache: %w", err)
+		return status.Errorf(codes.Internal, "FS create packed cache: %v", err)
 	}
 
 	for _, query := range req.Queries {
@@ -203,7 +203,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 
 		objects, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
 		if err != nil {
-			return status.Errorf(codes.Internal, "FS get objects: %w", err)
+			return status.Errorf(codes.Internal, "FS get objects: %v", err)
 		}
 
 		for {
@@ -215,12 +215,12 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 				break
 			}
 			if err != nil {
-				return status.Errorf(codes.Internal, "FS get next object: %w", err)
+				return status.Errorf(codes.Internal, "FS get next object: %v", err)
 			}
 
 			err = stream.Send(&pb.GetResponse{Version: vrange.To, Object: object})
 			if err != nil {
-				return status.Errorf(codes.Internal, "FS send GetResponse: %w", err)
+				return status.Errorf(codes.Internal, "FS send GetResponse: %v", err)
 			}
 		}
 	}
@@ -242,16 +242,16 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
-		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
 	defer close()
 
 	vrange, err := db.NewVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
 	if errors.Is(err, db.ErrNotFound) {
-		return status.Errorf(codes.NotFound, "FS get compress missing latest version: %w", err)
+		return status.Errorf(codes.NotFound, "FS get compress missing latest version: %v", err)
 	}
 	if err != nil {
-		return status.Errorf(codes.Internal, "FS get compress latest version: %w", err)
+		return status.Errorf(codes.Internal, "FS get compress latest version: %v", err)
 	}
 
 	f.Log.Debug("FS.GetCompress[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
@@ -273,7 +273,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 
 		tars, err := db.GetTars(ctx, tx, req.Project, vrange, query)
 		if err != nil {
-			return status.Errorf(codes.Internal, "FS get tars: %w", err)
+			return status.Errorf(codes.Internal, "FS get tars: %v", err)
 		}
 
 		for {
@@ -285,7 +285,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 				continue
 			}
 			if err != nil {
-				return status.Errorf(codes.Internal, "FS get next tar: %w", err)
+				return status.Errorf(codes.Internal, "FS get next tar: %v", err)
 			}
 
 			err = stream.Send(&pb.GetCompressResponse{
@@ -294,7 +294,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 				Bytes:   tar,
 			})
 			if err != nil {
-				return status.Errorf(codes.Internal, "FS send GetCompressResponse: %w", err)
+				return status.Errorf(codes.Internal, "FS send GetCompressResponse: %v", err)
 			}
 		}
 	}
@@ -313,7 +313,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
-		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
 	defer close()
 
@@ -329,7 +329,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		}
 		if err != nil {
 			errStatus, _ := status.FromError(err)
-			return status.Errorf(errStatus.Code(), "FS receive update request: %w", err)
+			return status.Errorf(errStatus.Code(), "FS receive update request: %v", err)
 		}
 
 		if version == -1 {
@@ -339,10 +339,10 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 
 			latestVersion, err := db.LockLatestVersion(ctx, tx, project)
 			if errors.Is(err, db.ErrNotFound) {
-				return status.Errorf(codes.NotFound, "FS update missing latest version: %w", err)
+				return status.Errorf(codes.NotFound, "FS update missing latest version: %v", err)
 			}
 			if err != nil {
-				return status.Errorf(codes.Internal, "FS update lock latest version: %w", err)
+				return status.Errorf(codes.Internal, "FS update lock latest version: %v", err)
 			}
 
 			version = latestVersion + 1
@@ -350,12 +350,12 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 
 			packManager, err = db.NewPackManager(ctx, tx, project)
 			if err != nil {
-				return status.Errorf(codes.Internal, "FS create packed cache: %w", err)
+				return status.Errorf(codes.Internal, "FS create packed cache: %v", err)
 			}
 		}
 
 		if project != req.Project {
-			return status.Errorf(codes.InvalidArgument, "initial project %v, next project %v: %w", project, req.Project, ErrMultipleProjectsPerUpdate)
+			return status.Errorf(codes.InvalidArgument, "initial project %v, next project %v: %v", project, req.Project, ErrMultipleProjectsPerUpdate)
 		}
 
 		packParent := packManager.IsPathPacked(req.Object.Path)
@@ -373,7 +373,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		}
 
 		if err != nil {
-			return status.Errorf(codes.Internal, "FS update: %w", err)
+			return status.Errorf(codes.Internal, "FS update: %v", err)
 		}
 	}
 
@@ -381,7 +381,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	if version == -1 {
 		err = tx.Rollback(ctx)
 		if err != nil {
-			return status.Errorf(codes.Internal, "FS rollback empty update: %w", err)
+			return status.Errorf(codes.Internal, "FS rollback empty update: %v", err)
 		}
 
 		f.Log.Debug("FS.Update[Empty]")
@@ -393,18 +393,18 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 
 		err = db.UpdatePackedObjects(ctx, tx, project, version, parent, objects)
 		if err != nil {
-			return status.Errorf(codes.Internal, "FS update packed objects for %v: %w", parent, err)
+			return status.Errorf(codes.Internal, "FS update packed objects for %v: %v", parent, err)
 		}
 	}
 
 	err = db.UpdateLatestVersion(ctx, tx, project, version)
 	if err != nil {
-		return status.Errorf(codes.Internal, "FS update latest version: %w", err)
+		return status.Errorf(codes.Internal, "FS update latest version: %v", err)
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return status.Errorf(codes.Internal, "FS update commit tx: %w", err)
+		return status.Errorf(codes.Internal, "FS update commit tx: %v", err)
 	}
 
 	f.Log.Debug("FS.Update[Commit]", zap.Int64("project", project), zap.Int64("version", version))
@@ -420,7 +420,7 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
 	defer close()
 
@@ -428,15 +428,15 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 
 	vrange, err := db.NewVersionRange(ctx, tx, req.Project, nil, nil)
 	if errors.Is(err, db.ErrNotFound) {
-		return nil, status.Errorf(codes.NotFound, "FS inspect missing latest version: %w", err)
+		return nil, status.Errorf(codes.NotFound, "FS inspect missing latest version: %v", err)
 	}
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS inspect latest version: %w", err)
+		return nil, status.Errorf(codes.Internal, "FS inspect latest version: %v", err)
 	}
 
 	packManager, err := db.NewPackManager(ctx, tx, req.Project)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS create packed cache: %w", err)
+		return nil, status.Errorf(codes.Internal, "FS create packed cache: %v", err)
 	}
 
 	query := &pb.ObjectQuery{
@@ -446,7 +446,7 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 	}
 	objects, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS get objects: %w", err)
+		return nil, status.Errorf(codes.Internal, "FS get objects: %v", err)
 	}
 
 	live_objects_count := int64(0)
@@ -459,7 +459,7 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 			break
 		}
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "FS get next object: %w", err)
+			return nil, status.Errorf(codes.Internal, "FS get next object: %v", err)
 		}
 
 		live_objects_count += 1
@@ -467,7 +467,7 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 
 	total_objects_count, err := db.TotalObjectsCount(ctx, tx, req.Project)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS inspect project: %w", err)
+		return nil, status.Errorf(codes.Internal, "FS inspect project: %v", err)
 	}
 
 	return &pb.InspectResponse{
@@ -490,7 +490,7 @@ func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.Snapsho
 
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
 	defer close()
 
@@ -498,7 +498,7 @@ func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.Snapsho
 
 	projects, err := db.ListProjects(ctx, tx)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS snapshot: %w", err)
+		return nil, status.Errorf(codes.Internal, "FS snapshot: %v", err)
 	}
 
 	return &pb.SnapshotResponse{
@@ -518,7 +518,7 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %w", err)
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
 	defer close()
 
@@ -529,7 +529,7 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 
 		err = db.ResetAll(ctx, tx)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "FS reset all: %w", err)
+			return nil, status.Errorf(codes.Internal, "FS reset all: %v", err)
 		}
 	} else {
 		var projects []int64
@@ -538,20 +538,20 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 			f.Log.Debug("FS.Reset[Project]", zap.Int64("project", project.Id), zap.Int64("version", project.Version))
 			err = db.ResetProject(ctx, tx, project.Id, project.Version)
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "FS reset project %v: %w", project.Id, err)
+				return nil, status.Errorf(codes.Internal, "FS reset project %v: %v", project.Id, err)
 			}
 			projects = append(projects, project.Id)
 		}
 
 		err = db.DropOtherProjects(ctx, tx, projects)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "FS reset drop others: %w", err)
+			return nil, status.Errorf(codes.Internal, "FS reset drop others: %v", err)
 		}
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS reset commit tx: %w", err)
+		return nil, status.Errorf(codes.Internal, "FS reset commit tx: %v", err)
 	}
 	f.Log.Debug("FS.Reset[Commit]")
 
