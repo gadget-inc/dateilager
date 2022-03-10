@@ -2,6 +2,8 @@ package test
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"io/fs"
 	"net"
 	"os"
@@ -470,6 +472,43 @@ func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
 		"/a/c": {content: "a/c v2"},
 		"/b/":  {content: "", fileType: typeDirectory},
 	})
+}
+
+func TestRebuildWithManyObjects(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	expectedFiles := make(map[string]expectedFile)
+
+	writeProject(tc, 1, 1)
+	for i := 0; i < 500; i++ {
+		bytes := make([]byte, 50000)
+		_, err := rand.Read(bytes)
+		if err != nil {
+			t.Fatal("could not generate random bytes")
+		}
+		writeObject(tc, 1, 1, nil, fmt.Sprintf("/%d", i), string(bytes))
+		expectedFiles[fmt.Sprintf("/%d", i)] = expectedFile{content: string(bytes)}
+	}
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	tmpDir := writeTmpFiles(tc, map[string]string{})
+	defer os.RemoveAll(tmpDir)
+
+	version, count, err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
+	if err != nil {
+		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 1 {
+		t.Errorf("expected rebuild version to be 1, got: %v", version)
+	}
+	if count != 500 {
+		t.Errorf("expected rebuild count to be 500, got: %v", count)
+	}
+
+	verifyDir(tc, tmpDir, expectedFiles)
 }
 
 func TestUpdateObjects(t *testing.T) {

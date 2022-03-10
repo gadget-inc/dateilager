@@ -66,7 +66,6 @@ func NewClient(ctx context.Context, server, token string) (*Client, error) {
 	conn, err := grpc.DialContext(connectCtx, server,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(auth),
-		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(100*MB), grpc.MaxCallSendMsgSize(100*MB)),
 	)
 	if err != nil {
@@ -293,12 +292,33 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 	tarBytesChan := make(chan []byte, 16)
 	group, ctx := errgroup.WithContext(ctx)
 
-	for i := 1; i <= runtime.NumCPU()/2; i++ {
+	group.Go(func() error {
+		defer close(tarBytesChan)
+
+		for {
+			version = response.Version
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case tarBytesChan <- response.Bytes:
+				response, err = stream.Recv()
+				if err == io.EOF {
+					return nil
+				}
+				if err != nil {
+					return fmt.Errorf("receive fs.GetCompress: %w", err)
+				}
+			}
+		}
+	})
+
+	for i := 0; i < runtime.NumCPU()/2; i++ {
 		group.Go(func() error {
 			for {
 				select {
 				case <-ctx.Done():
-					return nil
+					return ctx.Err()
 				case tarBytes, ok := <-tarBytesChan:
 					if !ok {
 						return nil
@@ -326,20 +346,6 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 		})
 	}
 
-	for {
-		version = response.Version
-		tarBytesChan <- response.Bytes
-
-		response, err = stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return -1, diffCount, fmt.Errorf("receive fs.GetCompress: %w", err)
-		}
-	}
-
-	close(tarBytesChan)
 	if err = group.Wait(); err != nil {
 		return -1, diffCount, err
 	}
