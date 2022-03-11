@@ -3,7 +3,7 @@ module github.com/gadget-inc/dateilager
 go 1.16
 
 require (
-	github.com/gadget-inc/fsdiff v0.4.0
+	github.com/gadget-inc/fsdiff v0.4.1
 	github.com/go-chi/chi/v5 v5.0.4
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/jackc/pgtype v1.8.1
