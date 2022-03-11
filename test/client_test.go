@@ -560,6 +560,54 @@ func TestUpdateObjects(t *testing.T) {
 	})
 }
 
+func TestUpdateWithManyObjects(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+
+	fixtureFiles := make(map[string]string)
+	updates := make(map[string]fsdiff_pb.Update_Action)
+
+	for i := 0; i < 500; i++ {
+		bytes := make([]byte, 50000)
+		_, err := rand.Read(bytes)
+		if err != nil {
+			t.Fatal("could not generate random bytes")
+		}
+
+		path := fmt.Sprintf("/%d", i)
+		fixtureFiles[path] = string(bytes)
+		updates[path] = fsdiff_pb.Update_ADD
+	}
+
+	tmpDir := writeTmpFiles(tc, fixtureFiles)
+	defer os.RemoveAll(tmpDir)
+
+	diff := buildDiff(tc, updates)
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	version, count, err := c.Update(tc.Context(), 1, diff, tmpDir)
+	if err != nil {
+		t.Fatalf("client.UpdateObjects: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected update version to be 2, got: %v", version)
+	}
+	if count != 500 {
+		t.Errorf("expected update count to be 500, got: %v", count)
+	}
+
+	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
+	if err != nil {
+		t.Fatalf("client.GetLatest after update: %v", err)
+	}
+
+	verifyObjects(tc, objects, fixtureFiles)
+}
+
 func TestUpdateObjectsWithMissingFile(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
