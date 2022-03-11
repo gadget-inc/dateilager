@@ -359,41 +359,90 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 }
 
 func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff, directory string) (int64, uint32, error) {
-	stream, err := c.fs.Update(ctx)
-	if err != nil {
-		return -1, 0, fmt.Errorf("connect fs.Update: %w", err)
+	version := int64(-1)
+
+	updateChan := make(chan *fsdiff_pb.Update, len(diff.Updates))
+	objectChan := make(chan *pb.Object, 16)
+
+	group, ctx := errgroup.WithContext(ctx)
+
+	for i := 1; i <= runtime.NumCPU()/2; i++ {
+		group.Go(func() error {
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case update, ok := <-updateChan:
+					if !ok {
+						return nil
+					}
+
+					if update.Action == fsdiff_pb.Update_REMOVE {
+						objectChan <- &pb.Object{
+							Path:    update.Path,
+							Deleted: true,
+						}
+					} else {
+						object, err := pb.ObjectFromFilePath(directory, update.Path)
+						if err != nil {
+							return fmt.Errorf("read file object: %w", err)
+						}
+						objectChan <- object
+					}
+				}
+			}
+		})
 	}
 
-	var object *pb.Object
+	group.Go(func() error {
+		stream, err := c.fs.Update(ctx)
+		if err != nil {
+			return fmt.Errorf("connect fs.Update: %w", err)
+		}
+
+		count := 0
+
+		for {
+			if count == len(diff.Updates) {
+				close(objectChan)
+			}
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case object, ok := <-objectChan:
+				if !ok {
+					response, err := stream.CloseAndRecv()
+					if err != nil {
+						return fmt.Errorf("close and receive fs.Update: %w", err)
+					}
+					version = response.Version
+					return nil
+				}
+
+				count += 1
+
+				err := stream.Send(&pb.UpdateRequest{
+					Project: project,
+					Object:  object,
+				})
+				if err != nil {
+					return fmt.Errorf("send fs.Update, path %v, size %v, mode %v, deleted %v: %w", object.Path, object.Size, object.Mode, object.Deleted, err)
+				}
+			}
+		}
+	})
 
 	for _, update := range diff.Updates {
-		if update.Action == fsdiff_pb.Update_REMOVE {
-			object = &pb.Object{
-				Path:    update.Path,
-				Deleted: true,
-			}
-		} else {
-			object, err = pb.ObjectFromFilePath(directory, update.Path)
-			if err != nil {
-				return -1, 0, fmt.Errorf("read file object: %w", err)
-			}
-		}
+		updateChan <- update
+	}
+	close(updateChan)
 
-		err = stream.Send(&pb.UpdateRequest{
-			Project: project,
-			Object:  object,
-		})
-		if err != nil {
-			return -1, 0, fmt.Errorf("send fs.Update, path %v, size %v, mode %v, deleted %v: %w", object.Path, object.Size, object.Mode, object.Deleted, err)
-		}
+	if err := group.Wait(); err != nil {
+		return -1, 0, err
 	}
 
-	response, err := stream.CloseAndRecv()
-	if err != nil {
-		return -1, 0, fmt.Errorf("close fs.Update: %w", err)
-	}
-
-	return response.Version, uint32(len(diff.Updates)), nil
+	return version, uint32(len(diff.Updates)), nil
 }
 
 func (c *Client) Inspect(ctx context.Context, project int64) (*pb.InspectResponse, error) {
