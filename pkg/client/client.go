@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -246,6 +248,9 @@ func writeObject(outputDir string, reader *db.TarReader, header *tar.Header) err
 
 	case 'D':
 		err := os.Remove(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			break
+		}
 		if err != nil {
 			return fmt.Errorf("remove %v from disk: %w", path, err)
 		}

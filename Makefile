@@ -171,7 +171,7 @@ k8s-health:
 	grpc_health_probe -addr $(GRPC_SERVER) -tls -tls-no-verify
 	grpc_health_probe -addr $(GRPC_SERVER) -tls -tls-no-verify -service $(SERVICE)
 
-upload-container-image: build
+upload-container-image: release
 ifndef version
 	$(error version variable must be set)
 else
