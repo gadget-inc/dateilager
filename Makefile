@@ -2,7 +2,8 @@ PROJECT := dateilager
 
 DB_HOST ?= 127.0.0.1
 DB_USER ?= postgres
-DB_URI := postgres://$(DB_USER)@$(DB_HOST):5432/dl
+DB_PASS ?= password
+DB_URI := postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl
 
 GRPC_PORT ?= 5051
 GRPC_SERVER ?= localhost:$(GRPC_PORT)
@@ -81,7 +82,7 @@ release: release/client_linux_amd64 release/client_macos_amd64 release/client_ma
 release: release/webui_linux_amd64 release/webui_macos_amd64 release/webui_macos_arm64
 release: release/assets.tar.gz release/migrations.tar.gz
 
-test: export DB_URI = postgres://$(DB_USER)@$(DB_HOST):5432/dl_tests
+test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test: migrate
 	cd test && go test
 
