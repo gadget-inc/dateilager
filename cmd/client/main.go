@@ -184,7 +184,7 @@ func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 	}
 
 	if version == -1 {
-		log.Debug("latest version already checked out", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64("version", *a.vrange.From))
+		log.Debug("latest version already checked out", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64p("version", a.vrange.From))
 	} else {
 		log.Info("wrote files", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64("version", version), zap.Uint32("diff_count", count))
 	}
@@ -380,7 +380,7 @@ func main() {
 
 	c, err := client.NewClient(ctx, *shared.server, token)
 	if err != nil {
-		log.Fatal("could not connect to server", zap.String("server", *shared.server), zap.Error(err))
+		log.Fatal("could not connect to server", zap.Stringp("server", shared.server), zap.Error(err))
 	}
 	defer c.Close()
 
