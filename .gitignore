@@ -11,3 +11,9 @@ release/
 *.pb.go
 fs*.ts
 **/node_modules/
+tmp/*
+!tmp/.gitkeep
+.direnv
+.idea/
+.DS_STORE
+.envrc.local

@@ -1,0 +1,51 @@
+name: 'Set up environment'
+description: ''
+inputs: {}
+outputs: {}
+runs:
+  using: composite
+  steps:
+    - uses: cachix/install-nix-action@v14
+      with:
+        install_url: https://nixos-nix-install-tests.cachix.org/serve/vij683ly7sl95nnhb67bdjjfabclr85m/install
+        install_options: '--tarball-url-prefix https://nixos-nix-install-tests.cachix.org/serve'
+        extra_nix_config: |
+          experimental-features = nix-command flakes
+
+    - run: nix flake check
+      shell: bash
+
+    - name: Set cache paths
+      id: cache-paths
+      run: |
+        echo "::set-output name=go_mod::$(go env GOMODCACHE)"
+        echo "::set-output name=go_build::$(go env GOCACHE)"
+        echo "::set-output name=npm::$(npm config get cache)"
+      shell: nix develop -c bash -eo pipefail -l {0}
+
+    - name: Cache go mods
+      uses: actions/cache@v2
+      with:
+        path: |
+          ${{ steps.cache-paths.outputs.go_mod }}
+          ${{ steps.cache-paths.outputs.go_build }}
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Cache npm packages
+      uses: actions/cache@v2
+      with:
+        path: ${{ steps.cache-paths.outputs.npm }}
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - run: go mod download
+      shell: nix develop -c bash -eo pipefail -l {0}
+
+    - run: echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+      shell: nix develop -c bash -eo pipefail -l {0}
+
+    - run: make install
+      shell: nix develop -c bash -eo pipefail -l {0}
