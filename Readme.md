@@ -41,7 +41,7 @@ $ make build
 ## API Testing
 
 Ensure there is a Postgres database named `dl_tests`. These tests will write to a real database instance
-but all writes will be rolled back as every test runs within it's own transaction.
+but all writes will be rolled back as every test runs within its own transaction.
 
 ```bash
 $ make test
@@ -136,7 +136,7 @@ console.log("[updateObject] version: " + version);
 
 New versions are released and hosted on Github. (https://github.com/gadget-inc/dateilager/releases)
 
-Create a new tag and push it to Github, Goreleaser will handle building it.
+Create a new tag and push it to GitHub, GoReleaser will handle building it.
 
 ```bash
 $ git tag v0.0.x
@@ -153,7 +153,7 @@ $ make upload-container-image version=0.0.x
 
 The K8S tools assume a local K8S install using Containerd and Podman.
 
-### Requriements
+### Requirements
 
 - docker
 - kubectl
@@ -169,7 +169,7 @@ $ make k8s
 
 ### Client
 
-Execute the client locally and have it connect to a server in K8S. All of the same `client-*` make commands are supported
+Execute the client locally and have it connect to a server in K8S. All the same `client-*` make commands are supported,
 but they require a `k8s-` prefix.
 
 ```bash
