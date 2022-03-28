@@ -81,7 +81,7 @@ $ make client-get
 You can also filter the results with a prefix search.
 
 ```bash
-$ make client-get prefix=/a
+$ make client-get prefix=n1
 ```
 
 Or filter for a specific version.
@@ -94,7 +94,7 @@ If you want to rebuild an entire project's directory locally, use the `rebuild` 
 
 ```bash
 $ mkdir ./rebuild
-$ make client-rebuild version=3 prefix=/ output=rebuild
+$ make client-rebuild version=3 prefix=n1 output=rebuild
 ```
 
 ## Javascript Client
