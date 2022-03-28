@@ -102,12 +102,14 @@ server-profile:
 	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT) -prof cpu.prof -log info
 
 client-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-update: export DL_SKIP_SSL_VERIFICATION=1
 client-update:
 	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v1_state/diff.s2 -directory input/v1
 	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v2_state/diff.s2 -directory input/v2
 	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v3_state/diff.s2 -directory input/v3
 
 client-get: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-get: export DL_SKIP_SSL_VERIFICATION=1
 client-get:
 ifndef version
 	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)"
@@ -116,6 +118,7 @@ else
 endif
 
 client-rebuild: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-rebuild: export DL_SKIP_SSL_VERIFICATION=1
 client-rebuild:
 ifndef version
 	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)" -output $(output)
