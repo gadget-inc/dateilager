@@ -22,13 +22,13 @@ After an object is updated, the API will receive a new version for the project. 
 
 ### App Pod Filesystem Snapshots
 
-When a pod is spun up to serve a user's app, it will need to get a snapshot of the latest view of the filesystem. DateiLager's included client can be used to rebuild the filesystem state into a local ephmeral drive.
+When a pod is spun up to serve a user's app, it will need to get a snapshot of the latest view of the filesystem. DateiLager's included client can be used to rebuild the filesystem state into a local ephemeral drive.
 
-Web requests made to this app will run the code available on this ephmeral drive.
+Web requests made to this app will run the code available on this ephemeral drive.
 
 When an update is made within Gadget's web UI, it is Gadget's responsibility to tell all active App pods to update their filesystem state to the latest version.
 
-The included client can be used to apply all updates between it's current filesystem version and the new version sent via Gadget's update mechanism.
+The included client can be used to apply all updates between its current filesystem version and the new version sent via Gadget's update mechanism.
 
 ### Job Pod Batch Updates
 
@@ -48,11 +48,11 @@ There are 3 main models within DateiLager, which align with the 3 database table
 
 A project encapsulates 1 filesystem and all the different versions of that filesystem over time. In Gadget there is a 1 to 1 relationship between a user's environment and a project.
 
-The only details currently tracked about a project in DateiLager are: an ID and it's latest version ID.
+The only details currently tracked about a project in DateiLager are: an ID and its latest version ID.
 
 ### Objects
 
-Objects are the most important model within DateiLager and they can represent 1 of 4 different things:
+Objects are the most important model within DateiLager, and they can represent 1 of 4 different things:
 
 1. A regular file
 2. A symlink
@@ -81,7 +81,7 @@ In order to keep the data within Postgres manageable, Gadget can choose to `Pack
 
 To manage packing rules, when creating a new project you can include a list of pack patterns, these regexes will be used to decide if a path is packed or not.
 
-When updates are made to a packed object, it is decompressed on the fly, the updates are applied and it is then recompressed. This trades off read and write performance to these individual objects to offer a large reduction in total rows within Postgres.
+When updates are made to a packed object, it is decompressed on the fly, the updates are applied, and it is then recompressed. This trades off read and write performance to these individual objects to offer a large reduction in total rows within Postgres.
 
 ## Filesystem Rebuilds
 
@@ -93,8 +93,8 @@ DateiLager will build these compressed TAR files on the fly, but if any objects 
 
 ## Incremental Updates
 
-Once an App pod is up and running, it may receive a notification from Gadget that it should update it's filesystem to a new version.
+Once an App pod is up and running, it may receive a notification from Gadget that it should update its filesystem to a new version.
 
-To avoid rebuilding it's filesystem from scratch, all updates can be done incrementally. This allows it to request only what has changed from it's version to the one it was notified about.
+To avoid rebuilding its filesystem from scratch, all updates can be done incrementally. This allows it to request only what has changed from its version to the one it was notified about.
 
 In a typical use case, this will often mean just a small handful of objects need to be updated on disk.

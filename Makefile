@@ -2,7 +2,8 @@ PROJECT := dateilager
 
 DB_HOST ?= 127.0.0.1
 DB_USER ?= postgres
-DB_URI := postgres://$(DB_USER)@$(DB_HOST):5432/dl
+DB_PASS ?= password
+DB_URI := postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl
 
 GRPC_PORT ?= 5051
 GRPC_SERVER ?= localhost:$(GRPC_PORT)
@@ -27,7 +28,7 @@ install:
 	go install github.com/grpc-ecosystem/grpc-health-probe@v0.4
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.14
 	go install github.com/bojand/ghz/cmd/ghz@v0.105.0
-	go install github.com/gadget-inc/fsdiff/cmd/fsdiff@v0.1
+	go install github.com/gadget-inc/fsdiff/cmd/fsdiff@v0.4
 	cd js && npm install
 
 migrate:
@@ -81,7 +82,7 @@ release: release/client_linux_amd64 release/client_macos_amd64 release/client_ma
 release: release/webui_linux_amd64 release/webui_macos_amd64 release/webui_macos_arm64
 release: release/assets.tar.gz release/migrations.tar.gz
 
-test: export DB_URI = postgres://$(DB_USER)@$(DB_HOST):5432/dl_tests
+test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test: migrate
 	cd test && go test
 
@@ -101,12 +102,14 @@ server-profile:
 	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT) -prof cpu.prof -log info
 
 client-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-update: export DL_SKIP_SSL_VERIFICATION=1
 client-update:
 	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v1_state/diff.s2 -directory input/v1
 	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v2_state/diff.s2 -directory input/v2
 	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v3_state/diff.s2 -directory input/v3
 
 client-get: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-get: export DL_SKIP_SSL_VERIFICATION=1
 client-get:
 ifndef version
 	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)"
@@ -115,6 +118,7 @@ else
 endif
 
 client-rebuild: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-rebuild: export DL_SKIP_SSL_VERIFICATION=1
 client-rebuild:
 ifndef version
 	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)" -output $(output)
