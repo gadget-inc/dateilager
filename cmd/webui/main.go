@@ -10,6 +10,7 @@ import (
 
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/web"
+	"github.com/uptrace/opentelemetry-go-extra/otelzap"
 	"go.uber.org/zap"
 )
 
@@ -37,6 +38,9 @@ func main() {
 	log, _ := zap.NewDevelopment()
 	defer log.Sync()
 
+	otelLog := otelzap.New(log)
+	defer otelLog.Sync()
+
 	args := parseArgs()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
@@ -47,7 +51,7 @@ func main() {
 		log.Fatal("missing token: set the DL_TOKEN environment variable")
 	}
 
-	c, err := client.NewClient(ctx, args.server, token)
+	c, err := client.NewClient(ctx, otelLog, args.server, token)
 	if err != nil {
 		log.Fatal("could not connect to server", zap.String("server", args.server))
 	}

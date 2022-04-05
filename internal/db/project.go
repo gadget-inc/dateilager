@@ -4,10 +4,19 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/jackc/pgx/v4"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func CreateProject(ctx context.Context, tx pgx.Tx, project int64, packPatterns []string) error {
+	ctx, span := telemetry.Tracer.Start(ctx, "create-project", trace.WithAttributes(
+		attribute.Int64("project", project),
+		attribute.StringSlice("pack_patterns", packPatterns),
+	))
+	defer span.End()
+
 	_, err := tx.Exec(ctx, `
 		INSERT INTO dl.projects (id, latest_version, pack_patterns)
 		VALUES ($1, 0, $2)
@@ -20,6 +29,11 @@ func CreateProject(ctx context.Context, tx pgx.Tx, project int64, packPatterns [
 }
 
 func DeleteProject(ctx context.Context, tx pgx.Tx, project int64) error {
+	ctx, span := telemetry.Tracer.Start(ctx, "delete-project", trace.WithAttributes(
+		attribute.Int64("project", project),
+	))
+	defer span.End()
+
 	_, err := tx.Exec(ctx, `
 		DELETE FROM dl.objects
 		WHERE project = $1

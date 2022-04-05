@@ -4,6 +4,8 @@ builds:
     binary: client
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.Version}}
     goos:
       - linux
       - darwin
@@ -15,6 +17,8 @@ builds:
     binary: server
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.Version}}
     goos:
       - linux
       - darwin

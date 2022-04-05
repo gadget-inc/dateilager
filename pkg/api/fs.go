@@ -6,14 +6,17 @@ import (
 	"io"
 	"strings"
 
-	"go.uber.org/zap"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/pb"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
+	"github.com/uptrace/opentelemetry-go-extra/otelzap"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -48,11 +51,18 @@ type Fs struct {
 	pb.UnimplementedFsServer
 
 	Env    environment.Env
-	Log    *zap.Logger
+	Log    *otelzap.Logger
 	DbConn db.DbConnector
 }
 
 func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.NewProjectResponse, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "fs.new-project", trace.WithAttributes(
+		attribute.Int64("request.id", req.Id),
+		telemetry.AttributeInt64p("request.template", req.Template),
+		attribute.StringSlice("request.pack_patterns", req.PackPatterns),
+	))
+	defer span.End()
+
 	err := requireAdminAuth(ctx)
 	if err != nil {
 		return nil, err
@@ -62,9 +72,9 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
-	f.Log.Debug("FS.NewProject[Init]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
+	f.Log.DebugContext(ctx, "FS.NewProject[Init]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
 
 	err = db.CreateProject(ctx, tx, req.Id, req.PackPatterns)
 	if err != nil {
@@ -83,12 +93,17 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 		return nil, status.Errorf(codes.Internal, "FS new project commit tx: %v", err)
 	}
 
-	f.Log.Debug("FS.NewProject[Commit]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
+	f.Log.DebugContext(ctx, "FS.NewProject[Commit]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
 
 	return &pb.NewProjectResponse{}, nil
 }
 
 func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*pb.DeleteProjectResponse, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "fs.delete-project", trace.WithAttributes(
+		attribute.Int64("request.project", req.Project),
+	))
+	defer span.End()
+
 	err := requireAdminAuth(ctx)
 	if err != nil {
 		return nil, err
@@ -98,9 +113,9 @@ func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
-	f.Log.Debug("FS.DeleteProject[Init]", zap.Int64("project", req.Project))
+	f.Log.DebugContext(ctx, "FS.DeleteProject[Init]", zap.Int64("project", req.Project))
 	err = db.DeleteProject(ctx, tx, req.Project)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS delete project %v: %v", req.Project, err)
@@ -110,12 +125,15 @@ func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS delete commit tx: %v", err)
 	}
-	f.Log.Debug("FS.DeleteProject[Commit]")
+	f.Log.DebugContext(ctx, "FS.DeleteProject[Commit]")
 
 	return &pb.DeleteProjectResponse{}, nil
 }
 
 func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb.ListProjectsResponse, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "fs.list-project")
+	defer span.End()
+
 	err := requireAdminAuth(ctx)
 	if err != nil {
 		return nil, err
@@ -125,9 +143,9 @@ func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
-	f.Log.Debug("FS.ListProjects[Query]")
+	f.Log.DebugContext(ctx, "FS.ListProjects[Query]")
 
 	projects, err := db.ListProjects(ctx, tx)
 	if err != nil {
@@ -154,7 +172,13 @@ func validateObjectQuery(query *pb.ObjectQuery) error {
 }
 
 func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
-	ctx := stream.Context()
+	ctx, span := telemetry.Tracer.Start(stream.Context(), "fs.get", trace.WithAttributes(
+		attribute.Int64("request.project", req.Project),
+		telemetry.AttributeInt64p("request.from_version", req.FromVersion),
+		telemetry.AttributeInt64p("request.to_version", req.ToVersion),
+		attribute.Int("request.queries", len(req.Queries)),
+	))
+	defer span.End()
 
 	project, err := requireProjectAuth(ctx)
 	if err != nil {
@@ -169,7 +193,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	if err != nil {
 		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
 	vrange, err := db.NewVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
 	if errors.Is(err, db.ErrNotFound) {
@@ -179,7 +203,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 		return status.Errorf(codes.Internal, "FS get latest version: %v", err)
 	}
 
-	f.Log.Debug("FS.Get[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
+	f.Log.DebugContext(ctx, "FS.Get[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
 	packManager, err := db.NewPackManager(ctx, tx, req.Project)
 	if err != nil {
@@ -192,7 +216,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 			return err
 		}
 
-		f.Log.Debug("FS.Get[Query]",
+		f.Log.DebugContext(ctx, "FS.Get[Query]",
 			zap.Int64("project", req.Project),
 			zap.Any("vrange", vrange),
 			zap.String("path", query.Path),
@@ -229,7 +253,13 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 }
 
 func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressServer) error {
-	ctx := stream.Context()
+	ctx, span := telemetry.Tracer.Start(stream.Context(), "fs.get-compress", trace.WithAttributes(
+		attribute.Int64("request.project", req.Project),
+		telemetry.AttributeInt64p("request.from_version", req.FromVersion),
+		telemetry.AttributeInt64p("request.to_version", req.ToVersion),
+		attribute.Int("request.queries", len(req.Queries)),
+	))
+	defer span.End()
 
 	project, err := requireProjectAuth(ctx)
 	if err != nil {
@@ -244,7 +274,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	if err != nil {
 		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
 	vrange, err := db.NewVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
 	if errors.Is(err, db.ErrNotFound) {
@@ -254,7 +284,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 		return status.Errorf(codes.Internal, "FS get compress latest version: %v", err)
 	}
 
-	f.Log.Debug("FS.GetCompress[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
+	f.Log.DebugContext(ctx, "FS.GetCompress[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
 	for _, query := range req.Queries {
 		err = validateObjectQuery(query)
@@ -262,7 +292,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			return err
 		}
 
-		f.Log.Debug("FS.GetCompress[Query]",
+		f.Log.DebugContext(ctx, "FS.GetCompress[Query]",
 			zap.Int64("project", req.Project),
 			zap.Any("vrange", vrange),
 			zap.String("path", query.Path),
@@ -303,7 +333,8 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 }
 
 func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
-	ctx := stream.Context()
+	ctx, span := telemetry.Tracer.Start(stream.Context(), "fs.update")
+	defer span.End()
 
 	version := int64(-1)
 	project, err := requireProjectAuth(ctx)
@@ -315,7 +346,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	if err != nil {
 		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
 	contentEncoder := db.NewContentEncoder()
 
@@ -346,7 +377,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			}
 
 			version = latestVersion + 1
-			f.Log.Debug("FS.Update[Init]", zap.Int64("project", project), zap.Int64("version", version))
+			f.Log.DebugContext(ctx, "FS.Update[Init]", zap.Int64("project", project), zap.Int64("version", version))
 
 			packManager, err = db.NewPackManager(ctx, tx, project)
 			if err != nil {
@@ -364,7 +395,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			continue
 		}
 
-		f.Log.Debug("FS.Update[Object]", zap.Int64("project", project), zap.Int64("version", version), zap.String("path", req.Object.Path))
+		f.Log.DebugContext(ctx, "FS.Update[Object]", zap.Int64("project", project), zap.Int64("version", version), zap.String("path", req.Object.Path))
 
 		if req.Object.Deleted {
 			err = db.DeleteObject(ctx, tx, project, version, req.Object.Path)
@@ -384,12 +415,12 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			return status.Errorf(codes.Internal, "FS rollback empty update: %v", err)
 		}
 
-		f.Log.Debug("FS.Update[Empty]")
+		f.Log.DebugContext(ctx, "FS.Update[Empty]")
 		return stream.SendAndClose(&pb.UpdateResponse{Version: -1})
 	}
 
 	for parent, objects := range buffer {
-		f.Log.Debug("FS.Update[PackedObject]", zap.Int64("project", project), zap.Int64("version", version), zap.String("parent", parent), zap.Int("object_count", len(objects)))
+		f.Log.DebugContext(ctx, "FS.Update[PackedObject]", zap.Int64("project", project), zap.Int64("version", version), zap.String("parent", parent), zap.Int("object_count", len(objects)))
 
 		err = db.UpdatePackedObjects(ctx, tx, project, version, parent, objects)
 		if err != nil {
@@ -407,12 +438,17 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return status.Errorf(codes.Internal, "FS update commit tx: %v", err)
 	}
 
-	f.Log.Debug("FS.Update[Commit]", zap.Int64("project", project), zap.Int64("version", version))
+	f.Log.DebugContext(ctx, "FS.Update[Commit]", zap.Int64("project", project), zap.Int64("version", version))
 
 	return stream.SendAndClose(&pb.UpdateResponse{Version: version})
 }
 
 func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectResponse, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "fs.inspect", trace.WithAttributes(
+		attribute.Int64("project", req.Project),
+	))
+	defer span.End()
+
 	err := requireAdminAuth(ctx)
 	if err != nil {
 		return nil, err
@@ -422,9 +458,9 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
-	f.Log.Debug("FS.Inspect[Query]", zap.Int64("project", req.Project))
+	f.Log.DebugContext(ctx, "FS.Inspect[Query]", zap.Int64("project", req.Project))
 
 	vrange, err := db.NewVersionRange(ctx, tx, req.Project, nil, nil)
 	if errors.Is(err, db.ErrNotFound) {
@@ -479,6 +515,9 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 }
 
 func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.SnapshotResponse, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "fs.snapshot")
+	defer span.End()
+
 	if f.Env != environment.Dev && f.Env != environment.Test {
 		return nil, status.Errorf(codes.Unimplemented, "FS snapshot only implemented in dev and test environments")
 	}
@@ -492,9 +531,9 @@ func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.Snapsho
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
-	f.Log.Debug("FS.Snapshot[Query]")
+	f.Log.DebugContext(ctx, "FS.Snapshot[Query]")
 
 	projects, err := db.ListProjects(ctx, tx)
 	if err != nil {
@@ -507,6 +546,9 @@ func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.Snapsho
 }
 
 func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "fs.reset")
+	defer span.End()
+
 	if f.Env != environment.Dev && f.Env != environment.Test {
 		return nil, status.Errorf(codes.Unimplemented, "FS reset only implemented in dev and test environments")
 	}
@@ -520,12 +562,12 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
-	f.Log.Debug("FS.Reset[Init]")
+	f.Log.DebugContext(ctx, "FS.Reset[Init]")
 
 	if len(req.Projects) == 0 {
-		f.Log.Debug("FS.Reset[All]")
+		f.Log.DebugContext(ctx, "FS.Reset[All]")
 
 		err = db.ResetAll(ctx, tx)
 		if err != nil {
@@ -535,7 +577,7 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 		var projects []int64
 
 		for _, project := range req.Projects {
-			f.Log.Debug("FS.Reset[Project]", zap.Int64("project", project.Id), zap.Int64("version", project.Version))
+			f.Log.DebugContext(ctx, "FS.Reset[Project]", zap.Int64("project", project.Id), zap.Int64("version", project.Version))
 			err = db.ResetProject(ctx, tx, project.Id, project.Version)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "FS reset project %v: %v", project.Id, err)
@@ -553,7 +595,7 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS reset commit tx: %v", err)
 	}
-	f.Log.Debug("FS.Reset[Commit]")
+	f.Log.DebugContext(ctx, "FS.Reset[Commit]")
 
 	return &pb.ResetResponse{}, nil
 }

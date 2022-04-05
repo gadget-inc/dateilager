@@ -10,14 +10,13 @@ import (
 	"time"
 
 	"github.com/gadget-inc/dateilager/internal/auth"
-	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/uptrace/opentelemetry-go-extra/otelzap"
+	grpc_otel "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -32,50 +31,13 @@ const (
 	MB = 1000 * 1000
 )
 
-type DbPoolConnector struct {
-	pool *pgxpool.Pool
-}
-
-func NewDbPoolConnector(ctx context.Context, uri string) (*DbPoolConnector, error) {
-	pool, err := pgxpool.Connect(ctx, uri)
-	if err != nil {
-		return nil, err
-	}
-
-	return &DbPoolConnector{
-		pool: pool,
-	}, nil
-}
-
-func (d *DbPoolConnector) Ping(ctx context.Context) error {
-	return d.pool.Ping(ctx)
-}
-
-func (d *DbPoolConnector) Close() {
-	d.pool.Close()
-}
-
-func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, error) {
-	conn, err := d.pool.Acquire(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return tx, func() { tx.Rollback(ctx); conn.Release() }, nil
-}
-
 type Server struct {
-	log    *zap.Logger
+	log    *otelzap.Logger
 	Grpc   *grpc.Server
 	Health *health.Server
 }
 
-func NewServer(ctx context.Context, log *zap.Logger, dbConn *DbPoolConnector, cert *tls.Certificate, pasetoKey ed25519.PublicKey) *Server {
+func NewServer(ctx context.Context, log *otelzap.Logger, dbConn *DbPoolConnector, cert *tls.Certificate, pasetoKey ed25519.PublicKey) *Server {
 	creds := credentials.NewServerTLSFromCert(cert)
 
 	validator := auth.NewAuthValidator(pasetoKey)
@@ -90,14 +52,16 @@ func NewServer(ctx context.Context, log *zap.Logger, dbConn *DbPoolConnector, ce
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(
 			grpc_middleware.ChainUnaryServer(
-				grpc_zap.UnaryServerInterceptor(log, zapOption),
+				grpc_otel.UnaryServerInterceptor(),
+				grpc_zap.UnaryServerInterceptor(log.Logger, zapOption),
 				grpc_recovery.UnaryServerInterceptor(),
 				grpc.UnaryServerInterceptor(validateTokenUnary(log, validator)),
 			),
 		),
 		grpc.StreamInterceptor(
 			grpc_middleware.ChainStreamServer(
-				grpc_zap.StreamServerInterceptor(log, zapOption),
+				grpc_otel.StreamServerInterceptor(),
+				grpc_zap.StreamServerInterceptor(log.Logger, zapOption),
 				grpc_recovery.StreamServerInterceptor(),
 				grpc.StreamServerInterceptor(validateTokenStream(log, validator)),
 			),
@@ -155,7 +119,7 @@ func (s *Server) Serve(lis net.Listener) error {
 	return s.Grpc.Serve(lis)
 }
 
-func validateTokenUnary(log *zap.Logger, validator *auth.AuthValidator) grpc.UnaryServerInterceptor {
+func validateTokenUnary(log *otelzap.Logger, validator *auth.AuthValidator) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
@@ -168,13 +132,13 @@ func validateTokenUnary(log *zap.Logger, validator *auth.AuthValidator) grpc.Una
 
 		token, err := getToken(md["authorization"])
 		if err != nil {
-			log.Error("Auth token parse error", zap.Error(err))
+			log.ErrorContext(ctx, "Auth token parse error", zap.Error(err))
 			return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
 		}
 
 		reqAuth, err := validator.Validate(ctx, token)
 		if err != nil || reqAuth.Role == auth.None {
-			log.Error("Auth token validation error", zap.Error(err))
+			log.ErrorContext(ctx, "Auth token validation error", zap.Error(err))
 			return nil, status.Errorf(codes.PermissionDenied, "invalid authorization token")
 		}
 
@@ -184,22 +148,23 @@ func validateTokenUnary(log *zap.Logger, validator *auth.AuthValidator) grpc.Una
 	}
 }
 
-func validateTokenStream(log *zap.Logger, validator *auth.AuthValidator) grpc.StreamServerInterceptor {
+func validateTokenStream(log *otelzap.Logger, validator *auth.AuthValidator) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		md, ok := metadata.FromIncomingContext(stream.Context())
+		ctx := stream.Context()
+		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
 			return status.Errorf(codes.InvalidArgument, "missing request metadata")
 		}
 
 		token, err := getToken(md["authorization"])
 		if err != nil {
-			log.Error("Auth token parse error", zap.Error(err))
+			log.ErrorContext(ctx, "Auth token parse error", zap.Error(err))
 			return status.Errorf(codes.Unauthenticated, "missing authorization token")
 		}
 
 		reqAuth, err := validator.Validate(stream.Context(), token)
 		if err != nil || reqAuth.Role == auth.None {
-			log.Error("Auth token validation error", zap.Error(err))
+			log.ErrorContext(ctx, "Auth token validation error", zap.Error(err))
 			return status.Errorf(codes.PermissionDenied, "invalid authorization token")
 		}
 

@@ -14,12 +14,13 @@ import (
 	"runtime/pprof"
 	"syscall"
 
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-
 	"github.com/gadget-inc/dateilager/internal/environment"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/server"
+	"github.com/uptrace/opentelemetry-go-extra/otelzap"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type ServerArgs struct {
@@ -58,7 +59,7 @@ func parseArgs() ServerArgs {
 	}
 }
 
-func parsePublicKey(log *zap.Logger, path string) ed25519.PublicKey {
+func parsePublicKey(log *otelzap.Logger, path string) ed25519.PublicKey {
 	pubKeyBytes, err := os.ReadFile(path)
 	if err != nil {
 		log.Fatal("cannot open Paseto public key file", zap.String("path", path), zap.Error(err))
@@ -77,7 +78,7 @@ func parsePublicKey(log *zap.Logger, path string) ed25519.PublicKey {
 	return pub.(ed25519.PublicKey)
 }
 
-func buildLogger(env environment.Env, level zapcore.LevelEnabler, encoding string) *zap.Logger {
+func buildLogger(env environment.Env, level zapcore.Level, encoding string) *otelzap.Logger {
 	var log *zap.Logger
 	var err error
 
@@ -93,7 +94,10 @@ func buildLogger(env environment.Env, level zapcore.LevelEnabler, encoding strin
 	if err != nil {
 		panic(fmt.Sprintf("Cannot setup logger: %v", err))
 	}
-	return log
+
+	return otelzap.New(log,
+		otelzap.WithTraceIDField(true),
+	)
 }
 
 func main() {
@@ -103,6 +107,12 @@ func main() {
 	env := environment.LoadEnvironment()
 	log := buildLogger(env, args.level, args.encoding)
 	defer log.Sync()
+
+	shutdown, err := telemetry.Init(ctx, telemetry.Server)
+	if err != nil {
+		log.Fatal("failed to initialize telemetry", zap.Error(err))
+	}
+	defer shutdown()
 
 	if args.prof != "" {
 		file, err := os.Create(args.prof)
@@ -149,6 +159,7 @@ func main() {
 		if args.prof != "" {
 			pprof.StopCPUProfile()
 		}
+		shutdown()
 		os.Exit(0)
 	}()
 

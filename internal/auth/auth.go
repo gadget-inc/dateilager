@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/o1egl/paseto"
 )
 
@@ -57,6 +58,9 @@ func NewAuthValidator(pasetoKey ed25519.PublicKey) *AuthValidator {
 }
 
 func (av *AuthValidator) Validate(ctx context.Context, token string) (Auth, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "auth-validator.validate")
+	defer span.End()
+
 	var payload paseto.JSONToken
 	var footer string
 

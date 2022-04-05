@@ -6,10 +6,19 @@ import (
 	"fmt"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/jackc/pgx/v4"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func UpdateLatestVersion(ctx context.Context, tx pgx.Tx, project int64, version int64) error {
+	ctx, span := telemetry.Tracer.Start(ctx, "update-latest-version", trace.WithAttributes(
+		attribute.Int64("project", project),
+		attribute.Int64("version", version),
+	))
+	defer span.End()
+
 	_, err := tx.Exec(ctx, `
 		UPDATE dl.projects
 		SET latest_version = $1
@@ -23,6 +32,13 @@ func UpdateLatestVersion(ctx context.Context, tx pgx.Tx, project int64, version 
 }
 
 func DeleteObject(ctx context.Context, tx pgx.Tx, project int64, version int64, path string) error {
+	ctx, span := telemetry.Tracer.Start(ctx, "delete-object", trace.WithAttributes(
+		attribute.Int64("project", project),
+		attribute.Int64("version", version),
+		attribute.String("path", path),
+	))
+	defer span.End()
+
 	_, err := tx.Exec(ctx, `
 		UPDATE dl.objects
 		SET stop_version = $1
@@ -38,6 +54,13 @@ func DeleteObject(ctx context.Context, tx pgx.Tx, project int64, version int64, 
 }
 
 func DeleteObjects(ctx context.Context, tx pgx.Tx, project int64, version int64, path string) error {
+	ctx, span := telemetry.Tracer.Start(ctx, "delete-objects", trace.WithAttributes(
+		attribute.Int64("project", project),
+		attribute.Int64("version", version),
+		attribute.String("path", path),
+	))
+	defer span.End()
+
 	pathPredicate := fmt.Sprintf("%s%%", path)
 	_, err := tx.Exec(ctx, `
 		UPDATE dl.objects
@@ -54,6 +77,16 @@ func DeleteObjects(ctx context.Context, tx pgx.Tx, project int64, version int64,
 }
 
 func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, project int64, version int64, object *pb.Object) error {
+	ctx, span := telemetry.Tracer.Start(ctx, "update-object", trace.WithAttributes(
+		attribute.Int64("project", project),
+		attribute.Int64("version", version),
+		attribute.String("object.path", object.Path),
+		attribute.Int64("object.mode", object.Mode),
+		attribute.Int64("object.size", object.Size),
+		attribute.Bool("object.deleted", object.Deleted),
+	))
+	defer span.End()
+
 	content := object.Content
 	if content == nil {
 		content = []byte("")
@@ -117,6 +150,14 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 }
 
 func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version int64, parent string, updates []*pb.Object) error {
+	ctx, span := telemetry.Tracer.Start(ctx, "update-packed-objects", trace.WithAttributes(
+		attribute.Int64("project", project),
+		attribute.Int64("version", version),
+		attribute.String("parent", parent),
+		attribute.Int("updates", len(updates)),
+	))
+	defer span.End()
+
 	var h1, h2 []byte
 	var content []byte
 

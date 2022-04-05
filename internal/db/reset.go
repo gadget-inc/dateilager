@@ -4,11 +4,17 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func ResetAll(ctx context.Context, tx pgx.Tx) error {
+	ctx, span := telemetry.Tracer.Start(ctx, "reset-all")
+	defer span.End()
+
 	_, err := tx.Exec(ctx, "TRUNCATE dl.projects;")
 	if err != nil {
 		return fmt.Errorf("truncate projects: %w", err)
@@ -28,6 +34,12 @@ func ResetAll(ctx context.Context, tx pgx.Tx) error {
 }
 
 func ResetProject(ctx context.Context, tx pgx.Tx, project, version int64) error {
+	ctx, span := telemetry.Tracer.Start(ctx, "reset-project", trace.WithAttributes(
+		attribute.Int64("project", project),
+		attribute.Int64("version", version),
+	))
+	defer span.End()
+
 	_, err := tx.Exec(ctx, `
 		UPDATE dl.projects
 		SET latest_version = $1
@@ -60,6 +72,11 @@ func ResetProject(ctx context.Context, tx pgx.Tx, project, version int64) error 
 }
 
 func DropOtherProjects(ctx context.Context, tx pgx.Tx, projects []int64) error {
+	ctx, span := telemetry.Tracer.Start(ctx, "drop-other-projects", trace.WithAttributes(
+		attribute.Int64Slice("projects", projects),
+	))
+	defer span.End()
+
 	projectsArray := &pgtype.Int8Array{}
 	projectsArray.Set(projects)
 

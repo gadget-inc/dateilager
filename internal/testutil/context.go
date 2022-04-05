@@ -10,13 +10,13 @@ import (
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/jackc/pgx/v4"
-	"go.uber.org/zap"
+	"github.com/uptrace/opentelemetry-go-extra/otelzap"
 	"go.uber.org/zap/zaptest"
 )
 
 type TestCtx struct {
 	t      *testing.T
-	log    *zap.Logger
+	log    *otelzap.Logger
 	dbConn *DbTestConnector
 	ctx    context.Context
 }
@@ -39,13 +39,13 @@ func NewTestCtx(t *testing.T, role auth.Role, projects ...int64) TestCtx {
 
 	return TestCtx{
 		t:      t,
-		log:    zaptest.NewLogger(t),
+		log:    otelzap.New(zaptest.NewLogger(t)),
 		dbConn: dbConn,
 		ctx:    ctx,
 	}
 }
 
-func (tc *TestCtx) Logger() *zap.Logger {
+func (tc *TestCtx) Logger() *otelzap.Logger {
 	return tc.log
 }
 

@@ -4,10 +4,19 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/jackc/pgx/v4"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func CopyAllObjects(ctx context.Context, tx pgx.Tx, source int64, target int64) error {
+	ctx, span := telemetry.Tracer.Start(ctx, "copy-all-objects", trace.WithAttributes(
+		attribute.Int64("source", source),
+		attribute.Int64("target", target),
+	))
+	defer span.End()
+
 	var samePackPatterns bool
 	err := tx.QueryRow(ctx, `
 		SELECT COALESCE((SELECT pack_patterns FROM dl.projects WHERE id = $1), '{}') =

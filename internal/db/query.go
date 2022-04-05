@@ -9,8 +9,11 @@ import (
 	"strings"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -24,6 +27,9 @@ var (
 )
 
 func ListProjects(ctx context.Context, tx pgx.Tx) ([]*pb.Project, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "list-projects")
+	defer span.End()
+
 	rows, err := tx.Query(ctx, `
 		SELECT id, latest_version
 		FROM dl.projects
@@ -47,6 +53,11 @@ func ListProjects(ctx context.Context, tx pgx.Tx) ([]*pb.Project, error) {
 }
 
 func getLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "get-latest-version", trace.WithAttributes(
+		attribute.Int64("project", project),
+	))
+	defer span.End()
+
 	var latestVersion int64
 
 	err := tx.QueryRow(ctx, `
@@ -64,6 +75,11 @@ func getLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, err
 }
 
 func LockLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "lock-latest-version", trace.WithAttributes(
+		attribute.Int64("project", project),
+	))
+	defer span.End()
+
 	var latestVersion int64
 
 	err := tx.QueryRow(ctx, `
@@ -87,6 +103,13 @@ type VersionRange struct {
 }
 
 func NewVersionRange(ctx context.Context, tx pgx.Tx, project int64, from *int64, to *int64) (VersionRange, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "new-version-range", trace.WithAttributes(
+		attribute.Int64("project", project),
+		telemetry.AttributeInt64p("from", from),
+		telemetry.AttributeInt64p("to", to),
+	))
+	defer span.End()
+
 	vrange := VersionRange{}
 
 	if from == nil {
@@ -221,6 +244,17 @@ func filterObject(path string, objectQuery *pb.ObjectQuery, object *pb.Object) (
 }
 
 func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "get-objects", trace.WithAttributes(
+		attribute.Int64("project", project),
+		attribute.Int64("version_range.from", vrange.From),
+		attribute.Int64("version_range.to", vrange.To),
+		attribute.String("object_query.path", objectQuery.Path),
+		attribute.Bool("object_query.is_prefix", objectQuery.IsPrefix),
+		attribute.Bool("object_query.with_content", objectQuery.WithContent),
+		attribute.StringSlice("object_query.ignores", objectQuery.Ignores),
+	))
+	defer span.End()
+
 	packParent := packManager.IsPathPacked(objectQuery.Path)
 
 	originalPath := objectQuery.Path
@@ -288,6 +322,17 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 type tarStream func() ([]byte, error)
 
 func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "get-tars", trace.WithAttributes(
+		attribute.Int64("project", project),
+		attribute.Int64("version_range.from", vrange.From),
+		attribute.Int64("version_range.to", vrange.To),
+		attribute.String("object_query.path", objectQuery.Path),
+		attribute.Bool("object_query.is_prefix", objectQuery.IsPrefix),
+		attribute.Bool("object_query.with_content", objectQuery.WithContent),
+		attribute.StringSlice("object_query.ignores", objectQuery.Ignores),
+	))
+	defer span.End()
+
 	sql, args := buildQuery(project, vrange, objectQuery)
 	rows, err := tx.Query(ctx, sql, args...)
 	if err != nil {
@@ -352,6 +397,11 @@ type PackManager struct {
 }
 
 func NewPackManager(ctx context.Context, tx pgx.Tx, project int64) (*PackManager, error) {
+	ctx, span := telemetry.Tracer.Start(ctx, "new-pack-manager", trace.WithAttributes(
+		attribute.Int64("project", project),
+	))
+	defer span.End()
+
 	var patterns []string
 
 	err := tx.QueryRow(ctx, `
