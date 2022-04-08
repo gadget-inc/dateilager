@@ -45,7 +45,6 @@ func DeleteObjects(ctx context.Context, tx pgx.Tx, project int64, version int64,
 		WHERE project = $2
 		  AND path LIKE $3
 		  AND stop_version IS NULL
-		RETURNING path
 	`, version, project, pathPredicate)
 	if err != nil {
 		return fmt.Errorf("delete objects, project %v, version %v, path %v: %w", project, version, pathPredicate, err)
@@ -64,6 +63,25 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 	encoded, err := encoder.Encode(content)
 	if err != nil {
 		return fmt.Errorf("encode updated content, project %v, version %v, path %v: %w", project, version, object.Path, err)
+	}
+
+	rows, err := tx.Query(ctx, `
+		SELECT path
+		FROM dl.objects
+		WHERE project = $1
+		  AND path = $2
+		  AND stop_version IS NULL
+		  AND (hash).h1 = $3
+		  AND (hash).h2 = $4
+		  AND mode = $5
+	`, project, object.Path, h1, h2, object.Mode)
+	if err != nil {
+		return fmt.Errorf("select searching for existing object identical object, project %v, path %v: %w", project, object.Path, err)
+	}
+
+	defer rows.Close()
+	if rows.Next() {
+		return nil
 	}
 
 	batch := &pgx.Batch{}
