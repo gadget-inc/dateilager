@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
@@ -658,6 +659,82 @@ func TestUpdateObjectsWithMissingFile(t *testing.T) {
 		"/a": "a v2",
 		"/b": "b v1",
 	})
+}
+
+func TestUpdateAndRebuildWithIdenticalObjects(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a", "a v1")
+	writeObject(tc, 1, 1, nil, "/b", "b v1")
+	writeObject(tc, 1, 1, nil, "/c", "c v1")
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	tmpDir := writeTmpFiles(tc, map[string]string{})
+	defer os.RemoveAll(tmpDir)
+
+	version, count, err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
+	if err != nil {
+		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 1 {
+		t.Errorf("expected rebuild version to be 1, got: %v", version)
+	}
+	if count != 3 {
+		t.Errorf("expected rebuild count to be 3, got: %v", version)
+	}
+
+	verifyDir(tc, tmpDir, map[string]expectedFile{
+		"/a": {content: "a v1"},
+		"/b": {content: "b v1"},
+		"/c": {content: "c v1"},
+	})
+
+	currentTime := time.Now().Local()
+	err = os.Chtimes(filepath.Join(tmpDir, "a"), currentTime, currentTime)
+	if err != nil {
+		t.Fatalf("touch file %v: %v", filepath.Join(tmpDir, "a"), err)
+	}
+
+	err = os.Chtimes(filepath.Join(tmpDir, "b"), currentTime, currentTime)
+	if err != nil {
+		t.Fatalf("touch file %v: %v", filepath.Join(tmpDir, "b"), err)
+	}
+
+	os.WriteFile(filepath.Join(tmpDir, "c"), []byte("c v2"), 0755)
+
+	diff := buildDiff(tc, map[string]fsdiff_pb.Update_Action{
+		"/a": fsdiff_pb.Update_CHANGE,
+		"/b": fsdiff_pb.Update_CHANGE,
+		"/c": fsdiff_pb.Update_CHANGE,
+	})
+
+	version, count, err = c.Update(tc.Context(), 1, diff, tmpDir)
+	if err != nil {
+		t.Fatalf("client.UpdateObjects: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected update version to be 2, got: %v", version)
+	}
+	if count != 3 {
+		t.Errorf("expected update count to be 3, got: %v", count)
+	}
+
+	version, count, err = c.Rebuild(tc.Context(), 1, "", client.VersionRange{From: i(1), To: i(2)}, tmpDir)
+	if err != nil {
+		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected rebuild version to be 2, got: %v", version)
+	}
+
+	// Only one file should be updated since /a and /b were identical but with a new mod times
+	if count != 1 {
+		t.Errorf("expected rebuild count to be 1, got: %v", version)
+	}
 }
 
 func TestDeleteProject(t *testing.T) {

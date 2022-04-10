@@ -45,7 +45,6 @@ func DeleteObjects(ctx context.Context, tx pgx.Tx, project int64, version int64,
 		WHERE project = $2
 		  AND path LIKE $3
 		  AND stop_version IS NULL
-		RETURNING path
 	`, version, project, pathPredicate)
 	if err != nil {
 		return fmt.Errorf("delete objects, project %v, version %v, path %v: %w", project, version, pathPredicate, err)
@@ -66,19 +65,33 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 		return fmt.Errorf("encode updated content, project %v, version %v, path %v: %w", project, version, object.Path, err)
 	}
 
+	rows, err := tx.Query(ctx, `
+		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
+		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
+		ON CONFLICT
+	       DO NOTHING
+		RETURNING project
+	`, project, version, object.Path, h1, h2, object.Mode, object.Size, false)
+	if err != nil {
+		return fmt.Errorf("insert new object, project %v, version %v, path %v: %w", project, version, object.Path, err)
+	}
+
+	isIdentical := !rows.Next()
+	rows.Close()
+
+	if isIdentical {
+		return nil
+	}
+
 	batch := &pgx.Batch{}
 
 	batch.Queue(`
 		UPDATE dl.objects SET stop_version = $1
 		WHERE project = $2
-			AND path = $3
-			AND stop_version IS NULL
-	`, version, project, object.Path)
-
-	batch.Queue(`
-		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
-		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
-	`, project, version, object.Path, h1, h2, object.Mode, object.Size, false)
+		  AND path = $3
+		  AND stop_version IS NULL
+		  AND start_version != $4
+	`, version, project, object.Path, version)
 
 	batch.Queue(`
 		INSERT INTO dl.contents (hash, bytes, names_tar)
@@ -93,11 +106,6 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 	_, err = results.Exec()
 	if err != nil {
 		return fmt.Errorf("update previous object, project %v, version %v, path %v: %w", project, version, object.Path, err)
-	}
-
-	_, err = results.Exec()
-	if err != nil {
-		return fmt.Errorf("insert new object, project %v, version %v, path %v: %w", project, version, object.Path, err)
 	}
 
 	_, err = results.Exec()
@@ -135,7 +143,7 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 			SELECT bytes
 			FROM dl.contents
 			WHERE (hash).h1 = $1
-			AND (hash).h2 = $2
+			  AND (hash).h2 = $2
 		`, h1, h2).Scan(&content)
 		if err != nil {
 			return fmt.Errorf("fetch latest packed content, hash %x-%x: %w", h1, h2, err)
@@ -163,7 +171,7 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 		INSERT INTO dl.contents (hash, bytes, names_tar)
 		VALUES (($1, $2), $3, $4)
 		ON CONFLICT
-		DO NOTHING
+		   DO NOTHING
 	`, h1, h2, updated, namesTar)
 
 	results := tx.SendBatch(ctx, batch)
