@@ -32,7 +32,7 @@
 
             mkcert = pkgs.mkcert;
 
-            go = pkgs.go;
+            go = pkgs.go_1_17;
 
             git = pkgs.git;
 
