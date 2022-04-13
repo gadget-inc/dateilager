@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -138,9 +139,44 @@ func buildDiff(tc util.TestCtx, updates map[string]fsdiff_pb.Update_Action) *fsd
 }
 
 func verifyDir(tc util.TestCtx, dir string, files map[string]expectedFile) {
-	dirEntries, err := os.ReadDir(dir)
+	dirEntries := make(map[string]fs.FileInfo)
+
+	// Only keep track of empty walked directories
+	var maybeEmptyDir *string
+	var maybeEmptyInfo *fs.FileInfo
+
+	err := filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if path == dir {
+			return nil
+		}
+
+		if maybeEmptyDir != nil {
+			if !strings.HasPrefix(path, *maybeEmptyDir) {
+				dirEntries[fmt.Sprintf("%s/", *maybeEmptyDir)] = *maybeEmptyInfo
+			}
+			maybeEmptyDir = nil
+			maybeEmptyInfo = nil
+		}
+
+		if info.IsDir() {
+			maybeEmptyDir = &path
+			maybeEmptyInfo = &info
+			return nil
+		}
+
+		dirEntries[path] = info
+		return nil
+	})
+	if maybeEmptyDir != nil {
+		dirEntries[fmt.Sprintf("%s/", *maybeEmptyDir)] = *maybeEmptyInfo
+	}
+
 	if err != nil {
-		tc.Fatalf("read directory %v: %v", dir, err)
+		tc.Fatalf("walk directory %v: %v", dir, err)
 	}
 
 	if len(dirEntries) != len(files) {
@@ -148,12 +184,9 @@ func verifyDir(tc util.TestCtx, dir string, files map[string]expectedFile) {
 	}
 
 	for name, file := range files {
-		path := filepath.Join(dir, name)
-
-		info, err := os.Lstat(path)
-		if err != nil {
-			tc.Fatalf("lstat file %v: %v", path, err)
-		}
+		// Not using filepath.Join here as it removes the directory trailing slash
+		path := fmt.Sprintf("%s%s", dir, name)
+		info := dirEntries[path]
 
 		switch file.fileType {
 		case typeDirectory:
@@ -661,6 +694,75 @@ func TestUpdateObjectsWithMissingFile(t *testing.T) {
 	})
 }
 
+func TestUpdateAndRebuild(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a", "a v1")
+	writeObject(tc, 1, 1, nil, "/b", "b v1")
+	writeObject(tc, 1, 1, nil, "/c", "c v1")
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	tmpDir := writeTmpFiles(tc, map[string]string{})
+	defer os.RemoveAll(tmpDir)
+
+	version, count, err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
+	if err != nil {
+		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 1 {
+		t.Errorf("expected rebuild version to be 1, got: %v", version)
+	}
+	if count != 3 {
+		t.Errorf("expected rebuild count to be 3, got: %v", version)
+	}
+
+	verifyDir(tc, tmpDir, map[string]expectedFile{
+		"/a": {content: "a v1"},
+		"/b": {content: "b v1"},
+		"/c": {content: "c v1"},
+	})
+
+	os.WriteFile(filepath.Join(tmpDir, "a"), []byte("a v2"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, "c"), []byte("c v2"), 0755)
+
+	diff := buildDiff(tc, map[string]fsdiff_pb.Update_Action{
+		"/a": fsdiff_pb.Update_CHANGE,
+		"/c": fsdiff_pb.Update_CHANGE,
+	})
+
+	version, count, err = c.Update(tc.Context(), 1, diff, tmpDir)
+	if err != nil {
+		t.Fatalf("client.UpdateObjects: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected update version to be 2, got: %v", version)
+	}
+	if count != 2 {
+		t.Errorf("expected update count to be 2, got: %v", count)
+	}
+
+	version, count, err = c.Rebuild(tc.Context(), 1, "", client.VersionRange{From: i(1), To: i(2)}, tmpDir)
+	if err != nil {
+		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected rebuild version to be 2, got: %v", version)
+	}
+	if count != 2 {
+		t.Errorf("expected rebuild count to be 2, got: %v", version)
+	}
+
+	verifyDir(tc, tmpDir, map[string]expectedFile{
+		"/a": {content: "a v2"},
+		"/b": {content: "b v1"},
+		"/c": {content: "c v2"},
+	})
+}
+
 func TestUpdateAndRebuildWithIdenticalObjects(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
@@ -710,6 +812,155 @@ func TestUpdateAndRebuildWithIdenticalObjects(t *testing.T) {
 		"/a": fsdiff_pb.Update_CHANGE,
 		"/b": fsdiff_pb.Update_CHANGE,
 		"/c": fsdiff_pb.Update_CHANGE,
+	})
+
+	version, count, err = c.Update(tc.Context(), 1, diff, tmpDir)
+	if err != nil {
+		t.Fatalf("client.UpdateObjects: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected update version to be 2, got: %v", version)
+	}
+	if count != 3 {
+		t.Errorf("expected update count to be 3, got: %v", count)
+	}
+
+	version, count, err = c.Rebuild(tc.Context(), 1, "", client.VersionRange{From: i(1), To: i(2)}, tmpDir)
+	if err != nil {
+		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected rebuild version to be 2, got: %v", version)
+	}
+
+	// Only one file should be updated since /a and /b were identical but with a new mod times
+	if count != 1 {
+		t.Errorf("expected rebuild count to be 1, got: %v", version)
+	}
+}
+
+func TestUpdateAndRebuildWithPacked(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+		"/a/d": {content: "a/d v1"},
+	})
+	writeObject(tc, 1, 1, nil, "/b", "b v1")
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	tmpDir := writeTmpFiles(tc, map[string]string{})
+	defer os.RemoveAll(tmpDir)
+
+	version, count, err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
+	if err != nil {
+		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 1 {
+		t.Errorf("expected rebuild version to be 1, got: %v", version)
+	}
+	if count != 3 {
+		t.Errorf("expected rebuild count to be 3, got: %v", version)
+	}
+
+	verifyDir(tc, tmpDir, map[string]expectedFile{
+		"/a/c": {content: "a/c v1"},
+		"/a/d": {content: "a/d v1"},
+		"/b":   {content: "b v1"},
+	})
+
+	os.WriteFile(filepath.Join(tmpDir, "a/c"), []byte("a/c v2"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, "b"), []byte("b v2"), 0755)
+
+	diff := buildDiff(tc, map[string]fsdiff_pb.Update_Action{
+		"/a/c": fsdiff_pb.Update_CHANGE,
+		"/b":   fsdiff_pb.Update_CHANGE,
+	})
+
+	version, count, err = c.Update(tc.Context(), 1, diff, tmpDir)
+	if err != nil {
+		t.Fatalf("client.UpdateObjects: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected update version to be 2, got: %v", version)
+	}
+	if count != 2 {
+		t.Errorf("expected update count to be 2, got: %v", count)
+	}
+
+	version, count, err = c.Rebuild(tc.Context(), 1, "", client.VersionRange{From: i(1), To: i(2)}, tmpDir)
+	if err != nil {
+		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected rebuild version to be 2, got: %v", version)
+	}
+	if count != 2 {
+		t.Errorf("expected rebuild count to be 2, got: %v", version)
+	}
+
+	verifyDir(tc, tmpDir, map[string]expectedFile{
+		"/a/c": {content: "a/c v2"},
+		"/a/d": {content: "a/d v1"},
+		"/b":   {content: "b v2"},
+	})
+}
+
+func TestUpdateAndRebuildWithIdenticalPackedObjects(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "/a/")
+	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+		"/a/d": {content: "a/d v1"},
+	})
+	writeObject(tc, 1, 1, nil, "/b", "b v1")
+
+	c, close := createTestClient(tc, tc.FsApi())
+	defer close()
+
+	tmpDir := writeTmpFiles(tc, map[string]string{})
+	defer os.RemoveAll(tmpDir)
+
+	version, count, err := c.Rebuild(tc.Context(), 1, "", emptyVersionRange, tmpDir)
+	if err != nil {
+		t.Fatalf("client.Rebuild: %v", err)
+	}
+	if version != 1 {
+		t.Errorf("expected rebuild version to be 1, got: %v", version)
+	}
+	if count != 3 {
+		t.Errorf("expected rebuild count to be 3, got: %v", version)
+	}
+
+	verifyDir(tc, tmpDir, map[string]expectedFile{
+		"/a/c": {content: "a/c v1"},
+		"/a/d": {content: "a/d v1"},
+		"/b":   {content: "b v1"},
+	})
+
+	currentTime := time.Now().Local()
+	err = os.Chtimes(filepath.Join(tmpDir, "a/c"), currentTime, currentTime)
+	if err != nil {
+		t.Fatalf("touch file %v: %v", filepath.Join(tmpDir, "a/c"), err)
+	}
+
+	err = os.Chtimes(filepath.Join(tmpDir, "a/d"), currentTime, currentTime)
+	if err != nil {
+		t.Fatalf("touch file %v: %v", filepath.Join(tmpDir, "a/d"), err)
+	}
+
+	os.WriteFile(filepath.Join(tmpDir, "b"), []byte("b v2"), 0755)
+
+	diff := buildDiff(tc, map[string]fsdiff_pb.Update_Action{
+		"/a/c": fsdiff_pb.Update_CHANGE,
+		"/a/d": fsdiff_pb.Update_CHANGE,
+		"/b":   fsdiff_pb.Update_CHANGE,
 	})
 
 	version, count, err = c.Update(tc.Context(), 1, diff, tmpDir)
