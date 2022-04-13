@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -121,70 +122,84 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 	var content []byte
 
 	rows, err := tx.Query(ctx, `
+		SELECT (o.hash).h1, (o.hash).h2, c.bytes
+		FROM dl.objects o
+		JOIN dl.contents c
+		  ON o.hash = c.hash
+		WHERE project = $1
+		  AND path = $2
+		  AND packed IS true
+		  AND stop_version IS NULL
+	`, project, parent)
+	if err != nil {
+		return fmt.Errorf("select existing packed object, project %v, version %v, parent %v: %w", project, version, parent, err)
+	}
+
+	if rows.Next() {
+		err = rows.Scan(&h1, &h2, &content)
+		if err != nil {
+			return fmt.Errorf("scan hash and packed content from existing object, project %v, version %v, parent %v: %w", project, version, parent, err)
+		}
+	}
+	rows.Close()
+
+	shouldInsert := true
+	updated, namesTar, err := updateObjects(content, updates)
+	if errors.Is(err, ErrEmptyPack) {
+		// If the newly packed object is empty, we only need to delete the old one.
+		shouldInsert = false
+	} else if err != nil {
+		return fmt.Errorf("update packed object: %w", err)
+	}
+
+	newH1, newH2 := HashContent(updated)
+
+	if bytes.Equal(h1, newH1) && bytes.Equal(h2, newH2) {
+		return nil
+	}
+
+	batch := &pgx.Batch{}
+
+	batch.Queue(`
 		UPDATE dl.objects SET stop_version = $1
 		WHERE project = $2
 		  AND path = $3
 		  AND packed IS true
 		  AND stop_version IS NULL
-		RETURNING (hash).h1, (hash).h2
 	`, version, project, parent)
-	if err != nil {
-		return fmt.Errorf("update latest packed object version, project %v, version %v, parent %v: %w", project, version, parent, err)
+
+	if shouldInsert {
+		batch.Queue(`
+			INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
+			VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
+		`, project, version, parent, newH1, newH2, 0, len(updated), true)
+
+		batch.Queue(`
+			INSERT INTO dl.contents (hash, bytes, names_tar)
+			VALUES (($1, $2), $3, $4)
+			ON CONFLICT
+			DO NOTHING
+		`, newH1, newH2, updated, namesTar)
 	}
-
-	if rows.Next() {
-		err = rows.Scan(&h1, &h2)
-		if err != nil {
-			return fmt.Errorf("scan hash from updated packed object, project %v, version %v, parent %v: %w", project, version, parent, err)
-		}
-		rows.Close()
-
-		err = tx.QueryRow(ctx, `
-			SELECT bytes
-			FROM dl.contents
-			WHERE (hash).h1 = $1
-			  AND (hash).h2 = $2
-		`, h1, h2).Scan(&content)
-		if err != nil {
-			return fmt.Errorf("fetch latest packed content, hash %x-%x: %w", h1, h2, err)
-		}
-	}
-
-	updated, namesTar, err := updateObjects(content, updates)
-	if errors.Is(err, ErrEmptyPack) {
-		// The object was marked as deleted earlier in this function, do not create a new object if the pack is empty
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("update packed object: %w", err)
-	}
-
-	h1, h2 = HashContent(updated)
-	batch := &pgx.Batch{}
-
-	batch.Queue(`
-		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
-		VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
-	`, project, version, parent, h1, h2, 0, len(updated), true)
-
-	batch.Queue(`
-		INSERT INTO dl.contents (hash, bytes, names_tar)
-		VALUES (($1, $2), $3, $4)
-		ON CONFLICT
-		   DO NOTHING
-	`, h1, h2, updated, namesTar)
 
 	results := tx.SendBatch(ctx, batch)
 	defer results.Close()
 
 	_, err = results.Exec()
 	if err != nil {
-		return fmt.Errorf("insert new packed object, project %v, version %v, parent %v: %w", project, version, parent, err)
+		return fmt.Errorf("update existing object, project %v, version %v, parent %v: %w", project, version, parent, err)
 	}
 
-	_, err = results.Exec()
-	if err != nil {
-		return fmt.Errorf("insert packed content, hash %x-%x: %w", h1, h2, err)
+	if shouldInsert {
+		_, err = results.Exec()
+		if err != nil {
+			return fmt.Errorf("insert new packed object, project %v, version %v, parent %v: %w", project, version, parent, err)
+		}
+
+		_, err = results.Exec()
+		if err != nil {
+			return fmt.Errorf("insert packed content, hash %x-%x: %w", newH1, newH2, err)
+		}
 	}
 
 	return nil
