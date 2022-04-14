@@ -46,7 +46,7 @@
           devShell = pkgs.mkShell {
             packages = builtins.attrValues self.packages.${system};
             shellHook = ''
-              GOROOT=${pkgs.go}/share/go
+              GOROOT=${pkgs.go_1_17}/share/go
             '';
           };
         }
