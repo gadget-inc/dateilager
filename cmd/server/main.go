@@ -77,18 +77,18 @@ func parsePublicKey(log *zap.Logger, path string) ed25519.PublicKey {
 	return pub.(ed25519.PublicKey)
 }
 
-func buildLogger(env environment.Env, level zapcore.LevelEnabler, encoding string) *zap.Logger {
-	var log *zap.Logger
-	var err error
-
+func buildLogger(env environment.Env, level zapcore.Level, encoding string) *zap.Logger {
+	var config zap.Config
 	if env == environment.Prod {
-		if level == zapcore.DebugLevel {
-			level = zapcore.InfoLevel
-		}
-		log, err = zap.NewProduction(zap.IncreaseLevel(level))
+		config = zap.NewProductionConfig()
 	} else {
-		log, err = zap.NewDevelopment(zap.IncreaseLevel(level))
+		config = zap.NewDevelopmentConfig()
 	}
+
+	config.Encoding = encoding
+	config.Level = zap.NewAtomicLevelAt(level)
+
+	log, err := config.Build()
 
 	if err != nil {
 		panic(fmt.Sprintf("Cannot setup logger: %v", err))
