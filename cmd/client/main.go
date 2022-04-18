@@ -332,18 +332,13 @@ func (a *resetArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) 
 	return nil
 }
 
-func buildLogger(level zapcore.Level, encoding string) *zap.Logger {
+func buildLogger(level zapcore.Level, encoding string) (*zap.Logger, error) {
 	config := zap.NewProductionConfig()
 	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	config.Level = zap.NewAtomicLevelAt(level)
 	config.Encoding = encoding
 
-	log, err := config.Build()
-	if err != nil {
-		panic(fmt.Sprintf("Cannot setup logger: %v", err))
-	}
-
-	return log
+	return config.Build()
 }
 
 func main() {
@@ -378,7 +373,10 @@ func main() {
 		stdlog.Fatal(err.Error())
 	}
 
-	log := buildLogger(*shared.level, *shared.encoding)
+	log, err := buildLogger(*shared.level, *shared.encoding)
+	if err != nil {
+		stdlog.Fatal(err.Error())
+	}
 
 	token := os.Getenv("DL_TOKEN")
 	if token == "" {

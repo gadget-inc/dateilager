@@ -1,6 +1,7 @@
 package environment
 
 import (
+	"fmt"
 	"os"
 	"strings"
 )
@@ -28,17 +29,17 @@ func (e Env) String() string {
 	}
 }
 
-func LoadEnvironment() Env {
+func LoadEnvironment() (Env, error) {
 	envStr := os.Getenv("DL_ENV")
 
 	switch strings.ToLower(envStr) {
 	case "dev":
-		return Dev
+		return Dev, nil
 	case "test":
-		return Test
+		return Test, nil
 	case "prod":
-		return Prod
+		return Prod, nil
 	default:
-		panic("Unknown environment")
+		return 0, fmt.Errorf("unknown environment: %s", envStr)
 	}
 }
