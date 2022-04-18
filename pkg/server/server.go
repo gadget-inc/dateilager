@@ -66,7 +66,7 @@ func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 		return nil, nil, err
 	}
 
-	return tx, func() { tx.Rollback(ctx); conn.Release() }, nil
+	return tx, func(ctx context.Context) { tx.Rollback(ctx); conn.Release() }, nil
 }
 
 type Server struct {
