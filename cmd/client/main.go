@@ -16,7 +16,7 @@ import (
 )
 
 type Command interface {
-	run(context.Context, *zap.Logger, *client.Client)
+	run(context.Context, *zap.Logger, *client.Client) error
 }
 
 type sharedArgs struct {
@@ -70,13 +70,14 @@ func parseNewArgs(args []string) (*sharedArgs, *newArgs, error) {
 	}, nil
 }
 
-func (a *newArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+func (a *newArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
 	err := c.NewProject(ctx, a.id, a.template, a.patterns)
 	if err != nil {
-		log.Fatal("could not create new project", zap.Error(err))
+		return fmt.Errorf("could not create new project: %w", err)
 	}
 
 	log.Info("created new project", zap.Int64("id", a.id))
+	return nil
 }
 
 type getArgs struct {
@@ -114,16 +115,18 @@ func parseGetArgs(args []string) (*sharedArgs, *getArgs, error) {
 	}, nil
 }
 
-func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
 	objects, err := c.Get(ctx, a.project, a.prefix, a.vrange)
 	if err != nil {
-		log.Fatal("could not fetch data", zap.Error(err))
+		return fmt.Errorf("could not fetch data: %w", err)
 	}
 
 	log.Info("listing objects in project", zap.Int64("project", a.project), zap.Int("count", len(objects)))
 	for _, object := range objects {
 		log.Info("object", zap.String("path", object.Path), zap.String("content", string(object.Content)))
 	}
+
+	return nil
 }
 
 type rebuildArgs struct {
@@ -167,20 +170,20 @@ func parseRebuildArgs(args []string) (*sharedArgs, *rebuildArgs, error) {
 	}, nil
 }
 
-func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
 	if a.skipDecompress {
-		version, err := c.FetchArchives(ctx, a.project, a.prefix, a.vrange, a.output)
+		_, err := c.FetchArchives(ctx, a.project, a.prefix, a.vrange, a.output)
 		if err != nil {
-			log.Fatal("could not fetch archives", zap.Error(err), zap.String("output", a.output), zap.Int64("version", version))
+			return fmt.Errorf("could not fetch archives: %w", err)
 		}
 
 		log.Info("wrote archives", zap.Int64("project", a.project))
-		return
+		return nil
 	}
 
 	version, count, err := c.Rebuild(ctx, a.project, a.prefix, a.vrange, a.output)
 	if err != nil {
-		log.Fatal("could not rebuild project", zap.Error(err))
+		return fmt.Errorf("could not rebuild project: %w", err)
 	}
 
 	if version == -1 {
@@ -190,6 +193,7 @@ func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 	}
 
 	fmt.Println(version)
+	return nil
 }
 
 type updateArgs struct {
@@ -219,10 +223,10 @@ func parseUpdateArgs(args []string) (*sharedArgs, *updateArgs, error) {
 	}, nil
 }
 
-func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
 	diff, err := fsdiff.ReadDiff(a.diff)
 	if err != nil {
-		log.Fatal("parse diff file", zap.Error(err))
+		return fmt.Errorf("parse diff file: %w", err)
 	}
 
 	if len(diff.Updates) == 0 {
@@ -231,12 +235,14 @@ func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client)
 	} else {
 		version, count, err := c.Update(ctx, a.project, diff, a.directory)
 		if err != nil {
-			log.Fatal("update objects", zap.Error(err))
+			return fmt.Errorf("update objects: %w", err)
 		}
 
 		log.Info("updated objects", zap.Int64("project", a.project), zap.Int64("version", version), zap.Uint32("count", count))
 		fmt.Println(version)
 	}
+
+	return nil
 }
 
 type inspectArgs struct {
@@ -260,10 +266,10 @@ func parseInspectArgs(args []string) (*sharedArgs, *inspectArgs, error) {
 	}, nil
 }
 
-func (a *inspectArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+func (a *inspectArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
 	inspect, err := c.Inspect(ctx, a.project)
 	if err != nil {
-		log.Fatal("inspect project", zap.Int64("project", a.project), zap.Error(err))
+		return fmt.Errorf("inspect project: %w", err)
 	}
 
 	log.Info("inspect objects",
@@ -272,6 +278,8 @@ func (a *inspectArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 		zap.Int64("live_objects_count", inspect.LiveObjectsCount),
 		zap.Int64("total_objects_count", inspect.TotalObjectsCount),
 	)
+
+	return nil
 }
 
 type snapshotArgs struct{}
@@ -286,14 +294,15 @@ func parseSnapshotArgs(args []string) (*sharedArgs, *snapshotArgs, error) {
 	return shared, &snapshotArgs{}, nil
 }
 
-func (a *snapshotArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+func (a *snapshotArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
 	state, err := c.Snapshot(ctx)
 	if err != nil {
-		log.Fatal("snapshot", zap.Error(err))
+		return fmt.Errorf("snapshot: %w", err)
 	}
 
 	log.Info("successful snapshot")
 	fmt.Println(state)
+	return nil
 }
 
 type resetArgs struct {
@@ -313,13 +322,14 @@ func parseResetArgs(args []string) (*sharedArgs, *resetArgs, error) {
 	}, nil
 }
 
-func (a *resetArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) {
+func (a *resetArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
 	err := c.Reset(ctx, a.state)
 	if err != nil {
-		log.Fatal("reset", zap.String("state", a.state), zap.Error(err))
+		return fmt.Errorf("reset: %w", err)
 	}
 
 	log.Info("successful reset", zap.String("state", a.state))
+	return nil
 }
 
 func buildLogger(level zapcore.Level, encoding string) *zap.Logger {
@@ -375,14 +385,26 @@ func main() {
 		log.Fatal("missing token: set the DL_TOKEN environment variable")
 	}
 
+	exitCode := 0
+	defer func() {
+		if err != nil {
+			exitCode = 1
+		}
+		os.Exit(exitCode)
+	}()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()
 
 	c, err := client.NewClient(ctx, *shared.server, token)
 	if err != nil {
-		log.Fatal("could not connect to server", zap.Stringp("server", shared.server), zap.Error(err))
+		log.Error("could not connect to server", zap.Stringp("server", shared.server), zap.Error(err))
+		return
 	}
 	defer c.Close()
 
-	cmd.run(ctx, log, c)
+	err = cmd.run(ctx, log, c)
+	if err != nil {
+		log.Error("failed to run command", zap.Error(err))
+	}
 }
