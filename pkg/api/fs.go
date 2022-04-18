@@ -62,7 +62,7 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
 	f.Log.Debug("FS.NewProject[Init]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
 
@@ -98,7 +98,7 @@ func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
 	f.Log.Debug("FS.DeleteProject[Init]", zap.Int64("project", req.Project))
 	err = db.DeleteProject(ctx, tx, req.Project)
@@ -125,7 +125,7 @@ func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
 	f.Log.Debug("FS.ListProjects[Query]")
 
@@ -169,7 +169,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	if err != nil {
 		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
 	vrange, err := db.NewVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
 	if errors.Is(err, db.ErrNotFound) {
@@ -244,7 +244,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	if err != nil {
 		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
 	vrange, err := db.NewVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
 	if errors.Is(err, db.ErrNotFound) {
@@ -315,7 +315,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	if err != nil {
 		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
 	contentEncoder := db.NewContentEncoder()
 
@@ -422,7 +422,7 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
 	f.Log.Debug("FS.Inspect[Query]", zap.Int64("project", req.Project))
 
@@ -492,7 +492,7 @@ func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.Snapsho
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
 	f.Log.Debug("FS.Snapshot[Query]")
 
@@ -520,7 +520,7 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
-	defer close()
+	defer close(ctx)
 
 	f.Log.Debug("FS.Reset[Init]")
 

@@ -90,7 +90,7 @@ func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, db.CloseFunc
 
 	c := client.NewClientConn(tc.Logger(), conn)
 
-	return c, func() { c.Close(); s.Stop() }
+	return c, func(context.Context) { c.Close(); s.Stop() }
 }
 
 func verifyObjects(tc util.TestCtx, objects []*pb.Object, expected map[string]string) {
@@ -228,7 +228,7 @@ func TestGetLatestEmpty(t *testing.T) {
 	writeProject(tc, 1, 1)
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
 	if err != nil {
@@ -250,7 +250,7 @@ func TestGetLatest(t *testing.T) {
 	writeObject(tc, 1, 2, nil, "/c", "c v2")
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
 	if err != nil {
@@ -283,7 +283,7 @@ func TestGetVersion(t *testing.T) {
 	writeObject(tc, 1, 3, nil, "/d", "d v3")
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	objects, err := c.Get(tc.Context(), 1, "", toVersion(1))
 	if err != nil {
@@ -320,7 +320,7 @@ func TestGetVersionMissingProject(t *testing.T) {
 	defer tc.Close()
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	objects, err := c.Get(tc.Context(), 1, "", toVersion(1))
 	if err == nil {
@@ -338,7 +338,7 @@ func TestRebuild(t *testing.T) {
 	writeObject(tc, 1, 1, nil, "/c", "c v1")
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	tmpDir := writeTmpFiles(tc, map[string]string{})
 	defer os.RemoveAll(tmpDir)
@@ -375,7 +375,7 @@ func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
 	writeSymlink(tc, 1, 2, nil, "/e", "a")
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	tmpDir := writeTmpFiles(tc, map[string]string{
 		"/a": "a v1 - long buffer of content",
@@ -416,7 +416,7 @@ func TestRebuildWithEmptyDirAndSymlink(t *testing.T) {
 	writeSymlink(tc, 1, 2, nil, "/f/g/h", "/d/e")
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	tmpDir := writeTmpFiles(tc, map[string]string{})
 	defer os.RemoveAll(tmpDir)
@@ -450,7 +450,7 @@ func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
 	writeEmptyDir(tc, 1, 1, nil, "/b/")
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	tmpDir := writeTmpFiles(tc, map[string]string{})
 	defer os.RemoveAll(tmpDir)
@@ -526,7 +526,7 @@ func TestRebuildWithManyObjects(t *testing.T) {
 	}
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	tmpDir := writeTmpFiles(tc, map[string]string{})
 	defer os.RemoveAll(tmpDir)
@@ -568,7 +568,7 @@ func TestUpdateObjects(t *testing.T) {
 	})
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	version, count, err := c.Update(tc.Context(), 1, diff, tmpDir)
 	if err != nil {
@@ -621,7 +621,7 @@ func TestUpdateWithManyObjects(t *testing.T) {
 	diff := buildDiff(tc, updates)
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	version, count, err := c.Update(tc.Context(), 1, diff, tmpDir)
 	if err != nil {
@@ -670,7 +670,7 @@ func TestUpdateObjectsWithMissingFile(t *testing.T) {
 	os.Remove(filepath.Join(tmpDir, "d"))
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	version, count, err := c.Update(tc.Context(), 1, diff, tmpDir)
 	if err != nil {
@@ -704,7 +704,7 @@ func TestUpdateAndRebuild(t *testing.T) {
 	writeObject(tc, 1, 1, nil, "/c", "c v1")
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	tmpDir := writeTmpFiles(tc, map[string]string{})
 	defer os.RemoveAll(tmpDir)
@@ -773,7 +773,7 @@ func TestUpdateAndRebuildWithIdenticalObjects(t *testing.T) {
 	writeObject(tc, 1, 1, nil, "/c", "c v1")
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	tmpDir := writeTmpFiles(tc, map[string]string{})
 	defer os.RemoveAll(tmpDir)
@@ -851,7 +851,7 @@ func TestUpdateAndRebuildWithPacked(t *testing.T) {
 	writeObject(tc, 1, 1, nil, "/b", "b v1")
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	tmpDir := writeTmpFiles(tc, map[string]string{})
 	defer os.RemoveAll(tmpDir)
@@ -922,7 +922,7 @@ func TestUpdateAndRebuildWithIdenticalPackedObjects(t *testing.T) {
 	writeObject(tc, 1, 1, nil, "/b", "b v1")
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	tmpDir := writeTmpFiles(tc, map[string]string{})
 	defer os.RemoveAll(tmpDir)
@@ -998,7 +998,7 @@ func TestDeleteProject(t *testing.T) {
 	writeObject(tc, 1, 2, nil, "/c", "c v2")
 
 	c, close := createTestClient(tc, tc.FsApi())
-	defer close()
+	defer close(tc.Context())
 
 	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
 	if err != nil {
