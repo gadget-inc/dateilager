@@ -1,10 +1,12 @@
-import execa, { ExecaReturnValue } from "execa";
+import type { ExecaReturnValue } from "execa";
+import execa from "execa";
 import fse from "fs-extra";
+import pMemoize from "p-memoize";
 import path from "path";
-import { Logger } from "pino";
+import type { Logger } from "pino";
 import readline from "readline";
 
-const FSDIFF_TIMEOUT = 6000;
+const FSDIFF_TIMEOUT = 8000;
 const FSDIFF_IGNORES = [".dl", ".dl/version", ".dl/sum.s2", ".dl/diff.s2"].join(",");
 const DL_UPDATE_TIMEOUT = 10000;
 const DL_REBUILD_TIMEOUT = 8000;
@@ -45,19 +47,19 @@ export class FsDiffClient {
 }
 
 /**
- * A version of the DateiLager client that uses the compile binary client instead of the Javascript one.
+ * A version of the DateiLager client that uses the compiled binary client instead of the Javascript one.
  *
  * Used for uploading large diffs produced by FsDiff and for rebuilding FS state within a sandbox.
  */
 export class DateiLagerBinaryClient {
   logger: Logger;
   server: string;
-  token: string;
+  memoizedTokenFn: () => Promise<string>;
 
-  constructor(logger: Logger, host: string, port: number, token: string) {
+  constructor(logger: Logger, host: string, port: number, tokenFn: () => Promise<string>) {
     this.logger = logger;
     this.server = `${host}:${port}`;
-    this.token = token;
+    this.memoizedTokenFn = pMemoize(tokenFn);
   }
 
   async update(project: bigint, diff: string, directory: string): Promise<bigint | null> {
@@ -67,9 +69,7 @@ export class DateiLagerBinaryClient {
       return null;
     }
 
-    const version = BigInt(result.stdout);
-    await this._updateVersionFile(directory, version);
-    return version;
+    return BigInt(result.stdout);
   }
 
   async rebuild(project: bigint, from: bigint, to: bigint | null, output: string): Promise<bigint | null> {
@@ -86,28 +86,38 @@ export class DateiLagerBinaryClient {
     }
 
     const version = BigInt(result.stdout);
-    await this._updateVersionFile(output, version);
+    await this.updateVersionFile(output, version);
     return version;
   }
 
-  async _call(method: string, project: bigint, cwd: string, timeout: number, args: string[]): Promise<ExecaReturnValue<string>> {
-    const baseArgs = [method, "-project", String(project), "-server", this.server, "-encoding", "json", "-log", "info"];
-    const subprocess = execa("dateilager-client", baseArgs.concat(args), { cwd: cwd, timeout: timeout, env: { DL_TOKEN: this.token } });
-
-    readline.createInterface(subprocess.stderr!).on("line", (line) => {
-      const body = JSON.parse(line);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { level, ts, msg, ...rest } = body;
-      this.logger[level](rest, msg);
-    });
-
-    return await subprocess;
-  }
-
-  async _updateVersionFile(output: string, version: bigint): Promise<void> {
+  async updateVersionFile(output: string, version: bigint): Promise<void> {
     const dlDir = path.join(output, ".dl");
 
     await fse.mkdirp(dlDir);
     await fse.writeFile(path.join(dlDir, "version"), String(version));
+  }
+
+  async _call(method: string, project: bigint, cwd: string, timeout: number, args: string[]): Promise<ExecaReturnValue<string>> {
+    const level = this.logger.level == "trace" ? "debug" : this.logger.level;
+    const baseArgs = [method, "-project", String(project), "-server", this.server, "-encoding", "json", "-log", level];
+    const subprocess = execa("dateilager-client", baseArgs.concat(args), {
+      cwd: cwd,
+      timeout: timeout,
+      env: { DL_TOKEN: await this.memoizedTokenFn() },
+    });
+
+    readline.createInterface(subprocess.stderr!).on("line", (line) => {
+      try {
+        const body = JSON.parse(line);
+        const { level, ts, msg, ...rest } = body;
+
+        // @ts-ignore
+        this.logger[level](rest, msg);
+      } catch (err: any) {
+        this.logger.warn({ error: err.message }, line);
+      }
+    });
+
+    return await subprocess;
   }
 }

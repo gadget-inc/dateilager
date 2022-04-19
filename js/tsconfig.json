@@ -12,9 +12,11 @@
       "moduleResolution": "node",
       "module": "commonjs",
       "target": "es2020",
-      "types": ["node"],
+      "types": ["node", "jest"],
       "declaration": true,
-      "outDir": "./pkg"
+      "outDir": "./pkg",
+      "allowSyntheticDefaultImports": true,
+      "baseUrl": "./",
   },
-  "include": ["src"]
+  "include": ["./src", "./spec"]
 }
