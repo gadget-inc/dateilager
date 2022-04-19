@@ -405,7 +405,17 @@ func main() {
 
 	token := os.Getenv("DL_TOKEN")
 	if token == "" {
-		stdlog.Fatal("missing token: set the DL_TOKEN environment variable")
+		tokenFile := os.Getenv("DL_TOKEN_FILE")
+		if tokenFile == "" {
+			stdlog.Fatal("missing token: set the DL_TOKEN or DL_TOKEN_FILE environment variable")
+		}
+
+		bytes, err := os.ReadFile(tokenFile)
+		if err != nil {
+			stdlog.Fatal("failed to read contents of DL_TOKEN_FILE: %v", err)
+		}
+
+		token = string(bytes)
 	}
 
 	err = initLogger(*shared.level, *shared.encoding)

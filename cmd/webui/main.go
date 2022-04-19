@@ -51,7 +51,17 @@ func main() {
 
 	token := os.Getenv("DL_TOKEN")
 	if token == "" {
-		log.Fatal("missing token: set the DL_TOKEN environment variable")
+		tokenFile := os.Getenv("DL_TOKEN_FILE")
+		if tokenFile == "" {
+			log.Fatal("missing token: set the DL_TOKEN or DL_TOKEN_FILE environment variable")
+		}
+
+		bytes, err := os.ReadFile(tokenFile)
+		if err != nil {
+			log.Fatal("failed to read contents of DL_TOKEN_FILE", zap.Error(err))
+		}
+
+		token = string(bytes)
 	}
 
 	c, err := client.NewClient(ctx, args.server, token)
