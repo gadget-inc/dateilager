@@ -1,8 +1,9 @@
-import { credentials, ChannelCredentials, Metadata } from "@grpc/grpc-js";
+import { ChannelCredentials, credentials, Metadata } from "@grpc/grpc-js";
 import { GrpcTransport } from "@protobuf-ts/grpc-transport";
-import { ClientStreamingCall } from "@protobuf-ts/runtime-rpc";
+import type { ClientStreamingCall } from "@protobuf-ts/runtime-rpc";
+import pMemoize from "p-memoize";
 import { TextDecoder, TextEncoder } from "util";
-import { Objekt, Project, UpdateRequest, UpdateResponse } from "./fs";
+import type { Objekt, Project, UpdateRequest, UpdateResponse } from "./fs";
 import { FsClient } from "./fs.client";
 
 const MB = 1024 * 1024;
@@ -23,10 +24,10 @@ class UpdateInputStream {
     });
   }
 
-  async complete(): Promise<bigint> {
+  async complete(): Promise<bigint | null> {
     await this.call.requests.complete();
     const response = await this.call.response;
-    return response.version;
+    return response.version != -1n ? response.version : null;
   }
 }
 
@@ -58,28 +59,37 @@ export function decodeContent(bytes: Uint8Array | undefined): string {
  */
 export class DateiLagerClient {
   client: FsClient;
+  transport: GrpcTransport;
 
-  constructor(host: string, port: number, token: string, rootCert?: Buffer) {
+  constructor(host: string, port: number, tokenFn: () => Promise<string>, rootCert?: Buffer) {
+    const memoizedTokenFn = pMemoize(tokenFn);
+
     const tokenMetaGenerator = (_params: any, callback: (err: Error | null, meta: Metadata) => void) => {
-      const meta = new Metadata();
-      meta.add("authorization", `Bearer ${token}`);
-      callback(null, meta);
-    }
+      memoizedTokenFn()
+          .then((token) => {
+            const meta = new Metadata();
+            meta.add("authorization", `Bearer ${token}`);
+            callback(null, meta);
+          })
+          .catch((error) => {
+            throw error;
+          });
+    };
 
     const creds = credentials.combineChannelCredentials(
-      ChannelCredentials.createSsl(rootCert),
-      credentials.createFromMetadataGenerator(tokenMetaGenerator),
-    )
+        ChannelCredentials.createSsl(rootCert),
+        credentials.createFromMetadataGenerator(tokenMetaGenerator)
+    );
 
-    const transport = new GrpcTransport({
+    this.transport = new GrpcTransport({
       host: host + ":" + port,
       channelCredentials: creds,
       clientOptions: {
-        'grpc.max_send_message_length': 50 * MB,
-        'grpc.max_receive_message_length': 50 * MB,
-      }
+        "grpc.max_send_message_length": 50 * MB,
+        "grpc.max_receive_message_length": 50 * MB,
+      },
     });
-    this.client = new FsClient(transport);
+    this.client = new FsClient(this.transport);
   }
 
   _options() {
@@ -88,11 +98,12 @@ export class DateiLagerClient {
     };
   }
 
+  close() {
+    this.transport.close();
+  }
+
   async newProject(project: bigint, packPatterns: string[], template?: bigint) {
-    await this.client.newProject(
-      { id: project, packPatterns: packPatterns, template: template },
-      this._options()
-    );
+    await this.client.newProject({ id: project, packPatterns: packPatterns, template: template }, this._options());
   }
 
   async deleteProject(project: bigint): Promise<void> {
@@ -101,18 +112,18 @@ export class DateiLagerClient {
 
   async *listObjects(project: bigint, path: string, ignores: string[] = []) {
     const call = this.client.get(
-      {
-        project: project,
-        queries: [
-          {
-            path: path,
-            isPrefix: true,
-            withContent: true,
-            ignores: ignores,
-          },
-        ],
-      },
-      this._options()
+        {
+          project: project,
+          queries: [
+            {
+              path: path,
+              isPrefix: true,
+              withContent: true,
+              ignores: ignores,
+            },
+          ],
+        },
+        this._options()
     );
 
     for await (const response of call.responses) {
@@ -124,18 +135,18 @@ export class DateiLagerClient {
 
   async getObject(project: bigint, path: string): Promise<Objekt | undefined> {
     const call = this.client.get(
-      {
-        project: project,
-        queries: [
-          {
-            path: path,
-            isPrefix: false,
-            withContent: true,
-            ignores: [],
-          },
-        ],
-      },
-      this._options()
+        {
+          project: project,
+          queries: [
+            {
+              path: path,
+              isPrefix: false,
+              withContent: true,
+              ignores: [],
+            },
+          ],
+        },
+        this._options()
     );
 
     for await (const response of call.responses) {
@@ -148,7 +159,7 @@ export class DateiLagerClient {
     return new UpdateInputStream(project, call);
   }
 
-  async updateObject(project: bigint, obj: Objekt): Promise<bigint> {
+  async updateObject(project: bigint, obj: Objekt): Promise<bigint | null> {
     const stream = this.updateObjects(project);
     await stream.send(obj);
     return await stream.complete();
