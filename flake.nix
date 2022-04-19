@@ -16,15 +16,15 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           callPackage = pkgs.newScope (flake.packages // { inherit callPackage; });
-          services = callPackage ./.development/nix/services { };
+          services = callPackage ./development/nix/services { };
         in
         rec {
           packages = rec {
             ## DateiLager development scripts
 
-            clean = callPackage ./.development/nix/scripts/clean.nix { };
+            clean = callPackage ./development/nix/scripts/clean.nix { };
 
-            dev = callPackage ./.development/nix/scripts/dev.nix {
+            dev = callPackage ./development/nix/scripts/dev.nix {
               inherit services;
             };
 
