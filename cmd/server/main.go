@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	stdlog "log"
 	"net"
 	"os"
 	"os/signal"
@@ -58,26 +59,26 @@ func parseArgs() ServerArgs {
 	}
 }
 
-func parsePublicKey(log *zap.Logger, path string) ed25519.PublicKey {
+func parsePublicKey(path string) (ed25519.PublicKey, error) {
 	pubKeyBytes, err := os.ReadFile(path)
 	if err != nil {
-		log.Fatal("cannot open Paseto public key file", zap.String("path", path), zap.Error(err))
+		return nil, fmt.Errorf("cannot open Paseto public key file: %w", err)
 	}
 
 	block, _ := pem.Decode(pubKeyBytes)
 	if block == nil || block.Type != "PUBLIC KEY" {
-		log.Fatal("error decoding Paseto public key PEM")
+		return nil, fmt.Errorf("error decoding Paseto public key PEM")
 	}
 
 	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		log.Fatal("error parsing Paseto public key", zap.Error(err))
+		return nil, fmt.Errorf("error parsing Paseto public key: %w", err)
 	}
 
-	return pub.(ed25519.PublicKey)
+	return pub.(ed25519.PublicKey), nil
 }
 
-func buildLogger(env environment.Env, level zapcore.Level, encoding string) *zap.Logger {
+func buildLogger(env environment.Env, level zapcore.Level, encoding string) (log *zap.Logger, err error) {
 	var config zap.Config
 	if env == environment.Prod {
 		config = zap.NewProductionConfig()
@@ -88,20 +89,22 @@ func buildLogger(env environment.Env, level zapcore.Level, encoding string) *zap
 	config.Encoding = encoding
 	config.Level = zap.NewAtomicLevelAt(level)
 
-	log, err := config.Build()
-
-	if err != nil {
-		panic(fmt.Sprintf("Cannot setup logger: %v", err))
-	}
-	return log
+	return config.Build()
 }
 
 func main() {
 	ctx := context.Background()
 	args := parseArgs()
 
-	env := environment.LoadEnvironment()
-	log := buildLogger(env, args.level, args.encoding)
+	env, err := environment.LoadEnvironment()
+	if err != nil {
+		stdlog.Fatal(err.Error())
+	}
+
+	log, err := buildLogger(env, args.level, args.encoding)
+	if err != nil {
+		stdlog.Fatal(err.Error())
+	}
 	defer log.Sync()
 
 	if args.prof != "" {
@@ -129,7 +132,10 @@ func main() {
 		log.Fatal("cannot open TLS cert and key files", zap.String("cert", args.certFile), zap.String("key", args.keyFile), zap.Error(err))
 	}
 
-	pasetoKey := parsePublicKey(log, args.pasetoFile)
+	pasetoKey, err := parsePublicKey(args.pasetoFile)
+	if err != nil {
+		log.Fatal("cannot parse Paseto public key", zap.String("path", args.pasetoFile), zap.Error(err))
+	}
 
 	s := server.NewServer(ctx, log, dbConn, &cert, pasetoKey)
 
