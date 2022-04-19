@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
 	"go.uber.org/zap"
@@ -16,7 +17,7 @@ import (
 )
 
 type Command interface {
-	run(context.Context, *zap.Logger, *client.Client) error
+	run(context.Context, *client.Client) error
 }
 
 type sharedArgs struct {
@@ -70,13 +71,13 @@ func parseNewArgs(args []string) (*sharedArgs, *newArgs, error) {
 	}, nil
 }
 
-func (a *newArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
+func (a *newArgs) run(ctx context.Context, c *client.Client) error {
 	err := c.NewProject(ctx, a.id, a.template, a.patterns)
 	if err != nil {
 		return fmt.Errorf("could not create new project: %w", err)
 	}
 
-	log.Info("created new project", zap.Int64("id", a.id))
+	logger.Info(ctx, "created new project", zap.Int64("id", a.id))
 	return nil
 }
 
@@ -115,15 +116,15 @@ func parseGetArgs(args []string) (*sharedArgs, *getArgs, error) {
 	}, nil
 }
 
-func (a *getArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
+func (a *getArgs) run(ctx context.Context, c *client.Client) error {
 	objects, err := c.Get(ctx, a.project, a.prefix, a.vrange)
 	if err != nil {
 		return fmt.Errorf("could not fetch data: %w", err)
 	}
 
-	log.Info("listing objects in project", zap.Int64("project", a.project), zap.Int("count", len(objects)))
+	logger.Info(ctx, "listing objects in project", zap.Int64("project", a.project), zap.Int("count", len(objects)))
 	for _, object := range objects {
-		log.Info("object", zap.String("path", object.Path), zap.String("content", string(object.Content)))
+		logger.Info(ctx, "object", zap.String("path", object.Path), zap.String("content", string(object.Content)))
 	}
 
 	return nil
@@ -170,14 +171,14 @@ func parseRebuildArgs(args []string) (*sharedArgs, *rebuildArgs, error) {
 	}, nil
 }
 
-func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
+func (a *rebuildArgs) run(ctx context.Context, c *client.Client) error {
 	if a.skipDecompress {
 		_, err := c.FetchArchives(ctx, a.project, a.prefix, a.vrange, a.output)
 		if err != nil {
 			return fmt.Errorf("could not fetch archives: %w", err)
 		}
 
-		log.Info("wrote archives", zap.Int64("project", a.project))
+		logger.Info(ctx, "wrote archives", zap.Int64("project", a.project))
 		return nil
 	}
 
@@ -187,9 +188,9 @@ func (a *rebuildArgs) run(ctx context.Context, log *zap.Logger, c *client.Client
 	}
 
 	if version == -1 {
-		log.Debug("latest version already checked out", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64p("version", a.vrange.From))
+		logger.Debug(ctx, "latest version already checked out", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64p("version", a.vrange.From))
 	} else {
-		log.Info("wrote files", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64("version", version), zap.Uint32("diff_count", count))
+		logger.Info(ctx, "wrote files", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64("version", version), zap.Uint32("diff_count", count))
 	}
 
 	fmt.Println(version)
@@ -223,14 +224,14 @@ func parseUpdateArgs(args []string) (*sharedArgs, *updateArgs, error) {
 	}, nil
 }
 
-func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
+func (a *updateArgs) run(ctx context.Context, c *client.Client) error {
 	diff, err := fsdiff.ReadDiff(a.diff)
 	if err != nil {
 		return fmt.Errorf("parse diff file: %w", err)
 	}
 
 	if len(diff.Updates) == 0 {
-		log.Debug("diff file empty, nothing to update", zap.Int64("project", a.project))
+		logger.Debug(ctx, "diff file empty, nothing to update", zap.Int64("project", a.project))
 		fmt.Println(-1)
 	} else {
 		version, count, err := c.Update(ctx, a.project, diff, a.directory)
@@ -238,7 +239,7 @@ func (a *updateArgs) run(ctx context.Context, log *zap.Logger, c *client.Client)
 			return fmt.Errorf("update objects: %w", err)
 		}
 
-		log.Info("updated objects", zap.Int64("project", a.project), zap.Int64("version", version), zap.Uint32("count", count))
+		logger.Info(ctx, "updated objects", zap.Int64("project", a.project), zap.Int64("version", version), zap.Uint32("count", count))
 		fmt.Println(version)
 	}
 
@@ -266,13 +267,13 @@ func parseInspectArgs(args []string) (*sharedArgs, *inspectArgs, error) {
 	}, nil
 }
 
-func (a *inspectArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
+func (a *inspectArgs) run(ctx context.Context, c *client.Client) error {
 	inspect, err := c.Inspect(ctx, a.project)
 	if err != nil {
 		return fmt.Errorf("inspect project: %w", err)
 	}
 
-	log.Info("inspect objects",
+	logger.Info(ctx, "inspect objects",
 		zap.Int64("project", a.project),
 		zap.Int64("latest_version", inspect.LatestVersion),
 		zap.Int64("live_objects_count", inspect.LiveObjectsCount),
@@ -294,13 +295,13 @@ func parseSnapshotArgs(args []string) (*sharedArgs, *snapshotArgs, error) {
 	return shared, &snapshotArgs{}, nil
 }
 
-func (a *snapshotArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
+func (a *snapshotArgs) run(ctx context.Context, c *client.Client) error {
 	state, err := c.Snapshot(ctx)
 	if err != nil {
 		return fmt.Errorf("snapshot: %w", err)
 	}
 
-	log.Info("successful snapshot")
+	logger.Info(ctx, "successful snapshot")
 	fmt.Println(state)
 	return nil
 }
@@ -322,23 +323,23 @@ func parseResetArgs(args []string) (*sharedArgs, *resetArgs, error) {
 	}, nil
 }
 
-func (a *resetArgs) run(ctx context.Context, log *zap.Logger, c *client.Client) error {
+func (a *resetArgs) run(ctx context.Context, c *client.Client) error {
 	err := c.Reset(ctx, a.state)
 	if err != nil {
 		return fmt.Errorf("reset: %w", err)
 	}
 
-	log.Info("successful reset", zap.String("state", a.state))
+	logger.Info(ctx, "successful reset", zap.String("state", a.state))
 	return nil
 }
 
-func buildLogger(level zapcore.Level, encoding string) (*zap.Logger, error) {
+func initLogger(level zapcore.Level, encoding string) error {
 	config := zap.NewProductionConfig()
 	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	config.Level = zap.NewAtomicLevelAt(level)
 	config.Encoding = encoding
 
-	return config.Build()
+	return logger.Init(config)
 }
 
 func main() {
@@ -373,16 +374,17 @@ func main() {
 		stdlog.Fatal(err.Error())
 	}
 
-	log, err := buildLogger(*shared.level, *shared.encoding)
+	token := os.Getenv("DL_TOKEN")
+	if token == "" {
+		stdlog.Fatal("missing token: set the DL_TOKEN environment variable")
+	}
+
+	err = initLogger(*shared.level, *shared.encoding)
 	if err != nil {
 		stdlog.Fatal(err.Error())
 	}
 
-	token := os.Getenv("DL_TOKEN")
-	if token == "" {
-		log.Fatal("missing token: set the DL_TOKEN environment variable")
-	}
-
+	// make sure this is the first deferred func, so it happens last
 	exitCode := 0
 	defer func() {
 		if err != nil {
@@ -391,18 +393,20 @@ func main() {
 		os.Exit(exitCode)
 	}()
 
+	defer logger.Sync()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()
 
 	c, err := client.NewClient(ctx, *shared.server, token)
 	if err != nil {
-		log.Error("could not connect to server", zap.Stringp("server", shared.server), zap.Error(err))
+		logger.Error(ctx, "could not connect to server", zap.Stringp("server", shared.server), zap.Error(err))
 		return
 	}
 	defer c.Close()
 
-	err = cmd.run(ctx, log, c)
+	err = cmd.run(ctx, c)
 	if err != nil {
-		log.Error("failed to run command", zap.Error(err))
+		logger.Error(ctx, "failed to run command", zap.Error(err))
 	}
 }

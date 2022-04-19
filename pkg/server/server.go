@@ -11,10 +11,10 @@ import (
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -70,36 +70,28 @@ func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 }
 
 type Server struct {
-	log    *zap.Logger
 	Grpc   *grpc.Server
 	Health *health.Server
 }
 
-func NewServer(ctx context.Context, log *zap.Logger, dbConn *DbPoolConnector, cert *tls.Certificate, pasetoKey ed25519.PublicKey) *Server {
+func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certificate, pasetoKey ed25519.PublicKey) *Server {
 	creds := credentials.NewServerTLSFromCert(cert)
 
 	validator := auth.NewAuthValidator(pasetoKey)
 
-	zapOption := grpc_zap.WithDecider(func(fullMethodName string, err error) bool {
-		if err == nil && fullMethodName == "/grpc.health.v1.Health/Check" {
-			return false
-		}
-		return true
-	})
-
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(
 			grpc_middleware.ChainUnaryServer(
-				grpc_zap.UnaryServerInterceptor(log, zapOption),
 				grpc_recovery.UnaryServerInterceptor(),
-				grpc.UnaryServerInterceptor(validateTokenUnary(log, validator)),
+				logger.UnaryServerInterceptor(),
+				grpc.UnaryServerInterceptor(validateTokenUnary(validator)),
 			),
 		),
 		grpc.StreamInterceptor(
 			grpc_middleware.ChainStreamServer(
-				grpc_zap.StreamServerInterceptor(log, zapOption),
 				grpc_recovery.StreamServerInterceptor(),
-				grpc.StreamServerInterceptor(validateTokenStream(log, validator)),
+				logger.StreamServerInterceptor(),
+				grpc.StreamServerInterceptor(validateTokenStream(validator)),
 			),
 		),
 		grpc.MaxRecvMsgSize(100*MB),
@@ -107,12 +99,11 @@ func NewServer(ctx context.Context, log *zap.Logger, dbConn *DbPoolConnector, ce
 		grpc.Creds(creds),
 	)
 
-	log.Info("register HealthServer")
+	logger.Info(ctx, "register HealthServer")
 	healthServer := health.NewServer()
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
 
 	server := &Server{
-		log:    log,
 		Grpc:   grpcServer,
 		Health: healthServer,
 	}
@@ -155,7 +146,7 @@ func (s *Server) Serve(lis net.Listener) error {
 	return s.Grpc.Serve(lis)
 }
 
-func validateTokenUnary(log *zap.Logger, validator *auth.AuthValidator) grpc.UnaryServerInterceptor {
+func validateTokenUnary(validator *auth.AuthValidator) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
@@ -168,13 +159,13 @@ func validateTokenUnary(log *zap.Logger, validator *auth.AuthValidator) grpc.Una
 
 		token, err := getToken(md["authorization"])
 		if err != nil {
-			log.Error("Auth token parse error", zap.Error(err))
+			logger.Error(ctx, "Auth token parse error", zap.Error(err))
 			return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
 		}
 
 		reqAuth, err := validator.Validate(ctx, token)
 		if err != nil || reqAuth.Role == auth.None {
-			log.Error("Auth token validation error", zap.Error(err))
+			logger.Error(ctx, "Auth token validation error", zap.Error(err))
 			return nil, status.Errorf(codes.PermissionDenied, "invalid authorization token")
 		}
 
@@ -184,27 +175,28 @@ func validateTokenUnary(log *zap.Logger, validator *auth.AuthValidator) grpc.Una
 	}
 }
 
-func validateTokenStream(log *zap.Logger, validator *auth.AuthValidator) grpc.StreamServerInterceptor {
+func validateTokenStream(validator *auth.AuthValidator) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		md, ok := metadata.FromIncomingContext(stream.Context())
+		ctx := stream.Context()
+		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
 			return status.Errorf(codes.InvalidArgument, "missing request metadata")
 		}
 
 		token, err := getToken(md["authorization"])
 		if err != nil {
-			log.Error("Auth token parse error", zap.Error(err))
+			logger.Error(ctx, "Auth token parse error", zap.Error(err))
 			return status.Errorf(codes.Unauthenticated, "missing authorization token")
 		}
 
-		reqAuth, err := validator.Validate(stream.Context(), token)
+		reqAuth, err := validator.Validate(ctx, token)
 		if err != nil || reqAuth.Role == auth.None {
-			log.Error("Auth token validation error", zap.Error(err))
+			logger.Error(ctx, "Auth token validation error", zap.Error(err))
 			return status.Errorf(codes.PermissionDenied, "invalid authorization token")
 		}
 
 		wrapped := grpc_middleware.WrapServerStream(stream)
-		wrapped.WrappedContext = context.WithValue(stream.Context(), auth.AuthCtxKey, reqAuth)
+		wrapped.WrappedContext = context.WithValue(ctx, auth.AuthCtxKey, reqAuth)
 
 		return handler(srv, stream)
 	}

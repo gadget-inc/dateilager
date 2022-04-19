@@ -20,7 +20,6 @@ import (
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
-	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -38,18 +37,15 @@ type VersionRange struct {
 }
 
 type Client struct {
-	log  *zap.Logger
 	conn *grpc.ClientConn
 	fs   pb.FsClient
 }
 
-func NewClientConn(log *zap.Logger, conn *grpc.ClientConn) *Client {
-	return &Client{log: log, conn: conn, fs: pb.NewFsClient(conn)}
+func NewClientConn(conn *grpc.ClientConn) *Client {
+	return &Client{conn: conn, fs: pb.NewFsClient(conn)}
 }
 
 func NewClient(ctx context.Context, server, token string) (*Client, error) {
-	log, _ := zap.NewDevelopment()
-
 	pool, err := x509.SystemCertPool()
 	if err != nil {
 		return nil, fmt.Errorf("load system cert pool: %w", err)
@@ -74,7 +70,7 @@ func NewClient(ctx context.Context, server, token string) (*Client, error) {
 		return nil, err
 	}
 
-	return NewClientConn(log, conn), nil
+	return NewClientConn(conn), nil
 }
 
 func (c *Client) Close() {

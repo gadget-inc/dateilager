@@ -15,12 +15,12 @@ import (
 	"runtime/pprof"
 	"syscall"
 
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-
 	"github.com/gadget-inc/dateilager/internal/environment"
+	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/server"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type ServerArgs struct {
@@ -78,7 +78,7 @@ func parsePublicKey(path string) (ed25519.PublicKey, error) {
 	return pub.(ed25519.PublicKey), nil
 }
 
-func buildLogger(env environment.Env, level zapcore.Level, encoding string) (log *zap.Logger, err error) {
+func initLogger(env environment.Env, level zapcore.Level, encoding string) error {
 	var config zap.Config
 	if env == environment.Prod {
 		config = zap.NewProductionConfig()
@@ -89,7 +89,7 @@ func buildLogger(env environment.Env, level zapcore.Level, encoding string) (log
 	config.Encoding = encoding
 	config.Level = zap.NewAtomicLevelAt(level)
 
-	return config.Build()
+	return logger.Init(config)
 }
 
 func main() {
@@ -101,16 +101,16 @@ func main() {
 		stdlog.Fatal(err.Error())
 	}
 
-	log, err := buildLogger(env, args.level, args.encoding)
+	err = initLogger(env, args.level, args.encoding)
 	if err != nil {
 		stdlog.Fatal(err.Error())
 	}
-	defer log.Sync()
+	defer logger.Sync()
 
 	if args.prof != "" {
 		file, err := os.Create(args.prof)
 		if err != nil {
-			log.Fatal("open pprof file", zap.String("file", args.prof), zap.Error(err))
+			logger.Fatal(ctx, "open pprof file", zap.String("file", args.prof), zap.Error(err))
 		}
 		pprof.StartCPUProfile(file)
 		defer pprof.StopCPUProfile()
@@ -118,31 +118,30 @@ func main() {
 
 	listen, err := net.Listen("tcp", fmt.Sprintf(":%d", args.port))
 	if err != nil {
-		log.Fatal("failed to listen", zap.String("protocol", "tcp"), zap.Int("port", args.port), zap.Error(err))
+		logger.Fatal(ctx, "failed to listen", zap.String("protocol", "tcp"), zap.Int("port", args.port), zap.Error(err))
 	}
 
 	dbConn, err := server.NewDbPoolConnector(ctx, args.dbUri)
 	if err != nil {
-		log.Fatal("cannot connect to DB", zap.String("dburi", args.dbUri), zap.Error(err))
+		logger.Fatal(ctx, "cannot connect to DB", zap.String("dburi", args.dbUri), zap.Error(err))
 	}
 	defer dbConn.Close()
 
 	cert, err := tls.LoadX509KeyPair(args.certFile, args.keyFile)
 	if err != nil {
-		log.Fatal("cannot open TLS cert and key files", zap.String("cert", args.certFile), zap.String("key", args.keyFile), zap.Error(err))
+		logger.Fatal(ctx, "cannot open TLS cert and key files", zap.String("cert", args.certFile), zap.String("key", args.keyFile), zap.Error(err))
 	}
 
 	pasetoKey, err := parsePublicKey(args.pasetoFile)
 	if err != nil {
-		log.Fatal("cannot parse Paseto public key", zap.String("path", args.pasetoFile), zap.Error(err))
+		logger.Fatal(ctx, "cannot parse Paseto public key", zap.String("path", args.pasetoFile), zap.Error(err))
 	}
 
-	s := server.NewServer(ctx, log, dbConn, &cert, pasetoKey)
+	s := server.NewServer(ctx, dbConn, &cert, pasetoKey)
 
-	log.Info("register Fs")
+	logger.Info(ctx, "register Fs")
 	fs := &api.Fs{
 		Env:    env,
-		Log:    log,
 		DbConn: dbConn,
 	}
 	s.RegisterFs(ctx, fs)
@@ -158,8 +157,8 @@ func main() {
 		os.Exit(0)
 	}()
 
-	log.Info("start server", zap.Int("port", args.port), zap.String("env", env.String()))
+	logger.Info(ctx, "start server", zap.Int("port", args.port), zap.String("env", env.String()))
 	if err := s.Serve(listen); err != nil {
-		log.Fatal("failed to serve", zap.Error(err))
+		logger.Fatal(ctx, "failed to serve", zap.Error(err))
 	}
 }
