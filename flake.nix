@@ -15,40 +15,54 @@
       (system: nixpkgs.lib.fix (flake:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          callPackage = pkgs.newScope (flake.packages // { inherit callPackage; });
-          services = callPackage ./development/nix/services { };
+
+          lib = pkgs.lib // {
+            maintainers = pkgs.lib.maintainers // {
+              angelini = {
+                name = "Alex Angelini";
+                email = "alex.louis.angelini@gmail.com";
+                github = "angelini";
+                githubId = 515110;
+              };
+              scott-rc = {
+                name = "Scott Côté";
+                email = "scott.cote@hey.com";
+                github = "scott-rc";
+                githubId = 21965521;
+              };
+            };
+          };
+
+          callPackage = pkgs.newScope (flake.packages // { inherit lib callPackage; });
         in
-        rec {
-          packages = rec {
+        {
+          packages = {
             ## DateiLager development scripts
 
             clean = callPackage ./development/nix/scripts/clean.nix { };
 
             dev = callPackage ./development/nix/scripts/dev.nix {
-              inherit services;
+              services = callPackage ./development/nix/services { };
             };
 
-            ## Packages from nixpkgs
-
-            mkcert = pkgs.mkcert;
+            ## Pinned packages from nixpkgs
 
             go = pkgs.go_1_17;
 
-            git = pkgs.git;
-
             nodejs = pkgs.nodejs-16_x;
 
-            protobuf = pkgs.protobuf;
-
             postgresql = pkgs.postgresql_13;
+
+            ## DateiLager outputs
+
+            dateilager = callPackage ./. {
+              buildGoModule = pkgs.buildGoModule.override {
+                go = flake.packages.go;
+              };
+            };
           };
 
-          devShell = pkgs.mkShell {
-            packages = builtins.attrValues self.packages.${system};
-            shellHook = ''
-              GOROOT=${pkgs.go_1_17}/share/go
-            '';
-          };
+          defaultPackage = flake.packages.dateilager;
         }
       )));
 }
