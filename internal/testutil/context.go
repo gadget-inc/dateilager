@@ -80,7 +80,6 @@ func (tc *TestCtx) Close() {
 func (tc *TestCtx) FsApi() *api.Fs {
 	return &api.Fs{
 		Env:    environment.Test,
-		Log:    tc.Logger(),
 		DbConn: tc.Connector(),
 	}
 }

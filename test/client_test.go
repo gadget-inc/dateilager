@@ -88,7 +88,7 @@ func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, db.CloseFunc
 		tc.Fatalf("Failed to dial bufnet: %v", err)
 	}
 
-	c := client.NewClientConn(tc.Logger(), conn)
+	c := client.NewClientConn(conn)
 
 	return c, func(context.Context) { c.Close(); s.Stop() }
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
+	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
 )
 
@@ -48,7 +49,6 @@ type Fs struct {
 	pb.UnimplementedFsServer
 
 	Env    environment.Env
-	Log    *zap.Logger
 	DbConn db.DbConnector
 }
 
@@ -64,7 +64,7 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 	}
 	defer close(ctx)
 
-	f.Log.Debug("FS.NewProject[Init]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
+	logger.Debug(ctx, "FS.NewProject[Init]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
 
 	err = db.CreateProject(ctx, tx, req.Id, req.PackPatterns)
 	if err != nil {
@@ -83,7 +83,7 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 		return nil, status.Errorf(codes.Internal, "FS new project commit tx: %v", err)
 	}
 
-	f.Log.Debug("FS.NewProject[Commit]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
+	logger.Debug(ctx, "FS.NewProject[Commit]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
 
 	return &pb.NewProjectResponse{}, nil
 }
@@ -100,7 +100,7 @@ func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*
 	}
 	defer close(ctx)
 
-	f.Log.Debug("FS.DeleteProject[Init]", zap.Int64("project", req.Project))
+	logger.Debug(ctx, "FS.DeleteProject[Init]", zap.Int64("project", req.Project))
 	err = db.DeleteProject(ctx, tx, req.Project)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS delete project %v: %v", req.Project, err)
@@ -110,7 +110,7 @@ func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS delete commit tx: %v", err)
 	}
-	f.Log.Debug("FS.DeleteProject[Commit]")
+	logger.Debug(ctx, "FS.DeleteProject[Commit]")
 
 	return &pb.DeleteProjectResponse{}, nil
 }
@@ -127,7 +127,7 @@ func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb
 	}
 	defer close(ctx)
 
-	f.Log.Debug("FS.ListProjects[Query]")
+	logger.Debug(ctx, "FS.ListProjects[Query]")
 
 	projects, err := db.ListProjects(ctx, tx)
 	if err != nil {
@@ -179,7 +179,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 		return status.Errorf(codes.Internal, "FS get latest version: %v", err)
 	}
 
-	f.Log.Debug("FS.Get[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
+	logger.Debug(ctx, "FS.Get[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
 	packManager, err := db.NewPackManager(ctx, tx, req.Project)
 	if err != nil {
@@ -192,7 +192,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 			return err
 		}
 
-		f.Log.Debug("FS.Get[Query]",
+		logger.Debug(ctx, "FS.Get[Query]",
 			zap.Int64("project", req.Project),
 			zap.Any("vrange", vrange),
 			zap.String("path", query.Path),
@@ -254,7 +254,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 		return status.Errorf(codes.Internal, "FS get compress latest version: %v", err)
 	}
 
-	f.Log.Debug("FS.GetCompress[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
+	logger.Debug(ctx, "FS.GetCompress[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
 
 	for _, query := range req.Queries {
 		err = validateObjectQuery(query)
@@ -262,7 +262,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			return err
 		}
 
-		f.Log.Debug("FS.GetCompress[Query]",
+		logger.Debug(ctx, "FS.GetCompress[Query]",
 			zap.Int64("project", req.Project),
 			zap.Any("vrange", vrange),
 			zap.String("path", query.Path),
@@ -346,7 +346,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			}
 
 			version = latestVersion + 1
-			f.Log.Debug("FS.Update[Init]", zap.Int64("project", project), zap.Int64("version", version))
+			logger.Debug(ctx, "FS.Update[Init]", zap.Int64("project", project), zap.Int64("version", version))
 
 			packManager, err = db.NewPackManager(ctx, tx, project)
 			if err != nil {
@@ -364,7 +364,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			continue
 		}
 
-		f.Log.Debug("FS.Update[Object]", zap.Int64("project", project), zap.Int64("version", version), zap.String("path", req.Object.Path))
+		logger.Debug(ctx, "FS.Update[Object]", zap.Int64("project", project), zap.Int64("version", version), zap.String("path", req.Object.Path))
 
 		if req.Object.Deleted {
 			err = db.DeleteObject(ctx, tx, project, version, req.Object.Path)
@@ -384,12 +384,12 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 			return status.Errorf(codes.Internal, "FS rollback empty update: %v", err)
 		}
 
-		f.Log.Debug("FS.Update[Empty]")
+		logger.Debug(ctx, "FS.Update[Empty]")
 		return stream.SendAndClose(&pb.UpdateResponse{Version: -1})
 	}
 
 	for parent, objects := range buffer {
-		f.Log.Debug("FS.Update[PackedObject]", zap.Int64("project", project), zap.Int64("version", version), zap.String("parent", parent), zap.Int("object_count", len(objects)))
+		logger.Debug(ctx, "FS.Update[PackedObject]", zap.Int64("project", project), zap.Int64("version", version), zap.String("parent", parent), zap.Int("object_count", len(objects)))
 
 		err = db.UpdatePackedObjects(ctx, tx, project, version, parent, objects)
 		if err != nil {
@@ -407,7 +407,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return status.Errorf(codes.Internal, "FS update commit tx: %v", err)
 	}
 
-	f.Log.Debug("FS.Update[Commit]", zap.Int64("project", project), zap.Int64("version", version))
+	logger.Debug(ctx, "FS.Update[Commit]", zap.Int64("project", project), zap.Int64("version", version))
 
 	return stream.SendAndClose(&pb.UpdateResponse{Version: version})
 }
@@ -424,7 +424,7 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 	}
 	defer close(ctx)
 
-	f.Log.Debug("FS.Inspect[Query]", zap.Int64("project", req.Project))
+	logger.Debug(ctx, "FS.Inspect[Query]", zap.Int64("project", req.Project))
 
 	vrange, err := db.NewVersionRange(ctx, tx, req.Project, nil, nil)
 	if errors.Is(err, db.ErrNotFound) {
@@ -494,7 +494,7 @@ func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.Snapsho
 	}
 	defer close(ctx)
 
-	f.Log.Debug("FS.Snapshot[Query]")
+	logger.Debug(ctx, "FS.Snapshot[Query]")
 
 	projects, err := db.ListProjects(ctx, tx)
 	if err != nil {
@@ -522,10 +522,10 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 	}
 	defer close(ctx)
 
-	f.Log.Debug("FS.Reset[Init]")
+	logger.Debug(ctx, "FS.Reset[Init]")
 
 	if len(req.Projects) == 0 {
-		f.Log.Debug("FS.Reset[All]")
+		logger.Debug(ctx, "FS.Reset[All]")
 
 		err = db.ResetAll(ctx, tx)
 		if err != nil {
@@ -535,7 +535,7 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 		var projects []int64
 
 		for _, project := range req.Projects {
-			f.Log.Debug("FS.Reset[Project]", zap.Int64("project", project.Id), zap.Int64("version", project.Version))
+			logger.Debug(ctx, "FS.Reset[Project]", zap.Int64("project", project.Id), zap.Int64("version", project.Version))
 			err = db.ResetProject(ctx, tx, project.Id, project.Version)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "FS reset project %v: %v", project.Id, err)
@@ -553,7 +553,7 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS reset commit tx: %v", err)
 	}
-	f.Log.Debug("FS.Reset[Commit]")
+	logger.Debug(ctx, "FS.Reset[Commit]")
 
 	return &pb.ResetResponse{}, nil
 }
