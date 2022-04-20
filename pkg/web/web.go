@@ -9,57 +9,35 @@ import (
 	"path/filepath"
 	"strconv"
 	"text/template"
-	"time"
 
+	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
 )
 
-func error500(log *zap.Logger, w http.ResponseWriter, message string, err error, fields ...zap.Field) {
+func error500(ctx context.Context, w http.ResponseWriter, message string, err error, fields ...zap.Field) {
 	fields = append(fields, zap.Error(err))
 
-	log.Error(message, fields...)
+	logger.Error(ctx, message, fields...)
 	http.Error(w, http.StatusText(500), 500)
 }
 
-func error400(log *zap.Logger, w http.ResponseWriter, message string, err error, fields ...zap.Field) {
+func error400(ctx context.Context, w http.ResponseWriter, message string, err error, fields ...zap.Field) {
 	fields = append(fields, zap.Error(err))
 
-	log.Error(message, fields...)
+	logger.Error(ctx, message, fields...)
 	http.Error(w, http.StatusText(400), 400)
 }
 
-func logger(log *zap.Logger) func(next http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		fn := func(w http.ResponseWriter, r *http.Request) {
-			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
-
-			t1 := time.Now()
-			defer func() {
-				log.Info("Request",
-					zap.String("proto", r.Proto),
-					zap.String("path", r.URL.Path),
-					zap.Duration("lat", time.Since(t1)),
-					zap.Int("status", ww.Status()),
-					zap.Int("size", ww.BytesWritten()),
-					zap.String("reqId", middleware.GetReqID(r.Context())))
-			}()
-
-			next.ServeHTTP(ww, r)
-		}
-		return http.HandlerFunc(fn)
-	}
-}
-
-func NewWebServer(log *zap.Logger, dlc *client.Client, assetsDir string) (*chi.Mux, error) {
+func NewWebServer(ctx context.Context, dlc *client.Client, assetsDir string) (*chi.Mux, error) {
 	router := chi.NewRouter()
 
+	router.Use(middleware.Recoverer)
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
-	router.Use(logger(log))
-	router.Use(middleware.Recoverer)
+	router.Use(logger.Middleware)
 
 	tmpls, err := template.ParseGlob(filepath.Join(assetsDir, "templates", "*.tmpl"))
 	if err != nil {
@@ -70,11 +48,19 @@ func NewWebServer(log *zap.Logger, dlc *client.Client, assetsDir string) (*chi.M
 		http.ServeFile(w, r, filepath.Join(assetsDir, "static", "favicon.ico"))
 	})
 
-	router.Get("/", getIndex(log, dlc, tmpls))
+	gi, err := getIndex(dlc, tmpls)
+	if err != nil {
+		return nil, err
+	}
 
-	router.Route("/projects/{projectId}/versions", func(router chi.Router) {
-		router.Get("/{version}", getVersion(log, dlc, tmpls))
-	})
+	router.Get("/", gi)
+
+	gv, err := getVersion(dlc, tmpls)
+	if err != nil {
+		return nil, err
+	}
+
+	router.Get("/projects/{projectId}/versions/{version}", gv)
 
 	return router, nil
 }
@@ -114,21 +100,21 @@ func fetchIndexData(ctx context.Context, dlc *client.Client) (*IndexData, error)
 	return &data, nil
 }
 
-func getIndex(log *zap.Logger, dlc *client.Client, tmpls *template.Template) http.HandlerFunc {
+func getIndex(dlc *client.Client, tmpls *template.Template) (http.HandlerFunc, error) {
 	indexTmpl := tmpls.Lookup("index.html.tmpl")
 	if indexTmpl == nil {
-		log.Fatal("missing template: index.html.tmpl")
+		return nil, fmt.Errorf("missing template: index.html.tmpl")
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := fetchIndexData(r.Context(), dlc)
 		if err != nil {
-			error500(log, w, "fetch index data", err)
+			error500(r.Context(), w, "fetch index data", err)
 			return
 		}
 
 		indexTmpl.Execute(w, data)
-	}
+	}, nil
 }
 
 type Object struct {
@@ -191,30 +177,30 @@ func fetchVersionData(ctx context.Context, dlc *client.Client, project, version 
 	}, nil
 }
 
-func getVersion(log *zap.Logger, dlc *client.Client, tmpls *template.Template) http.HandlerFunc {
+func getVersion(dlc *client.Client, tmpls *template.Template) (http.HandlerFunc, error) {
 	versionTmpl := tmpls.Lookup("version.html.tmpl")
 	if versionTmpl == nil {
-		log.Fatal("missing template: version.html.tmpl")
+		return nil, fmt.Errorf("missing template: version.html.tmpl")
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		projectId, err := strconv.ParseInt(chi.URLParam(r, "projectId"), 10, 64)
 		if err != nil {
-			error400(log, w, "invalid projectId", err, zap.String("projectId", chi.URLParam(r, "projectId")))
+			error400(r.Context(), w, "invalid projectId", err, zap.String("projectId", chi.URLParam(r, "projectId")))
 			return
 		}
 		version, err := strconv.ParseInt(chi.URLParam(r, "version"), 10, 64)
 		if err != nil {
-			error400(log, w, "invalid version", err, zap.String("version", chi.URLParam(r, "version")))
+			error400(r.Context(), w, "invalid version", err, zap.String("version", chi.URLParam(r, "version")))
 			return
 		}
 
 		data, err := fetchVersionData(r.Context(), dlc, projectId, version)
 		if err != nil {
-			error500(log, w, "fetch version data", err)
+			error500(r.Context(), w, "fetch version data", err)
 			return
 		}
 
 		versionTmpl.Execute(w, data)
-	}
+	}, nil
 }
