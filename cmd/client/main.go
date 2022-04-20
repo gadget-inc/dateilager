@@ -9,7 +9,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
 	"go.uber.org/zap"
@@ -77,7 +79,7 @@ func (a *newArgs) run(ctx context.Context, c *client.Client) error {
 		return fmt.Errorf("could not create new project: %w", err)
 	}
 
-	logger.Info(ctx, "created new project", zap.Int64("id", a.id))
+	logger.Info(ctx, "created new project", key.Project.Field(a.id))
 	return nil
 }
 
@@ -122,9 +124,9 @@ func (a *getArgs) run(ctx context.Context, c *client.Client) error {
 		return fmt.Errorf("could not fetch data: %w", err)
 	}
 
-	logger.Info(ctx, "listing objects in project", zap.Int64("project", a.project), zap.Int("count", len(objects)))
+	logger.Info(ctx, "listing objects in project", key.Project.Field(a.project), key.ObjectsCount.Field(len(objects)))
 	for _, object := range objects {
-		logger.Info(ctx, "object", zap.String("path", object.Path), zap.String("content", string(object.Content)))
+		logger.Info(ctx, "object", key.ObjectPath.Field(object.Path), key.ObjectContent.Field(string(object.Content)[:10]))
 	}
 
 	return nil
@@ -178,7 +180,7 @@ func (a *rebuildArgs) run(ctx context.Context, c *client.Client) error {
 			return fmt.Errorf("could not fetch archives: %w", err)
 		}
 
-		logger.Info(ctx, "wrote archives", zap.Int64("project", a.project))
+		logger.Info(ctx, "wrote archives", key.Project.Field(a.project))
 		return nil
 	}
 
@@ -188,9 +190,18 @@ func (a *rebuildArgs) run(ctx context.Context, c *client.Client) error {
 	}
 
 	if version == -1 {
-		logger.Debug(ctx, "latest version already checked out", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64p("version", a.vrange.From))
+		logger.Debug(ctx, "latest version already checked out",
+			key.Project.Field(a.project),
+			key.Output.Field(a.output),
+			key.FromVersion.Field(a.vrange.From),
+		)
 	} else {
-		logger.Info(ctx, "wrote files", zap.Int64("project", a.project), zap.String("output", a.output), zap.Int64("version", version), zap.Uint32("diff_count", count))
+		logger.Info(ctx, "wrote files",
+			key.Project.Field(a.project),
+			key.Output.Field(a.output),
+			key.Version.Field(version),
+			key.DiffCount.Field(count),
+		)
 	}
 
 	fmt.Println(version)
@@ -231,7 +242,7 @@ func (a *updateArgs) run(ctx context.Context, c *client.Client) error {
 	}
 
 	if len(diff.Updates) == 0 {
-		logger.Debug(ctx, "diff file empty, nothing to update", zap.Int64("project", a.project))
+		logger.Debug(ctx, "diff file empty, nothing to update", key.Project.Field(a.project))
 		fmt.Println(-1)
 	} else {
 		version, count, err := c.Update(ctx, a.project, diff, a.directory)
@@ -239,7 +250,11 @@ func (a *updateArgs) run(ctx context.Context, c *client.Client) error {
 			return fmt.Errorf("update objects: %w", err)
 		}
 
-		logger.Info(ctx, "updated objects", zap.Int64("project", a.project), zap.Int64("version", version), zap.Uint32("count", count))
+		logger.Info(ctx, "updated objects",
+			key.Project.Field(a.project),
+			key.Version.Field(version),
+			key.DiffCount.Field(count),
+		)
 		fmt.Println(version)
 	}
 
@@ -274,10 +289,10 @@ func (a *inspectArgs) run(ctx context.Context, c *client.Client) error {
 	}
 
 	logger.Info(ctx, "inspect objects",
-		zap.Int64("project", a.project),
-		zap.Int64("latest_version", inspect.LatestVersion),
-		zap.Int64("live_objects_count", inspect.LiveObjectsCount),
-		zap.Int64("total_objects_count", inspect.TotalObjectsCount),
+		key.Project.Field(a.project),
+		key.LatestVersion.Field(inspect.LatestVersion),
+		key.LiveObjectsCount.Field(inspect.LiveObjectsCount),
+		key.TotalObjectsCount.Field(inspect.TotalObjectsCount),
 	)
 
 	return nil
@@ -329,7 +344,7 @@ func (a *resetArgs) run(ctx context.Context, c *client.Client) error {
 		return fmt.Errorf("reset: %w", err)
 	}
 
-	logger.Info(ctx, "successful reset", zap.String("state", a.state))
+	logger.Info(ctx, "successful reset", key.State.Field(a.state))
 	return nil
 }
 
@@ -398,9 +413,19 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()
 
+	shutdown, err := telemetry.Init(ctx, telemetry.Client)
+	if err != nil {
+		logger.Error(ctx, "could not initialize telemetry", zap.Error(err))
+		return
+	}
+	defer shutdown()
+
+	ctx, span := telemetry.Start(ctx, "cmd.main")
+	defer span.End()
+
 	c, err := client.NewClient(ctx, *shared.server, token)
 	if err != nil {
-		logger.Error(ctx, "could not connect to server", zap.Stringp("server", shared.server), zap.Error(err))
+		logger.Error(ctx, "could not connect to server", key.Server.Field(*shared.server), zap.Error(err))
 		return
 	}
 	defer c.Close()

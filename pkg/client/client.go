@@ -18,8 +18,12 @@ import (
 	"time"
 
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/pb"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -46,6 +50,11 @@ func NewClientConn(conn *grpc.ClientConn) *Client {
 }
 
 func NewClient(ctx context.Context, server, token string) (*Client, error) {
+	ctx, span := telemetry.Start(ctx, "client.new", trace.WithAttributes(
+		key.Server.Attribute(server),
+	))
+	defer span.End()
+
 	pool, err := x509.SystemCertPool()
 	if err != nil {
 		return nil, fmt.Errorf("load system cert pool: %w", err)
@@ -65,6 +74,8 @@ func NewClient(ctx context.Context, server, token string) (*Client, error) {
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(auth),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(100*MB), grpc.MaxCallSendMsgSize(100*MB)),
+		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
 	)
 	if err != nil {
 		return nil, err
@@ -81,6 +92,9 @@ func (c *Client) Close() {
 }
 
 func (c *Client) ListProjects(ctx context.Context) ([]*pb.Project, error) {
+	ctx, span := telemetry.Start(ctx, "client.list-projects", trace.WithAttributes())
+	defer span.End()
+
 	resp, err := c.fs.ListProjects(ctx, &pb.ListProjectsRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
@@ -90,10 +104,18 @@ func (c *Client) ListProjects(ctx context.Context) ([]*pb.Project, error) {
 }
 
 func (c *Client) NewProject(ctx context.Context, id int64, template *int64, packPatterns string) error {
+	splitPackPatterns := strings.Split(packPatterns, ",")
+	ctx, span := telemetry.Start(ctx, "client.new-project", trace.WithAttributes(
+		key.Project.Attribute(id),
+		key.Template.Attribute(template),
+		key.PackPatterns.Attribute(splitPackPatterns),
+	))
+	defer span.End()
+
 	request := &pb.NewProjectRequest{
 		Id:           id,
 		Template:     template,
-		PackPatterns: strings.Split(packPatterns, ","),
+		PackPatterns: splitPackPatterns,
 	}
 
 	_, err := c.fs.NewProject(ctx, request)
@@ -105,9 +127,16 @@ func (c *Client) NewProject(ctx context.Context, id int64, template *int64, pack
 }
 
 func (c *Client) DeleteProject(ctx context.Context, project int64) error {
-	_, err := c.fs.DeleteProject(ctx, &pb.DeleteProjectRequest{
+	ctx, span := telemetry.Start(ctx, "client.delete-project", trace.WithAttributes(
+		key.Project.Attribute(project),
+	))
+	defer span.End()
+
+	request := &pb.DeleteProjectRequest{
 		Project: project,
-	})
+	}
+
+	_, err := c.fs.DeleteProject(ctx, request)
 	if err != nil {
 		return fmt.Errorf("delete project: %w", err)
 	}
@@ -116,6 +145,14 @@ func (c *Client) DeleteProject(ctx context.Context, project int64) error {
 }
 
 func (c *Client) Get(ctx context.Context, project int64, prefix string, vrange VersionRange) ([]*pb.Object, error) {
+	ctx, span := telemetry.Start(ctx, "client.get", trace.WithAttributes(
+		key.Project.Attribute(project),
+		key.Prefix.Attribute(prefix),
+		key.FromVersion.Attribute(vrange.From),
+		key.ToVersion.Attribute(vrange.To),
+	))
+	defer span.End()
+
 	var objects []*pb.Object
 
 	query := &pb.ObjectQuery{
@@ -152,6 +189,15 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, vrange V
 }
 
 func (c *Client) FetchArchives(ctx context.Context, project int64, prefix string, vrange VersionRange, output string) (int64, error) {
+	ctx, span := telemetry.Start(ctx, "client.fetch-archives", trace.WithAttributes(
+		key.Project.Attribute(project),
+		key.Prefix.Attribute(prefix),
+		key.FromVersion.Attribute(vrange.From),
+		key.ToVersion.Attribute(vrange.To),
+		key.Output.Attribute(output),
+	))
+	defer span.End()
+
 	query := &pb.ObjectQuery{
 		Path:        prefix,
 		IsPrefix:    true,
@@ -259,6 +305,15 @@ func writeObject(outputDir string, reader *db.TarReader, header *tar.Header) err
 }
 
 func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vrange VersionRange, output string) (int64, uint32, error) {
+	ctx, span := telemetry.Start(ctx, "client.rebuild", trace.WithAttributes(
+		key.Project.Attribute(project),
+		key.Prefix.Attribute(prefix),
+		key.FromVersion.Attribute(vrange.From),
+		key.ToVersion.Attribute(vrange.To),
+		key.Output.Attribute(output),
+	))
+	defer span.End()
+
 	query := &pb.ObjectQuery{
 		Path:        prefix,
 		IsPrefix:    true,
@@ -294,6 +349,8 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 	group, ctx := errgroup.WithContext(ctx)
 
 	group.Go(func() error {
+		ctx, span := telemetry.Start(ctx, "object-receiver")
+		defer span.End()
 		defer close(tarBytesChan)
 
 		for {
@@ -314,8 +371,14 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 		}
 	})
 
-	for i := 0; i < runtime.NumCPU()/2; i++ {
+	for i := 0; i < parallelWorkerCount(); i++ {
+		// create the attribute here when `i` is different
+		attr := key.Worker.Attribute(i)
+
 		group.Go(func() error {
+			ctx, span := telemetry.Start(ctx, "object-writer", trace.WithAttributes(attr))
+			defer span.End()
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -355,6 +418,12 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 }
 
 func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff, directory string) (int64, uint32, error) {
+	ctx, span := telemetry.Start(ctx, "client.update", trace.WithAttributes(
+		key.Project.Attribute(project),
+		key.Directory.Attribute(directory),
+	))
+	defer span.End()
+
 	version := int64(-1)
 
 	updateChan := make(chan *fsdiff_pb.Update, len(diff.Updates))
@@ -362,8 +431,14 @@ func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff
 
 	group, ctx := errgroup.WithContext(ctx)
 
-	for i := 1; i <= runtime.NumCPU()/2; i++ {
+	for i := 0; i < parallelWorkerCount(); i++ {
+		// create the attribute here when `i` is different
+		attr := key.Worker.Attribute(i)
+
 		group.Go(func() error {
+			ctx, span := telemetry.Start(ctx, "object-reader", trace.WithAttributes(attr))
+			defer span.End()
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -391,6 +466,9 @@ func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff
 	}
 
 	group.Go(func() error {
+		ctx, span := telemetry.Start(ctx, "object-sender")
+		defer span.End()
+
 		stream, err := c.fs.Update(ctx)
 		if err != nil {
 			return fmt.Errorf("connect fs.Update: %w", err)
@@ -442,6 +520,11 @@ func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff
 }
 
 func (c *Client) Inspect(ctx context.Context, project int64) (*pb.InspectResponse, error) {
+	ctx, span := telemetry.Start(ctx, "client.inspect", trace.WithAttributes(
+		key.Project.Attribute(project),
+	))
+	defer span.End()
+
 	inspect, err := c.fs.Inspect(ctx, &pb.InspectRequest{Project: project})
 	if err != nil {
 		return nil, fmt.Errorf("inspect project %v: %w", project, err)
@@ -451,6 +534,9 @@ func (c *Client) Inspect(ctx context.Context, project int64) (*pb.InspectRespons
 }
 
 func (c *Client) Snapshot(ctx context.Context) (string, error) {
+	ctx, span := telemetry.Start(ctx, "client.snapshot")
+	defer span.End()
+
 	resp, err := c.fs.Snapshot(ctx, &pb.SnapshotRequest{})
 	if err != nil {
 		return "", fmt.Errorf("snapshot: %w", err)
@@ -465,6 +551,11 @@ func (c *Client) Snapshot(ctx context.Context) (string, error) {
 }
 
 func (c *Client) Reset(ctx context.Context, state string) error {
+	ctx, span := telemetry.Start(ctx, "client.reset", trace.WithAttributes(
+		key.State.Attribute(state),
+	))
+	defer span.End()
+
 	var projects []*pb.Project
 
 	for _, projectSplit := range strings.Split(state, ",") {
@@ -497,4 +588,12 @@ func (c *Client) Reset(ctx context.Context, state string) error {
 	}
 
 	return nil
+}
+
+func parallelWorkerCount() int {
+	halfNumCPU := runtime.NumCPU() / 2
+	if halfNumCPU < 1 {
+		halfNumCPU = 1
+	}
+	return halfNumCPU
 }

@@ -2,13 +2,15 @@ package logger
 
 import (
 	"context"
+	"path"
+	"time"
+
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
-	"path"
-	"time"
 )
 
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
@@ -17,10 +19,16 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 			return handler(ctx, req)
 		}
 
-		ctx = context.WithValue(ctx, key, Logger(ctx).With(
+		fields := []zap.Field{
 			zap.String("grpc.service", path.Dir(info.FullMethod)[1:]),
-			zap.String("grpc.method", path.Base(info.FullMethod))),
-		)
+			zap.String("grpc.method", path.Base(info.FullMethod)),
+		}
+
+		if span := trace.SpanFromContext(ctx); span.IsRecording() {
+			fields = append(fields, zap.String("trace.trace_id", span.SpanContext().TraceID().String()))
+		}
+
+		ctx = With(ctx, fields...)
 
 		start := time.Now()
 		resp, err := handler(ctx, req)
@@ -28,7 +36,7 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 
 		code := status.Code(err)
 
-		Check(ctx, grpc_zap.DefaultCodeToLevel(code), "finished unary call",
+		Write(ctx, grpc_zap.DefaultCodeToLevel(code), "finished unary call",
 			zap.Stringer("grpc.code", code),
 			zap.Duration("grpc.duration", duration),
 			zap.Error(err),
@@ -44,11 +52,17 @@ func StreamServerInterceptor() grpc.StreamServerInterceptor {
 			return handler(srv, stream)
 		}
 
-		ctx := stream.Context()
-		ctx = context.WithValue(ctx, key, Logger(ctx).With(
+		fields := []zap.Field{
 			zap.String("grpc.service", path.Dir(info.FullMethod)[1:]),
-			zap.String("grpc.method", path.Base(info.FullMethod))),
-		)
+			zap.String("grpc.method", path.Base(info.FullMethod)),
+		}
+
+		ctx := stream.Context()
+		if span := trace.SpanFromContext(ctx); span.IsRecording() {
+			fields = append(fields, zap.String("trace.trace_id", span.SpanContext().TraceID().String()))
+		}
+
+		ctx = With(ctx, fields...)
 
 		wrapped := grpc_middleware.WrapServerStream(stream)
 		wrapped.WrappedContext = ctx
@@ -59,7 +73,7 @@ func StreamServerInterceptor() grpc.StreamServerInterceptor {
 
 		code := status.Code(err)
 
-		Check(ctx, grpc_zap.DefaultCodeToLevel(code), "finished streaming call",
+		Write(ctx, grpc_zap.DefaultCodeToLevel(code), "finished streaming call",
 			zap.Stringer("grpc.code", code),
 			zap.Duration("grpc.duration", duration),
 			zap.Error(err),
