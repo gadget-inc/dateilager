@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/logger"
@@ -83,6 +85,7 @@ func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certifica
 		grpc.UnaryInterceptor(
 			grpc_middleware.ChainUnaryServer(
 				grpc_recovery.UnaryServerInterceptor(),
+				otelgrpc.UnaryServerInterceptor(),
 				logger.UnaryServerInterceptor(),
 				grpc.UnaryServerInterceptor(validateTokenUnary(validator)),
 			),
@@ -90,6 +93,7 @@ func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certifica
 		grpc.StreamInterceptor(
 			grpc_middleware.ChainStreamServer(
 				grpc_recovery.StreamServerInterceptor(),
+				otelgrpc.StreamServerInterceptor(),
 				logger.StreamServerInterceptor(),
 				grpc.StreamServerInterceptor(validateTokenStream(validator)),
 			),

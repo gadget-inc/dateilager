@@ -16,7 +16,9 @@ import (
 	"syscall"
 
 	"github.com/gadget-inc/dateilager/internal/environment"
+	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/server"
 	"go.uber.org/zap"
@@ -116,6 +118,12 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
+	shutdown, err := telemetry.Init(ctx, telemetry.Server)
+	if err != nil {
+		logger.Fatal(ctx, "could not initialize telemetry", zap.Error(err))
+	}
+	defer shutdown()
+
 	listen, err := net.Listen("tcp", fmt.Sprintf(":%d", args.port))
 	if err != nil {
 		logger.Fatal(ctx, "failed to listen", zap.String("protocol", "tcp"), zap.Int("port", args.port), zap.Error(err))
@@ -151,13 +159,16 @@ func main() {
 	go func() {
 		<-osSignals
 		s.Grpc.Stop()
+		dbConn.Close()
+		shutdown()
 		if args.prof != "" {
 			pprof.StopCPUProfile()
 		}
+		logger.Sync()
 		os.Exit(0)
 	}()
 
-	logger.Info(ctx, "start server", zap.Int("port", args.port), zap.String("env", env.String()))
+	logger.Info(ctx, "start server", key.Port.Field(args.port), key.Environment.Field(env.String()))
 	if err := s.Serve(listen); err != nil {
 		logger.Fatal(ctx, "failed to serve", zap.Error(err))
 	}

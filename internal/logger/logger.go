@@ -34,25 +34,32 @@ func Sync() error {
 }
 
 func Debug(ctx context.Context, msg string, fields ...zap.Field) {
-	Logger(ctx).Debug(msg, fields...)
+	Write(ctx, zapcore.DebugLevel, msg, fields...)
 }
 
 func Info(ctx context.Context, msg string, fields ...zap.Field) {
-	Logger(ctx).Info(msg, fields...)
+	Write(ctx, zapcore.InfoLevel, msg, fields...)
 }
 
 func Warn(ctx context.Context, msg string, fields ...zap.Field) {
-	Logger(ctx).Warn(msg, fields...)
+	Write(ctx, zapcore.WarnLevel, msg, fields...)
 }
 
 func Error(ctx context.Context, msg string, fields ...zap.Field) {
-	Logger(ctx).Error(msg, fields...)
+	Write(ctx, zapcore.ErrorLevel, msg, fields...)
 }
 
 func Fatal(ctx context.Context, msg string, fields ...zap.Field) {
-	Logger(ctx).Fatal(msg, fields...)
+	Write(ctx, zapcore.FatalLevel, msg, fields...)
 }
 
-func Check(ctx context.Context, level zapcore.Level, msg string, fields ...zap.Field) {
+func Write(ctx context.Context, level zapcore.Level, msg string, fields ...zap.Field) {
+	for _, hook := range hooks {
+		hook(ctx, level, msg, fields...)
+	}
 	Logger(ctx).Check(level, msg).Write(fields...)
+}
+
+func With(ctx context.Context, fields ...zap.Field) context.Context {
+	return context.WithValue(ctx, key, Logger(ctx).With(fields...))
 }

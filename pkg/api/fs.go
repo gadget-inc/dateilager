@@ -6,15 +6,16 @@ import (
 	"io"
 	"strings"
 
-	"go.uber.org/zap"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
+	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
+	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -53,6 +54,13 @@ type Fs struct {
 }
 
 func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.NewProjectResponse, error) {
+	ctx, span := telemetry.Start(ctx, "fs.new-project", trace.WithAttributes(
+		key.Project.Attribute(req.Id),
+		key.Template.Attribute(req.Template),
+		key.PackPatterns.Attribute(req.PackPatterns),
+	))
+	defer span.End()
+
 	err := requireAdminAuth(ctx)
 	if err != nil {
 		return nil, err
@@ -64,7 +72,10 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 	}
 	defer close(ctx)
 
-	logger.Debug(ctx, "FS.NewProject[Init]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
+	logger.Debug(ctx, "FS.NewProject[Init]",
+		key.Project.Field(req.Id),
+		key.Template.Field(req.Template),
+	)
 
 	err = db.CreateProject(ctx, tx, req.Id, req.PackPatterns)
 	if err != nil {
@@ -83,12 +94,20 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 		return nil, status.Errorf(codes.Internal, "FS new project commit tx: %v", err)
 	}
 
-	logger.Debug(ctx, "FS.NewProject[Commit]", zap.Int64("id", req.Id), zap.Int64p("template", req.Template))
+	logger.Debug(ctx, "FS.NewProject[Commit]",
+		key.Project.Field(req.Id),
+		key.Template.Field(req.Template),
+	)
 
 	return &pb.NewProjectResponse{}, nil
 }
 
 func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*pb.DeleteProjectResponse, error) {
+	ctx, span := telemetry.Start(ctx, "fs.delete-project", trace.WithAttributes(
+		key.Project.Attribute(req.Project),
+	))
+	defer span.End()
+
 	err := requireAdminAuth(ctx)
 	if err != nil {
 		return nil, err
@@ -100,7 +119,7 @@ func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*
 	}
 	defer close(ctx)
 
-	logger.Debug(ctx, "FS.DeleteProject[Init]", zap.Int64("project", req.Project))
+	logger.Debug(ctx, "FS.DeleteProject[Init]", key.Project.Field(req.Project))
 	err = db.DeleteProject(ctx, tx, req.Project)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS delete project %v: %v", req.Project, err)
@@ -116,6 +135,9 @@ func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*
 }
 
 func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb.ListProjectsResponse, error) {
+	ctx, span := telemetry.Start(ctx, "fs.list-project")
+	defer span.End()
+
 	err := requireAdminAuth(ctx)
 	if err != nil {
 		return nil, err
@@ -154,7 +176,12 @@ func validateObjectQuery(query *pb.ObjectQuery) error {
 }
 
 func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
-	ctx := stream.Context()
+	ctx, span := telemetry.Start(stream.Context(), "fs.get", trace.WithAttributes(
+		key.Project.Attribute(req.Project),
+		key.FromVersion.Attribute(req.FromVersion),
+		key.ToVersion.Attribute(req.ToVersion),
+	))
+	defer span.End()
 
 	project, err := requireProjectAuth(ctx)
 	if err != nil {
@@ -179,7 +206,11 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 		return status.Errorf(codes.Internal, "FS get latest version: %v", err)
 	}
 
-	logger.Debug(ctx, "FS.Get[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
+	logger.Debug(ctx, "FS.Get[Init]",
+		key.Project.Field(req.Project),
+		key.FromVersion.Field(&vrange.From),
+		key.ToVersion.Field(&vrange.To),
+	)
 
 	packManager, err := db.NewPackManager(ctx, tx, req.Project)
 	if err != nil {
@@ -187,41 +218,57 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	}
 
 	for _, query := range req.Queries {
-		err = validateObjectQuery(query)
+		err = telemetry.Wrap(ctx, "query", func(ctx context.Context, span trace.Span) error {
+			span.SetAttributes(
+				key.QueryPath.Attribute(query.Path),
+				key.QueryIsPrefix.Attribute(query.IsPrefix),
+				key.QueryWithContent.Attribute(query.WithContent),
+				key.QueryIgnores.Attribute(query.Ignores),
+			)
+
+			err = validateObjectQuery(query)
+			if err != nil {
+				return err
+			}
+
+			logger.Debug(ctx, "FS.Get[Query]",
+				key.Project.Field(req.Project),
+				key.FromVersion.Field(&vrange.From),
+				key.ToVersion.Field(&vrange.To),
+				key.QueryPath.Field(query.Path),
+				key.QueryIsPrefix.Field(query.IsPrefix),
+				key.QueryWithContent.Field(query.WithContent),
+				key.QueryIgnores.Field(query.Ignores),
+			)
+
+			objects, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
+			if err != nil {
+				return status.Errorf(codes.Internal, "FS get objects: %v", err)
+			}
+
+			for {
+				object, err := objects()
+				if err == db.SKIP {
+					continue
+				}
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return status.Errorf(codes.Internal, "FS get next object: %v", err)
+				}
+
+				err = stream.Send(&pb.GetResponse{Version: vrange.To, Object: object})
+				if err != nil {
+					return status.Errorf(codes.Internal, "FS send GetResponse: %v", err)
+				}
+			}
+
+			return nil
+		})
+
 		if err != nil {
 			return err
-		}
-
-		logger.Debug(ctx, "FS.Get[Query]",
-			zap.Int64("project", req.Project),
-			zap.Any("vrange", vrange),
-			zap.String("path", query.Path),
-			zap.Bool("isPrefix", query.IsPrefix),
-			zap.Bool("withContent", query.WithContent),
-			zap.Strings("ignores", query.Ignores),
-		)
-
-		objects, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
-		if err != nil {
-			return status.Errorf(codes.Internal, "FS get objects: %v", err)
-		}
-
-		for {
-			object, err := objects()
-			if err == db.SKIP {
-				continue
-			}
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				return status.Errorf(codes.Internal, "FS get next object: %v", err)
-			}
-
-			err = stream.Send(&pb.GetResponse{Version: vrange.To, Object: object})
-			if err != nil {
-				return status.Errorf(codes.Internal, "FS send GetResponse: %v", err)
-			}
 		}
 	}
 
@@ -229,7 +276,12 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 }
 
 func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressServer) error {
-	ctx := stream.Context()
+	ctx, span := telemetry.Start(stream.Context(), "fs.get-compress", trace.WithAttributes(
+		key.Project.Attribute(req.Project),
+		key.FromVersion.Attribute(req.FromVersion),
+		key.ToVersion.Attribute(req.ToVersion),
+	))
+	defer span.End()
 
 	project, err := requireProjectAuth(ctx)
 	if err != nil {
@@ -254,48 +306,68 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 		return status.Errorf(codes.Internal, "FS get compress latest version: %v", err)
 	}
 
-	logger.Debug(ctx, "FS.GetCompress[Init]", zap.Int64("project", req.Project), zap.Any("vrange", vrange))
+	logger.Debug(ctx, "FS.GetCompress[Init]",
+		key.Project.Field(req.Project),
+		key.FromVersion.Field(&vrange.From),
+		key.ToVersion.Field(&vrange.To),
+	)
 
 	for _, query := range req.Queries {
-		err = validateObjectQuery(query)
+		err = telemetry.Wrap(ctx, "query", func(ctx context.Context, span trace.Span) error {
+			span.SetAttributes(
+				key.QueryPath.Attribute(query.Path),
+				key.QueryIsPrefix.Attribute(query.IsPrefix),
+				key.QueryWithContent.Attribute(query.WithContent),
+				key.QueryIgnores.Attribute(query.Ignores),
+			)
+
+			err = validateObjectQuery(query)
+			if err != nil {
+				return err
+			}
+
+			logger.Debug(ctx, "FS.GetCompress[Query]",
+				key.Project.Field(req.Project),
+				key.FromVersion.Field(&vrange.From),
+				key.ToVersion.Field(&vrange.To),
+				key.QueryPath.Field(query.Path),
+				key.QueryIsPrefix.Field(query.IsPrefix),
+				key.QueryWithContent.Field(query.WithContent),
+				key.QueryIgnores.Field(query.Ignores),
+			)
+
+			tars, err := db.GetTars(ctx, tx, req.Project, vrange, query)
+			if err != nil {
+				return status.Errorf(codes.Internal, "FS get tars: %v", err)
+			}
+
+			for {
+				tar, err := tars()
+				if err == io.EOF {
+					break
+				}
+				if err == db.SKIP {
+					continue
+				}
+				if err != nil {
+					return status.Errorf(codes.Internal, "FS get next tar: %v", err)
+				}
+
+				err = stream.Send(&pb.GetCompressResponse{
+					Version: vrange.To,
+					Format:  pb.GetCompressResponse_S2_TAR,
+					Bytes:   tar,
+				})
+				if err != nil {
+					return status.Errorf(codes.Internal, "FS send GetCompressResponse: %v", err)
+				}
+			}
+
+			return nil
+		})
+
 		if err != nil {
 			return err
-		}
-
-		logger.Debug(ctx, "FS.GetCompress[Query]",
-			zap.Int64("project", req.Project),
-			zap.Any("vrange", vrange),
-			zap.String("path", query.Path),
-			zap.Bool("isPrefix", query.IsPrefix),
-			zap.Bool("withContent", query.WithContent),
-			zap.Strings("ignores", query.Ignores),
-		)
-
-		tars, err := db.GetTars(ctx, tx, req.Project, vrange, query)
-		if err != nil {
-			return status.Errorf(codes.Internal, "FS get tars: %v", err)
-		}
-
-		for {
-			tar, err := tars()
-			if err == io.EOF {
-				break
-			}
-			if err == db.SKIP {
-				continue
-			}
-			if err != nil {
-				return status.Errorf(codes.Internal, "FS get next tar: %v", err)
-			}
-
-			err = stream.Send(&pb.GetCompressResponse{
-				Version: vrange.To,
-				Format:  pb.GetCompressResponse_S2_TAR,
-				Bytes:   tar,
-			})
-			if err != nil {
-				return status.Errorf(codes.Internal, "FS send GetCompressResponse: %v", err)
-			}
 		}
 	}
 
@@ -303,7 +375,8 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 }
 
 func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
-	ctx := stream.Context()
+	ctx, span := telemetry.Start(stream.Context(), "fs.update")
+	defer span.End()
 
 	version := int64(-1)
 	project, err := requireProjectAuth(ctx)
@@ -322,59 +395,76 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	var packManager *db.PackManager
 	buffer := make(map[string][]*pb.Object)
 
-	for {
-		req, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			errStatus, _ := status.FromError(err)
-			return status.Errorf(errStatus.Code(), "FS receive update request: %v", err)
-		}
-
-		if version == -1 {
-			if project == -1 {
-				project = req.Project
-			}
-
-			latestVersion, err := db.LockLatestVersion(ctx, tx, project)
-			if errors.Is(err, db.ErrNotFound) {
-				return status.Errorf(codes.NotFound, "FS update missing latest version: %v", err)
+	err = telemetry.Wrap(ctx, "update-objects", func(ctx context.Context, span trace.Span) error {
+		for {
+			req, err := stream.Recv()
+			if err == io.EOF {
+				break
 			}
 			if err != nil {
-				return status.Errorf(codes.Internal, "FS update lock latest version: %v", err)
+				errStatus, _ := status.FromError(err)
+				return status.Errorf(errStatus.Code(), "FS receive update request: %v", err)
 			}
 
-			version = latestVersion + 1
-			logger.Debug(ctx, "FS.Update[Init]", zap.Int64("project", project), zap.Int64("version", version))
+			if version == -1 {
+				if project == -1 {
+					project = req.Project
+				}
 
-			packManager, err = db.NewPackManager(ctx, tx, project)
+				latestVersion, err := db.LockLatestVersion(ctx, tx, project)
+				if errors.Is(err, db.ErrNotFound) {
+					return status.Errorf(codes.NotFound, "FS update missing latest version: %v", err)
+				}
+				if err != nil {
+					return status.Errorf(codes.Internal, "FS update lock latest version: %v", err)
+				}
+
+				version = latestVersion + 1
+				logger.Debug(ctx, "FS.Update[Init]", key.Project.Field(project), key.Version.Field(version))
+
+				packManager, err = db.NewPackManager(ctx, tx, project)
+				if err != nil {
+					return status.Errorf(codes.Internal, "FS create packed cache: %v", err)
+				}
+
+				span.SetAttributes(
+					key.Project.Attribute(project),
+					key.Version.Attribute(version),
+				)
+			}
+
+			if project != req.Project {
+				return status.Errorf(codes.InvalidArgument, "initial project %v, next project %v: %v", project, req.Project, ErrMultipleProjectsPerUpdate)
+			}
+
+			packParent := packManager.IsPathPacked(req.Object.Path)
+			if packParent != nil {
+				buffer[*packParent] = append(buffer[*packParent], req.Object)
+				continue
+			}
+
+			logger.Debug(ctx, "FS.Update[Object]",
+				key.Project.Field(project),
+				key.Version.Field(version),
+				key.ObjectPath.Field(req.Object.Path),
+			)
+
+			if req.Object.Deleted {
+				err = db.DeleteObject(ctx, tx, project, version, req.Object.Path)
+			} else {
+				err = db.UpdateObject(ctx, tx, contentEncoder, project, version, req.Object)
+			}
+
 			if err != nil {
-				return status.Errorf(codes.Internal, "FS create packed cache: %v", err)
+				return status.Errorf(codes.Internal, "FS update: %v", err)
 			}
 		}
 
-		if project != req.Project {
-			return status.Errorf(codes.InvalidArgument, "initial project %v, next project %v: %v", project, req.Project, ErrMultipleProjectsPerUpdate)
-		}
+		return nil
+	})
 
-		packParent := packManager.IsPathPacked(req.Object.Path)
-		if packParent != nil {
-			buffer[*packParent] = append(buffer[*packParent], req.Object)
-			continue
-		}
-
-		logger.Debug(ctx, "FS.Update[Object]", zap.Int64("project", project), zap.Int64("version", version), zap.String("path", req.Object.Path))
-
-		if req.Object.Deleted {
-			err = db.DeleteObject(ctx, tx, project, version, req.Object.Path)
-		} else {
-			err = db.UpdateObject(ctx, tx, contentEncoder, project, version, req.Object)
-		}
-
-		if err != nil {
-			return status.Errorf(codes.Internal, "FS update: %v", err)
-		}
+	if err != nil {
+		return err
 	}
 
 	// No updates were received from the stream which prevented us from detecting the project and version
@@ -388,13 +478,26 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return stream.SendAndClose(&pb.UpdateResponse{Version: -1})
 	}
 
-	for parent, objects := range buffer {
-		logger.Debug(ctx, "FS.Update[PackedObject]", zap.Int64("project", project), zap.Int64("version", version), zap.String("parent", parent), zap.Int("object_count", len(objects)))
+	err = telemetry.Wrap(ctx, "update-packed-objects", func(ctx context.Context, span trace.Span) error {
+		for parent, objects := range buffer {
+			logger.Debug(ctx, "FS.Update[PackedObject]",
+				key.Project.Field(project),
+				key.Version.Field(version),
+				key.ObjectsParent.Field(parent),
+				key.ObjectsCount.Field(len(objects)),
+			)
 
-		err = db.UpdatePackedObjects(ctx, tx, project, version, parent, objects)
-		if err != nil {
-			return status.Errorf(codes.Internal, "FS update packed objects for %v: %v", parent, err)
+			err = db.UpdatePackedObjects(ctx, tx, project, version, parent, objects)
+			if err != nil {
+				return status.Errorf(codes.Internal, "FS update packed objects for %v: %v", parent, err)
+			}
 		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err
 	}
 
 	err = db.UpdateLatestVersion(ctx, tx, project, version)
@@ -407,12 +510,17 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return status.Errorf(codes.Internal, "FS update commit tx: %v", err)
 	}
 
-	logger.Debug(ctx, "FS.Update[Commit]", zap.Int64("project", project), zap.Int64("version", version))
+	logger.Debug(ctx, "FS.Update[Commit]", key.Project.Field(project), key.Version.Field(version))
 
 	return stream.SendAndClose(&pb.UpdateResponse{Version: version})
 }
 
 func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectResponse, error) {
+	ctx, span := telemetry.Start(ctx, "fs.inspect", trace.WithAttributes(
+		key.Project.Attribute(req.Project),
+	))
+	defer span.End()
+
 	err := requireAdminAuth(ctx)
 	if err != nil {
 		return nil, err
@@ -424,7 +532,7 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 	}
 	defer close(ctx)
 
-	logger.Debug(ctx, "FS.Inspect[Query]", zap.Int64("project", req.Project))
+	logger.Debug(ctx, "FS.Inspect[Query]", key.Project.Field(req.Project))
 
 	vrange, err := db.NewVersionRange(ctx, tx, req.Project, nil, nil)
 	if errors.Is(err, db.ErrNotFound) {
@@ -479,6 +587,9 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 }
 
 func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.SnapshotResponse, error) {
+	ctx, span := telemetry.Start(ctx, "fs.snapshot")
+	defer span.End()
+
 	if f.Env != environment.Dev && f.Env != environment.Test {
 		return nil, status.Errorf(codes.Unimplemented, "FS snapshot only implemented in dev and test environments")
 	}
@@ -507,6 +618,9 @@ func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.Snapsho
 }
 
 func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse, error) {
+	ctx, span := telemetry.Start(ctx, "fs.reset")
+	defer span.End()
+
 	if f.Env != environment.Dev && f.Env != environment.Test {
 		return nil, status.Errorf(codes.Unimplemented, "FS reset only implemented in dev and test environments")
 	}
@@ -535,7 +649,7 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 		var projects []int64
 
 		for _, project := range req.Projects {
-			logger.Debug(ctx, "FS.Reset[Project]", zap.Int64("project", project.Id), zap.Int64("version", project.Version))
+			logger.Debug(ctx, "FS.Reset[Project]", key.Project.Field(project.Id), key.Version.Field(project.Version))
 			err = db.ResetProject(ctx, tx, project.Id, project.Version)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "FS reset project %v: %v", project.Id, err)
