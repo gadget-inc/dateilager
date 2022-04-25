@@ -1,3 +1,4 @@
+import { context, propagation } from "@opentelemetry/api";
 import type { ExecaReturnValue } from "execa";
 import execa from "execa";
 import fse from "fs-extra";
@@ -55,11 +56,13 @@ export class DateiLagerBinaryClient {
   logger: Logger;
   server: string;
   memoizedTokenFn: () => Promise<string>;
+  tracing: boolean;
 
-  constructor(logger: Logger, host: string, port: number, tokenFn: () => Promise<string>) {
+  constructor(logger: Logger, host: string, port: number, tokenFn: () => Promise<string>, tracing: boolean) {
     this.logger = logger;
     this.server = `${host}:${port}`;
     this.memoizedTokenFn = pMemoize(tokenFn);
+    this.tracing = tracing;
   }
 
   async update(project: bigint, diff: string, directory: string): Promise<bigint | null> {
@@ -100,6 +103,15 @@ export class DateiLagerBinaryClient {
   async _call(method: string, project: bigint, cwd: string, timeout: number, args: string[]): Promise<ExecaReturnValue<string>> {
     const level = this.logger.level == "trace" ? "debug" : this.logger.level;
     const baseArgs = [method, "-project", String(project), "-server", this.server, "-encoding", "json", "-log", level];
+
+    if (this.tracing) {
+      const carrier = {};
+      propagation.inject(context.active(), carrier);
+      const otelContext = JSON.stringify(carrier);
+
+      baseArgs.push("-tracing", "-otel-context", otelContext);
+    }
+
     const subprocess = execa("dateilager-client", baseArgs.concat(args), {
       cwd: cwd,
       timeout: timeout,

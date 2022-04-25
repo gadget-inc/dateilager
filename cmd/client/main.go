@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	stdlog "log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gadget-inc/dateilager/internal/key"
@@ -14,6 +16,8 @@ import (
 	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -23,22 +27,28 @@ type Command interface {
 }
 
 type sharedArgs struct {
-	server   *string
-	level    *zapcore.Level
-	encoding *string
+	server      *string
+	level       *zapcore.Level
+	encoding    *string
+	tracing     *bool
+	otelContext *string
 }
 
 func parseSharedArgs(set *flag.FlagSet) *sharedArgs {
 	level := zapcore.DebugLevel
+	set.Var(&level, "log", "Log level")
 
 	server := set.String("server", "", "Server GRPC address")
-	set.Var(&level, "log", "Log level")
 	encoding := set.String("encoding", "console", "Log encoding (console | json)")
+	tracing := set.Bool("tracing", false, "Whether tracing is enabled")
+	otelContext := set.String("otel-context", "", "Open Telemetry context")
 
 	return &sharedArgs{
-		server:   server,
-		level:    &level,
-		encoding: encoding,
+		server:      server,
+		level:       &level,
+		encoding:    encoding,
+		tracing:     tracing,
+		otelContext: otelContext,
 	}
 }
 
@@ -413,12 +423,24 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()
 
-	shutdown, err := telemetry.Init(ctx, telemetry.Client)
-	if err != nil {
-		logger.Error(ctx, "could not initialize telemetry", zap.Error(err))
-		return
+	if *shared.tracing {
+		shutdown, err := telemetry.Init(ctx, telemetry.Client)
+		if err != nil {
+			logger.Error(ctx, "could not initialize telemetry", zap.Error(err))
+			return
+		}
+		defer shutdown()
 	}
-	defer shutdown()
+
+	if *shared.otelContext != "" {
+		var mapCarrier propagation.MapCarrier
+		err = json.NewDecoder(strings.NewReader(*shared.otelContext)).Decode(&mapCarrier)
+		if err != nil {
+			logger.Error(ctx, "failed to decode otel-context", zap.Error(err))
+			return
+		}
+		ctx = otel.GetTextMapPropagator().Extract(ctx, mapCarrier)
+	}
 
 	ctx, span := telemetry.Start(ctx, "cmd.main")
 	defer span.End()

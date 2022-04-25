@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@grpc/grpc-js": "^1.1.0",
+    "@opentelemetry/api": "^1.0.4",
     "@protobuf-ts/grpc-transport": "^2.0.7",
     "@protobuf-ts/plugin": "^2.0.7",
     "@protobuf-ts/runtime-rpc": "^2.0.7",
