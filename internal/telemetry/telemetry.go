@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"os"
 	"reflect"
 	"time"
 
@@ -47,18 +46,7 @@ func (t Type) String() string {
 }
 
 func Init(ctx context.Context, t Type) (shutdown func(), err error) {
-	endpoint := os.Getenv("OTEL_COLLECTOR_TRACE_ENDPOINT")
-	if endpoint == "" {
-		return func() {}, nil
-	}
-
-	// FIXME: Make this secure
-	client := otlptracehttp.NewClient(
-		otlptracehttp.WithEndpoint(endpoint),
-		otlptracehttp.WithInsecure(),
-	)
-
-	traceExporter, err := otlptrace.New(ctx, client)
+	traceExporter, err := otlptrace.New(ctx, otlptracehttp.NewClient())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
 	}

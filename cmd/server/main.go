@@ -34,6 +34,7 @@ type ServerArgs struct {
 	prof       string
 	level      zapcore.Level
 	encoding   string
+	tracing    bool
 }
 
 func parseArgs() ServerArgs {
@@ -46,6 +47,7 @@ func parseArgs() ServerArgs {
 
 	level := zap.LevelFlag("log", zap.DebugLevel, "Log level")
 	encoding := flag.String("encoding", "console", "Log encoding (console | json)")
+	tracing := flag.Bool("tracing", false, "Whether tracing is enabled")
 
 	flag.Parse()
 
@@ -58,6 +60,7 @@ func parseArgs() ServerArgs {
 		prof:       *prof,
 		level:      *level,
 		encoding:   *encoding,
+		tracing:    *tracing,
 	}
 }
 
@@ -118,11 +121,14 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	shutdown, err := telemetry.Init(ctx, telemetry.Server)
-	if err != nil {
-		logger.Fatal(ctx, "could not initialize telemetry", zap.Error(err))
+	var shutdown func()
+	if args.tracing {
+		shutdown, err = telemetry.Init(ctx, telemetry.Server)
+		if err != nil {
+			logger.Fatal(ctx, "could not initialize telemetry", zap.Error(err))
+		}
+		defer shutdown()
 	}
-	defer shutdown()
 
 	listen, err := net.Listen("tcp", fmt.Sprintf(":%d", args.port))
 	if err != nil {
