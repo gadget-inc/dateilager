@@ -166,7 +166,9 @@ func main() {
 		<-osSignals
 		s.Grpc.Stop()
 		dbConn.Close()
-		shutdown()
+		if shutdown != nil {
+			shutdown()
+		}
 		if args.prof != "" {
 			pprof.StopCPUProfile()
 		}
