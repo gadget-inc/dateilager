@@ -21,6 +21,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/server"
+	"github.com/gadget-inc/dateilager/pkg/version"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -98,6 +99,11 @@ func initLogger(env environment.Env, level zapcore.Level, encoding string) error
 }
 
 func main() {
+	if os.Args[1] == "version" {
+		fmt.Println(version.Version)
+		return
+	}
+
 	ctx := context.Background()
 	args := parseArgs()
 

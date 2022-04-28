@@ -15,6 +15,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/gadget-inc/dateilager/pkg/client"
+	"github.com/gadget-inc/dateilager/pkg/version"
 	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -373,7 +374,7 @@ func main() {
 	var err error
 
 	if len(os.Args) < 2 {
-		stdlog.Fatal("requires a subcommand: [new, get, rebuild, update, inspect, snapshot, reset]")
+		stdlog.Fatal("requires a subcommand: [new, get, rebuild, update, inspect, snapshot, reset, version]")
 	}
 
 	switch os.Args[1] {
@@ -391,8 +392,11 @@ func main() {
 		shared, cmd, err = parseSnapshotArgs(os.Args[2:])
 	case "reset":
 		shared, cmd, err = parseResetArgs(os.Args[2:])
+	case "version":
+		fmt.Println(version.Version)
+		return
 	default:
-		stdlog.Fatal("requires a subcommand: [new, get, rebuild, update, inspect, snapshot, reset]")
+		stdlog.Fatal("requires a subcommand: [new, get, rebuild, update, inspect, snapshot, reset, version]")
 	}
 
 	if err != nil {
