@@ -33,6 +33,8 @@ builds:
     binary: webui
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.Version}}
     goos:
       - linux
       - darwin
@@ -47,13 +49,13 @@ changelog:
   skip: true
 
 checksum:
-  name_template: 'checksums.txt'
+  name_template: "checksums.txt"
   extra_files:
     - glob: ./dist/assets.tar.gz
     - glob: ./dist/migrations.tar.gz
 
 archives:
-  - name_template: '{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}'
+  - name_template: "{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}"
 
 release:
   extra_files:
