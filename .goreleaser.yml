@@ -5,7 +5,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.Version}}
+      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=v{{.Version}}
     goos:
       - linux
       - darwin
@@ -18,7 +18,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.Version}}
+      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=v{{.Version}}
     goos:
       - linux
       - darwin
@@ -34,7 +34,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.Version}}
+      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=v{{.Version}}
     goos:
       - linux
       - darwin
