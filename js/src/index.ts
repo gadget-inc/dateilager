@@ -85,8 +85,8 @@ export class DateiLagerClient {
       host: host + ":" + port,
       channelCredentials: creds,
       clientOptions: {
-        "grpc.max_send_message_length": 50 * MB,
-        "grpc.max_receive_message_length": 50 * MB,
+        "grpc.max_send_message_length": 100 * MB,
+        "grpc.max_receive_message_length": 100 * MB,
       },
     });
     this.client = new FsClient(this.transport);
