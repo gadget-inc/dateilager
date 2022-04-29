@@ -1,4 +1,6 @@
 PROJECT := dateilager
+VERSION := $(shell git describe --tags --abbrev=0)
+BUILD_FLAGS := -ldflags="-s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=$(VERSION)"
 
 DB_HOST ?= 127.0.0.1
 DB_USER ?= postgres
@@ -49,7 +51,7 @@ internal/pb/%_grpc.pb.go: internal/pb/%.proto
 	protoc --experimental_allow_proto3_optional --go-grpc_out=. --go-grpc_opt=paths=source_relative $^
 
 bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
-	CGO_ENABLED=0 go build -o $@ $<
+	CGO_ENABLED=0 go build $(BUILD_FLAGS) -o $@ $<
 
 js/src/%.client.ts: internal/pb/%.proto
 	cd js && npx protoc --experimental_allow_proto3_optional --ts_out ./src --ts_opt long_type_bigint --proto_path ../internal/pb/ ../$^
@@ -62,13 +64,13 @@ dev/server.cert: dev/server.key
 build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui js/src/fs.client.ts dev/server.cert
 
 release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $@ $<
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o $@ $<
 
 release/%_macos_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o $@ $<
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(BUILD_FLAGS) -o $@ $<
 
 release/%_macos_arm64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o $@ $<
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(BUILD_FLAGS) -o $@ $<
 
 release/migrations.tar.gz: migrations/*
 	tar -zcf $@ migrations
