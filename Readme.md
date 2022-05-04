@@ -87,14 +87,14 @@ $ make client-get prefix=n1
 Or filter for a specific version.
 
 ```bash
-$ make client-get version=1
+$ make client-get to_version=1
 ```
 
 If you want to rebuild an entire project's directory locally, use the `rebuild` command.
 
 ```bash
 $ mkdir ./rebuild
-$ make client-rebuild version=3 prefix=n1 output=rebuild
+$ make client-rebuild to_version=3 prefix=n1 output=rebuild
 ```
 
 ## Javascript Client

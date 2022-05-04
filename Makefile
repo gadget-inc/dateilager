@@ -93,7 +93,6 @@ reset-db: migrate
 
 setup-local: reset-db
 	psql $(DB_URI) -c "insert into dl.projects (id, latest_version, pack_patterns) values (1, 0, '{\"node_modules/.*/\"}');"
-	scripts/simple_input.sh
 
 server: export DL_ENV=dev
 server:
@@ -106,26 +105,39 @@ server-profile:
 client-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-update: export DL_SKIP_SSL_VERIFICATION=1
 client-update:
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v1_state/diff.s2 -directory input/v1
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v2_state/diff.s2 -directory input/v2
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -diff input/v3_state/diff.s2 -directory input/v3
+	scripts/simple_input.sh 1
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -dir input/simple
+	scripts/simple_input.sh 2
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -dir input/simple
+	scripts/simple_input.sh 3
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -dir input/simple
+
+client-large-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-large-update: export DL_SKIP_SSL_VERIFICATION=1
+client-large-update:
+	scripts/complex_input.sh 1
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -dir input/complex
+	scripts/complex_input.sh 2
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -dir input/complex
+	scripts/complex_input.sh 3
+	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -dir input/complex
 
 client-get: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-get: export DL_SKIP_SSL_VERIFICATION=1
 client-get:
-ifndef version
+ifndef to_version
 	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)"
 else
-	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -to $(version) -prefix "$(prefix)"
+	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -to $(to_version) -prefix "$(prefix)"
 endif
 
 client-rebuild: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-rebuild: export DL_SKIP_SSL_VERIFICATION=1
 client-rebuild:
-ifndef version
-	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)" -output $(output)
+ifndef to_version
+	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)" -dir $(output)
 else
-	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -to $(version) -prefix "$(prefix)" -output $(output)
+	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -to $(to_version) -prefix "$(prefix)" -dir $(output)
 endif
 
 webui: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
