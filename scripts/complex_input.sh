@@ -13,7 +13,7 @@ realpath() {
 }
 
 readonly ROOT_DIR="$(realpath "$(dirname "$0")/..")"
-readonly INPUT_DIR="${ROOT_DIR}/input"
+readonly INPUT_DIR="${ROOT_DIR}/input/complex"
 
 build_node_modules() {
     local package_json="${1}"
@@ -30,55 +30,38 @@ build_node_modules() {
 
 v1() {
     local dir="${1}"
-
+    rm -rf "${dir:?}"
     mkdir -p "${dir}"
     build_node_modules "${ROOT_DIR}/scripts/package-v1.json" "${dir}"
-
     log "wrote v1 to ${dir}"
 }
 
 v2() {
     local dir="${1}"
-
-    mkdir -p "${dir}"
     build_node_modules "${ROOT_DIR}/scripts/package-v2.json" "${dir}"
-
     log "wrote v2 to ${dir}"
 }
 
 v3() {
     local dir="${1}"
-
-    mkdir -p "${dir}"
     build_node_modules "${ROOT_DIR}/scripts/package-v3.json" "${dir}"
-
     log "wrote v3 to ${dir}"
 }
 
-generate_diff() {
-    local dir="${1}"
-    local sum="${2}"
-    local out="${3}"
-
-    fsdiff -dir "${dir}" -sum "${sum}" -out "${out}"
-}
-
 main() {
+    if [[ $# -ne 1 ]]; then
+        log "missing necessary version argument"
+        exit 1
+    fi
+
     log "writing complex inputs to ${INPUT_DIR}"
-    rm -rf "${INPUT_DIR:?}"/*
-    mkdir -p "${INPUT_DIR}"
 
-    local v1_dir="${INPUT_DIR}/v1"
-    local v2_dir="${INPUT_DIR}/v2"
-    local v3_dir="${INPUT_DIR}/v3"
-
-    v1 "${v1_dir}"
-    v2 "${v2_dir}"
-    v3 "${v3_dir}"
-
-    generate_diff "${v1_dir}" "" "${v1_dir}_state"
-    generate_diff "${v2_dir}" "${v1_dir}_state/sum.s2" "${v2_dir}_state"
-    generate_diff "${v3_dir}" "${v2_dir}_state/sum.s2" "${v3_dir}_state"
+    case "$1" in
+        "1") v1 "${INPUT_DIR}" ;;
+        "2") v2 "${INPUT_DIR}" ;;
+        "3") v3 "${INPUT_DIR}" ;;
+        *) log "invalid version argument"; exit 1 ;;
+    esac
 
     log "wrote files and diffs"
 }

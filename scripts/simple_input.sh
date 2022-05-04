@@ -13,12 +13,14 @@ realpath() {
 }
 
 readonly ROOT_DIR="$(realpath "$(dirname "$0")/..")"
-readonly INPUT_DIR="${ROOT_DIR}/input"
+readonly INPUT_DIR="${ROOT_DIR}/input/simple"
 
 v1() {
     local dir="${1}"
 
+    rm -rf "${dir:?}"
     mkdir -p "${dir}"
+
     echo "a" > "${dir}/a"
     echo "b" > "${dir}/b"
 
@@ -29,10 +31,8 @@ v1() {
 }
 
 v2() {
-    local v1="${1}"
-    local dir="${2}"
+    local dir="${1}"
 
-    cp -r "${v1}" "${dir}"
     echo "c" > "${dir}/c"
     ln -s a "${dir}/e"
     mkdir -p "${dir}/f"
@@ -46,42 +46,30 @@ v2() {
 }
 
 v3() {
-    local v2="${1}"
-    local dir="${2}"
+    local dir="${1}"
 
-    cp -r "${v2}" "${dir}"
     echo "d" > "${dir}"/a
     rm "${dir}/b"
 
     log "wrote v3 to ${dir}"
 }
 
-generate_diff() {
-    local dir="${1}"
-    local sum="${2}"
-    local out="${3}"
-
-    fsdiff -dir "${dir}" -sum "${sum}" -out "${out}"
-}
-
 main() {
+    if [[ $# -ne 1 ]]; then
+        log "missing necessary version argument"
+        exit 1
+    fi
+
     log "writing simple inputs to ${INPUT_DIR}"
-    rm -rf "${INPUT_DIR:?}"/*
-    mkdir -p "${INPUT_DIR}"
 
-    local v1_dir="${INPUT_DIR}/v1"
-    local v2_dir="${INPUT_DIR}/v2"
-    local v3_dir="${INPUT_DIR}/v3"
+    case "$1" in
+        "1") v1 "${INPUT_DIR}" ;;
+        "2") v2 "${INPUT_DIR}" ;;
+        "3") v3 "${INPUT_DIR}" ;;
+        *) log "invalid version argument"; exit 1 ;;
+    esac
 
-    v1 "${v1_dir}"
-    v2 "${v1_dir}" "${v2_dir}"
-    v3 "${v2_dir}" "${v3_dir}"
-
-    generate_diff "${v1_dir}" "" "${v1_dir}_state"
-    generate_diff "${v2_dir}" "${v1_dir}_state/sum.s2" "${v2_dir}_state"
-    generate_diff "${v3_dir}" "${v2_dir}_state/sum.s2" "${v3_dir}_state"
-
-    log "wrote files and diffs"
+    log "wrote files"
 }
 
 main "$@"

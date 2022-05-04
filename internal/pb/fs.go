@@ -27,7 +27,7 @@ func ObjectFromFilePath(directory, path string) (*Object, error) {
 	fullPath := filepath.Join(directory, path)
 
 	info, err := os.Lstat(fullPath)
-	// If the file has been deleted since the fsdiff run,
+	// If the file has been deleted since the diffs were generated,
 	// send a deleted object update instead of trying to read it from disk.
 	if errors.Is(err, fs.ErrNotExist) {
 		return &Object{

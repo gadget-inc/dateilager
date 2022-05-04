@@ -16,7 +16,6 @@ const (
 	ObjectPath        = StringKey("dl.object.path")
 	ObjectsCount      = IntKey("dl.object_count")
 	ObjectsParent     = StringKey("dl.object_parent")
-	Output            = StringKey("dl.output")
 	PackPatterns      = StringSliceKey("dl.pack_patterns")
 	Port              = IntKey("dl.port")
 	Prefix            = StringKey("dl.prefix")

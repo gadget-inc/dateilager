@@ -3,54 +3,16 @@ import type { ExecaReturnValue } from "execa";
 import execa from "execa";
 import fse from "fs-extra";
 import pMemoize from "p-memoize";
-import path from "path";
 import type { Logger } from "pino";
 import readline from "readline";
 
-const FSDIFF_TIMEOUT = 8000;
-const FSDIFF_IGNORES = [".dl", ".dl/version", ".dl/sum.s2", ".dl/diff.s2"].join(",");
 const DL_UPDATE_TIMEOUT = 10000;
 const DL_REBUILD_TIMEOUT = 8000;
-
-export type FsDiffOutputPaths = {
-  diff: string;
-  sum: string;
-};
-
-/**
- * A wrapper around the FsDiff binary, produces diffs for the binary DateiLager client.
- */
-export class FsDiffClient {
-  logger: Logger;
-
-  constructor(logger: Logger) {
-    this.logger = logger;
-  }
-
-  async diff(directory: string, output: string, sum?: string): Promise<FsDiffOutputPaths> {
-    let args = ["-dir", directory, "-out", output, "-ignores", FSDIFF_IGNORES];
-    if (sum) {
-      args = args.concat(["-sum", sum]);
-    }
-
-    const subprocess = execa("fsdiff", args, { cwd: directory, timeout: FSDIFF_TIMEOUT });
-
-    readline.createInterface(subprocess.stdout!).on("line", (line) => this.logger.info(line.trim()));
-    readline.createInterface(subprocess.stderr!).on("line", (line) => this.logger.info(line.trim()));
-
-    await subprocess;
-
-    return {
-      diff: path.join(output, "diff.s2"),
-      sum: path.join(output, "sum.s2"),
-    };
-  }
-}
 
 /**
  * A version of the DateiLager client that uses the compiled binary client instead of the Javascript one.
  *
- * Used for uploading large diffs produced by FsDiff and for rebuilding FS state within a sandbox.
+ * Useful for working directly with a real filesystem instead of in memory objects.
  */
 export class DateiLagerBinaryClient {
   logger: Logger;
@@ -58,15 +20,27 @@ export class DateiLagerBinaryClient {
   memoizedTokenFn: () => Promise<string>;
   tracing: boolean;
 
-  constructor(logger: Logger, host: string, port: number, tokenFn: () => Promise<string>, tracing: boolean) {
+  constructor(
+    logger: Logger,
+    host: string,
+    port: number,
+    tokenFn: () => Promise<string>,
+    tracing: boolean
+  ) {
     this.logger = logger;
     this.server = `${host}:${port}`;
     this.memoizedTokenFn = pMemoize(tokenFn);
     this.tracing = tracing;
   }
 
-  async update(project: bigint, diff: string, directory: string): Promise<bigint | null> {
-    const result = await this._call("update", project, directory, DL_UPDATE_TIMEOUT, ["-diff", diff, "-directory", directory]);
+  async update(project: bigint, directory: string): Promise<bigint | null> {
+    const result = await this._call(
+      "update",
+      project,
+      directory,
+      DL_UPDATE_TIMEOUT,
+      ["-dir", directory]
+    );
 
     if (result.stdout == "-1") {
       return null;
@@ -75,34 +49,52 @@ export class DateiLagerBinaryClient {
     return BigInt(result.stdout);
   }
 
-  async rebuild(project: bigint, from: bigint, to: bigint | null, output: string): Promise<bigint | null> {
-    let args = ["-from", String(from), "-output", output];
+  async rebuild(
+    project: bigint,
+    from: bigint,
+    to: bigint | null,
+    directory: string
+  ): Promise<bigint | null> {
+    let args = ["-from", String(from), "-dir", directory];
     if (to) {
       args = args.concat(["-to", String(to)]);
     }
 
-    await fse.mkdirp(output);
-    const result = await this._call("rebuild", project, output, DL_REBUILD_TIMEOUT, args);
+    await fse.mkdirp(directory);
+    const result = await this._call(
+      "rebuild",
+      project,
+      directory,
+      DL_REBUILD_TIMEOUT,
+      args
+    );
 
     if (result.stdout == "-1") {
       return null;
     }
 
-    const version = BigInt(result.stdout);
-    await this.updateVersionFile(output, version);
-    return version;
+    return BigInt(result.stdout);
   }
 
-  async updateVersionFile(output: string, version: bigint): Promise<void> {
-    const dlDir = path.join(output, ".dl");
-
-    await fse.mkdirp(dlDir);
-    await fse.writeFile(path.join(dlDir, "version"), String(version));
-  }
-
-  async _call(method: string, project: bigint, cwd: string, timeout: number, args: string[]): Promise<ExecaReturnValue<string>> {
+  async _call(
+    method: string,
+    project: bigint,
+    cwd: string,
+    timeout: number,
+    args: string[]
+  ): Promise<ExecaReturnValue<string>> {
     const level = this.logger.level == "trace" ? "debug" : this.logger.level;
-    const baseArgs = [method, "-project", String(project), "-server", this.server, "-encoding", "json", "-log", level];
+    const baseArgs = [
+      method,
+      "-project",
+      String(project),
+      "-server",
+      this.server,
+      "-encoding",
+      "json",
+      "-log",
+      level,
+    ];
 
     if (this.tracing) {
       const carrier = {};

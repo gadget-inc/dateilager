@@ -16,7 +16,6 @@ import (
 	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/version"
-	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.uber.org/zap"
@@ -144,11 +143,10 @@ func (a *getArgs) run(ctx context.Context, c *client.Client) error {
 }
 
 type rebuildArgs struct {
-	project        int64
-	vrange         client.VersionRange
-	prefix         string
-	output         string
-	skipDecompress bool
+	project int64
+	to      *int64
+	prefix  string
+	dir     string
 }
 
 func parseRebuildArgs(args []string) (*sharedArgs, *rebuildArgs, error) {
@@ -156,11 +154,9 @@ func parseRebuildArgs(args []string) (*sharedArgs, *rebuildArgs, error) {
 
 	shared := parseSharedArgs(set)
 	project := set.Int64("project", -1, "Project ID (required)")
-	from := set.Int64("from", -1, "From version ID (optional)")
 	to := set.Int64("to", -1, "To version ID (optional)")
 	prefix := set.String("prefix", "", "Search prefix")
-	output := set.String("output", "", "Output directory")
-	skipDecompress := set.Bool("skip_decompress", false, "Skip decompression and write archives to disk")
+	dir := set.String("dir", "", "Output directory")
 
 	set.Parse(args)
 
@@ -168,34 +164,20 @@ func parseRebuildArgs(args []string) (*sharedArgs, *rebuildArgs, error) {
 		return nil, nil, errors.New("required arg: -project")
 	}
 
-	if *from == -1 {
-		from = nil
-	}
 	if *to == -1 {
 		to = nil
 	}
 
 	return shared, &rebuildArgs{
-		project:        *project,
-		vrange:         client.VersionRange{From: from, To: to},
-		prefix:         *prefix,
-		output:         *output,
-		skipDecompress: *skipDecompress,
+		project: *project,
+		to:      to,
+		prefix:  *prefix,
+		dir:     *dir,
 	}, nil
 }
 
 func (a *rebuildArgs) run(ctx context.Context, c *client.Client) error {
-	if a.skipDecompress {
-		_, err := c.FetchArchives(ctx, a.project, a.prefix, a.vrange, a.output)
-		if err != nil {
-			return fmt.Errorf("could not fetch archives: %w", err)
-		}
-
-		logger.Info(ctx, "wrote archives", key.Project.Field(a.project))
-		return nil
-	}
-
-	version, count, err := c.Rebuild(ctx, a.project, a.prefix, a.vrange, a.output)
+	version, count, err := c.Rebuild(ctx, a.project, a.prefix, a.to, a.dir)
 	if err != nil {
 		return fmt.Errorf("could not rebuild project: %w", err)
 	}
@@ -203,13 +185,13 @@ func (a *rebuildArgs) run(ctx context.Context, c *client.Client) error {
 	if version == -1 {
 		logger.Debug(ctx, "latest version already checked out",
 			key.Project.Field(a.project),
-			key.Output.Field(a.output),
-			key.FromVersion.Field(a.vrange.From),
+			key.Directory.Field(a.dir),
+			key.ToVersion.Field(a.to),
 		)
 	} else {
 		logger.Info(ctx, "wrote files",
 			key.Project.Field(a.project),
-			key.Output.Field(a.output),
+			key.Directory.Field(a.dir),
 			key.Version.Field(version),
 			key.DiffCount.Field(count),
 		)
@@ -220,9 +202,8 @@ func (a *rebuildArgs) run(ctx context.Context, c *client.Client) error {
 }
 
 type updateArgs struct {
-	project   int64
-	diff      string
-	directory string
+	project int64
+	dir     string
 }
 
 func parseUpdateArgs(args []string) (*sharedArgs, *updateArgs, error) {
@@ -230,8 +211,7 @@ func parseUpdateArgs(args []string) (*sharedArgs, *updateArgs, error) {
 
 	shared := parseSharedArgs(set)
 	project := set.Int64("project", -1, "Project ID (required)")
-	diff := set.String("diff", "", "Diff file listing changed file names")
-	directory := set.String("directory", "", "Directory containing updated files")
+	dir := set.String("dir", "", "Directory containing updated files")
 
 	set.Parse(args)
 
@@ -240,35 +220,23 @@ func parseUpdateArgs(args []string) (*sharedArgs, *updateArgs, error) {
 	}
 
 	return shared, &updateArgs{
-		project:   *project,
-		diff:      *diff,
-		directory: *directory,
+		project: *project,
+		dir:     *dir,
 	}, nil
 }
 
 func (a *updateArgs) run(ctx context.Context, c *client.Client) error {
-	diff, err := fsdiff.ReadDiff(a.diff)
+	version, count, err := c.Update(ctx, a.project, a.dir)
 	if err != nil {
-		return fmt.Errorf("parse diff file: %w", err)
+		return fmt.Errorf("update objects: %w", err)
 	}
 
-	if len(diff.Updates) == 0 {
-		logger.Debug(ctx, "diff file empty, nothing to update", key.Project.Field(a.project))
-		fmt.Println(-1)
+	if count == 0 {
+		logger.Debug(ctx, "diff file is empty, nothing to update", key.Project.Field(a.project), key.Version.Field(version))
 	} else {
-		version, count, err := c.Update(ctx, a.project, diff, a.directory)
-		if err != nil {
-			return fmt.Errorf("update objects: %w", err)
-		}
-
-		logger.Info(ctx, "updated objects",
-			key.Project.Field(a.project),
-			key.Version.Field(version),
-			key.DiffCount.Field(count),
-		)
-		fmt.Println(version)
+		logger.Info(ctx, "updated objects", key.Project.Field(a.project), key.Version.Field(version), key.DiffCount.Field(count))
 	}
-
+	fmt.Println(version)
 	return nil
 }
 
@@ -412,7 +380,7 @@ func main() {
 
 		bytes, err := os.ReadFile(tokenFile)
 		if err != nil {
-			stdlog.Fatal("failed to read contents of DL_TOKEN_FILE: %v", err)
+			stdlog.Fatalf("failed to read contents of DL_TOKEN_FILE: %v", err)
 		}
 
 		token = string(bytes)

@@ -190,62 +190,8 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, ignores 
 	return objects, nil
 }
 
-func (c *Client) FetchArchives(ctx context.Context, project int64, prefix string, vrange VersionRange, output string) (int64, error) {
-	ctx, span := telemetry.Start(ctx, "client.fetch-archives", trace.WithAttributes(
-		key.Project.Attribute(project),
-		key.Prefix.Attribute(prefix),
-		key.FromVersion.Attribute(vrange.From),
-		key.ToVersion.Attribute(vrange.To),
-		key.Output.Attribute(output),
-	))
-	defer span.End()
-
-	query := &pb.ObjectQuery{
-		Path:        prefix,
-		IsPrefix:    true,
-		WithContent: true,
-	}
-
-	request := &pb.GetCompressRequest{
-		Project:     project,
-		FromVersion: vrange.From,
-		ToVersion:   vrange.To,
-		Queries:     []*pb.ObjectQuery{query},
-	}
-
-	index := 0
-	version := int64(-1)
-
-	stream, err := c.fs.GetCompress(ctx, request)
-	if err != nil {
-		return -1, fmt.Errorf("connect fs.GetCompress: %w", err)
-	}
-
-	for {
-		response, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return -1, fmt.Errorf("receive fs.GetCompress: %w", err)
-		}
-
-		version = response.Version
-		path := filepath.Join(output, fmt.Sprintf("%v.tar.s2", index))
-
-		err = os.WriteFile(path, response.Bytes, 0644)
-		if err != nil {
-			return version, fmt.Errorf("writing archive: %w", err)
-		}
-
-		index += 1
-	}
-
-	return version, nil
-}
-
-func writeObject(outputDir string, reader *db.TarReader, header *tar.Header) error {
-	path := filepath.Join(outputDir, header.Name)
+func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error {
+	path := filepath.Join(rootDir, header.Name)
 
 	switch header.Typeflag {
 	case tar.TypeReg:
@@ -306,15 +252,25 @@ func writeObject(outputDir string, reader *db.TarReader, header *tar.Header) err
 	return nil
 }
 
-func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vrange VersionRange, output string) (int64, uint32, error) {
+func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string) (int64, uint32, error) {
 	ctx, span := telemetry.Start(ctx, "client.rebuild", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Prefix.Attribute(prefix),
-		key.FromVersion.Attribute(vrange.From),
-		key.ToVersion.Attribute(vrange.To),
-		key.Output.Attribute(output),
+		key.ToVersion.Attribute(toVersion),
+		key.Directory.Attribute(dir),
 	))
 	defer span.End()
+
+	var diffCount uint32
+	fromVersion := int64(-1)
+
+	fromVersion, err := ReadVersionFile(dir)
+	if err != nil {
+		return fromVersion, diffCount, err
+	}
+	if toVersion != nil && fromVersion == *toVersion {
+		return *toVersion, diffCount, nil
+	}
 
 	query := &pb.ObjectQuery{
 		Path:        prefix,
@@ -324,27 +280,24 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 
 	request := &pb.GetCompressRequest{
 		Project:     project,
-		FromVersion: vrange.From,
-		ToVersion:   vrange.To,
+		FromVersion: &fromVersion,
+		ToVersion:   toVersion,
 		Queries:     []*pb.ObjectQuery{query},
 	}
 
-	version := int64(-1)
-	var diffCount uint32
-
 	stream, err := c.fs.GetCompress(ctx, request)
 	if err != nil {
-		return -1, diffCount, fmt.Errorf("connect fs.GetCompress: %w", err)
+		return fromVersion, diffCount, fmt.Errorf("connect fs.GetCompress: %w", err)
 	}
 
 	// Pull one response before booting workers
 	// This is a short circuit for cases where there are no diffs to apply
 	response, err := stream.Recv()
 	if err == io.EOF {
-		return version, diffCount, nil
+		return fromVersion, diffCount, nil
 	}
 	if err != nil {
-		return -1, diffCount, fmt.Errorf("receive fs.GetCompress: %w", err)
+		return fromVersion, diffCount, fmt.Errorf("receive fs.GetCompress: %w", err)
 	}
 
 	tarBytesChan := make(chan []byte, 16)
@@ -356,7 +309,10 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 		defer close(tarBytesChan)
 
 		for {
-			version = response.Version
+			if toVersion != nil && *toVersion != response.Version {
+				return fmt.Errorf("invalid response version from GetComrpess, expected %v got %v", *toVersion, response.Version)
+			}
+			toVersion = &response.Version
 
 			select {
 			case <-ctx.Done():
@@ -402,7 +358,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 						}
 
 						atomic.AddUint32(&diffCount, 1)
-						err = writeObject(output, tarReader, header)
+						err = writeObject(dir, tarReader, header)
 						if err != nil {
 							return err
 						}
@@ -412,26 +368,51 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, vran
 		})
 	}
 
-	if err = group.Wait(); err != nil {
+	err = group.Wait()
+	if err != nil {
 		return -1, diffCount, err
 	}
 
-	return version, diffCount, nil
+	err = WriteVersionFile(dir, *toVersion)
+	if err != nil {
+		return -1, diffCount, err
+	}
+
+	_, err = DiffAndSummarize(dir)
+	if err != nil {
+		return -1, diffCount, err
+	}
+
+	return *toVersion, diffCount, nil
 }
 
-func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff, directory string) (int64, uint32, error) {
-	ctx, span := telemetry.Start(ctx, "client.update", trace.WithAttributes(
+func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int64, uint32, error) {
+	rootCtx, span := telemetry.Start(rootCtx, "client.update", trace.WithAttributes(
 		key.Project.Attribute(project),
-		key.Directory.Attribute(directory),
+		key.Directory.Attribute(dir),
 	))
 	defer span.End()
 
-	version := int64(-1)
+	fromVersion, err := ReadVersionFile(dir)
+	if err != nil {
+		return -1, 0, err
+	}
+
+	diff, err := DiffAndSummarize(dir)
+	if err != nil {
+		return -1, 0, err
+	}
+
+	if len(diff.Updates) == 0 {
+		return fromVersion, 0, nil
+	}
+
+	toVersion := int64(-1)
 
 	updateChan := make(chan *fsdiff_pb.Update, len(diff.Updates))
 	objectChan := make(chan *pb.Object, 16)
 
-	group, ctx := errgroup.WithContext(ctx)
+	group, ctx := errgroup.WithContext(rootCtx)
 
 	for i := 0; i < parallelWorkerCount(); i++ {
 		// create the attribute here when `i` is different
@@ -456,7 +437,7 @@ func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff
 							Deleted: true,
 						}
 					} else {
-						object, err := pb.ObjectFromFilePath(directory, update.Path)
+						object, err := pb.ObjectFromFilePath(dir, update.Path)
 						if err != nil {
 							return fmt.Errorf("read file object: %w", err)
 						}
@@ -492,7 +473,7 @@ func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff
 					if err != nil {
 						return fmt.Errorf("close and receive fs.Update: %w", err)
 					}
-					version = response.Version
+					toVersion = response.Version
 					return nil
 				}
 
@@ -514,11 +495,26 @@ func (c *Client) Update(ctx context.Context, project int64, diff *fsdiff_pb.Diff
 	}
 	close(updateChan)
 
-	if err := group.Wait(); err != nil {
+	err = group.Wait()
+	if err != nil {
 		return -1, 0, err
 	}
 
-	return version, uint32(len(diff.Updates)), nil
+	updateCount := uint32(len(diff.Updates))
+
+	if (fromVersion + 1) == toVersion {
+		err = WriteVersionFile(dir, toVersion)
+		if err != nil {
+			return -1, updateCount, err
+		}
+	} else {
+		toVersion, _, err = c.Rebuild(rootCtx, project, "", nil, dir)
+		if err != nil {
+			return -1, updateCount, err
+		}
+	}
+
+	return toVersion, updateCount, nil
 }
 
 func (c *Client) Inspect(ctx context.Context, project int64) (*pb.InspectResponse, error) {
