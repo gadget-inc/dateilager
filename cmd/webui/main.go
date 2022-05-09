@@ -4,11 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	stdlog "log"
 	"net/http"
 	"os"
 	"strconv"
-	"time"
 
+	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/version"
 	"github.com/gadget-inc/dateilager/pkg/web"
@@ -41,40 +42,43 @@ func main() {
 		return
 	}
 
-	log, _ := zap.NewDevelopment()
-	defer log.Sync()
+	err := logger.Init(zap.NewDevelopmentConfig())
+	if err != nil {
+		stdlog.Fatal(err.Error())
+	}
+	defer logger.Sync()
 
 	args := parseArgs()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	token := os.Getenv("DL_TOKEN")
 	if token == "" {
 		tokenFile := os.Getenv("DL_TOKEN_FILE")
 		if tokenFile == "" {
-			log.Fatal("missing token: set the DL_TOKEN or DL_TOKEN_FILE environment variable")
+			logger.Fatal(ctx, "missing token: set the DL_TOKEN or DL_TOKEN_FILE environment variable")
 		}
 
 		bytes, err := os.ReadFile(tokenFile)
 		if err != nil {
-			log.Fatal("failed to read contents of DL_TOKEN_FILE", zap.Error(err))
+			logger.Fatal(ctx, "failed to read contents of DL_TOKEN_FILE", zap.Error(err))
 		}
 
 		token = string(bytes)
+		logger.Fatal(ctx, "missing token: set the DL_TOKEN environment variable")
 	}
 
 	c, err := client.NewClient(ctx, args.server, token)
 	if err != nil {
-		log.Fatal("could not connect to server", zap.String("server", args.server))
+		logger.Fatal(ctx, "could not connect to server", zap.String("server", args.server))
 	}
 	defer c.Close()
 
-	handler, err := web.NewWebServer(log, c, args.assetsDir)
+	handler, err := web.NewWebServer(ctx, c, args.assetsDir)
 	if err != nil {
-		log.Fatal("cannot setup web server", zap.Error(err))
+		logger.Fatal(ctx, "cannot setup web server", zap.Error(err))
 	}
 
-	log.Info("start webui", zap.Int("port", args.port), zap.String("assets", args.assetsDir))
+	logger.Info(ctx, "start webui", zap.Int("port", args.port), zap.String("assets", args.assetsDir))
 	http.ListenAndServe(":"+strconv.Itoa(args.port), handler)
 }
