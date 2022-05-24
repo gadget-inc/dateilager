@@ -17,6 +17,7 @@
       "outDir": "./pkg",
       "allowSyntheticDefaultImports": true,
       "baseUrl": "./",
+      "experimentalDecorators": true
   },
   "include": ["./src", "./spec"]
 }
