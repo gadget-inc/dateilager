@@ -18,6 +18,8 @@
     "typescript": "^4.5.5"
   },
   "devDependencies": {
+    "@gadgetinc/eslint-config": "*",
+    "@gadgetinc/prettier-config": "*",
     "@swc/core": "^1.2.145",
     "@swc/helpers": "^0.3.5",
     "@swc/jest": "^0.2.20",
