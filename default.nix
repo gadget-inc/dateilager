@@ -14,7 +14,7 @@
 
 buildGoModule rec {
   pname = "dateilager";
-  version = "0.0.43";
+  version = "0.1.0";
   src = ./.;
   proxyVendor = true; # Fixes: cannot query module due to -mod=vendor running make install
   vendorSha256 = "sha256-YnDHx4W8Mnoz6kdx5ELvejk0utbOCm+Nf6lDJMM+DOk=";
@@ -56,7 +56,7 @@ buildGoModule rec {
 
   preCheck = ''
     export HOME=$(mktemp -d)
-    make dev/server.cert
+    make development/server.crt
     dev &
     wait_for_postgres
   '';

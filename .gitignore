@@ -1,6 +1,6 @@
 bin/
-dev/server.crt
-dev/server.key
+development/server.crt
+development/server.key
 dist/
 input/
 input_old/

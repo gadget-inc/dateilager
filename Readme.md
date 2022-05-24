@@ -93,8 +93,8 @@ $ make client-get to_version=1
 If you want to rebuild an entire project's directory locally, use the `rebuild` command.
 
 ```bash
-$ mkdir ./rebuild
-$ make client-rebuild to_version=3 prefix=n1 output=rebuild
+$ make client-rebuild to_version=3 dir=./rebuild
+$ ls -lah ./rebuild
 ```
 
 ## Javascript Client
