@@ -42,10 +42,10 @@ export class DateiLagerBinaryClient {
   }
 
   @traced("dateilager-binary-client.rebuild", {
-    record: (project, from, to, output) => ({ project, from, to, output }),
+    record: (project, to, output) => ({ project, to, output }),
   })
-  async rebuild(project: bigint, from: bigint, to: bigint | null, directory: string): Promise<bigint | null> {
-    let args = ["-from", String(from), "-dir", directory];
+  async rebuild(project: bigint, to: bigint | null, directory: string): Promise<bigint | null> {
+    let args = ["-dir", directory];
     if (to) {
       args = args.concat(["-to", String(to)]);
     }
