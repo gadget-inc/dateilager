@@ -10,16 +10,13 @@ import (
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/jackc/pgx/v4"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
 
 type TestCtx struct {
-	*assert.Assertions
-	require *require.Assertions
-
+	t      *testing.T
 	log    *zap.Logger
 	dbConn *DbTestConnector
 	ctx    context.Context
@@ -40,11 +37,10 @@ func NewTestCtx(t *testing.T, role auth.Role, projects ...int64) TestCtx {
 	require.NoError(t, err, "connecting to DB")
 
 	return TestCtx{
-		Assertions: assert.New(t),
-		require:    require.New(t),
-		log:        zaptest.NewLogger(t),
-		dbConn:     dbConn,
-		ctx:        ctx,
+		t:      t,
+		log:    zaptest.NewLogger(t),
+		dbConn: dbConn,
+		ctx:    ctx,
 	}
 }
 
@@ -62,13 +58,13 @@ func (tc *TestCtx) Context() context.Context {
 
 func (tc *TestCtx) Connect() pgx.Tx {
 	tx, _, err := tc.dbConn.Connect(tc.ctx)
-	tc.require.NoError(err, "connecting to db")
+	require.NoError(tc.t, err, "connecting to db")
 
 	return tx
 }
 
-func (tc *TestCtx) Require() *require.Assertions {
-	return tc.require
+func (tc *TestCtx) T() *testing.T {
+	return tc.t
 }
 
 func (tc *TestCtx) Close() {

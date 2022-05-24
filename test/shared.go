@@ -7,6 +7,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 func i(i int64) *int64 {
@@ -24,7 +25,7 @@ func writeProject(tc util.TestCtx, id int32, latestVersion int64, packPatterns .
 		INSERT INTO dl.projects (id, latest_version, pack_patterns)
 		VALUES ($1, $2, $3)
 	`, id, latestVersion, packPatterns)
-	tc.Require().NoError(err, "insert project")
+	require.NoError(tc.T(), err, "insert project")
 }
 
 func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, path, content string, mode fs.FileMode) {
@@ -37,11 +38,11 @@ func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, p
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
 	`, project, start, stop, path, h1, h2, mode, len(contentBytes), false)
-	tc.Require().NoError(err, "insert object")
+	require.NoError(tc.T(), err, "insert object")
 
 	contentEncoder := db.NewContentEncoder()
 	encoded, err := contentEncoder.Encode(contentBytes)
-	tc.Require().NoError(err, "encode content")
+	require.NoError(tc.T(), err, "encode content")
 
 	_, err = conn.Exec(tc.Context(), `
 		INSERT INTO dl.contents (hash, bytes)
@@ -49,7 +50,7 @@ func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, p
 		ON CONFLICT
 		   DO NOTHING
 	`, h1, h2, encoded)
-	tc.Require().NoError(err, "insert contents")
+	require.NoError(tc.T(), err, "insert contents")
 }
 
 func writeObject(tc util.TestCtx, project int64, start int64, stop *int64, path string, contents ...string) {
@@ -87,7 +88,7 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
 	`, project, start, stop, path, h1, h2, 0755, len(contentsTar), true)
-	tc.Require().NoError(err, "insert object")
+	require.NoError(tc.T(), err, "insert object")
 
 	_, err = conn.Exec(tc.Context(), `
 		INSERT INTO dl.contents (hash, bytes, names_tar)
@@ -95,7 +96,7 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 		ON CONFLICT
 		DO NOTHING
 	`, h1, h2, contentsTar, namesTar)
-	tc.Require().NoError(err, "insert contents")
+	require.NoError(tc.T(), err, "insert contents")
 }
 
 func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []byte) {
@@ -112,17 +113,17 @@ func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []
 		}
 
 		err := contentWriter.WriteObject(object, true)
-		tc.Require().NoError(err, "write content to TAR")
+		require.NoError(tc.T(), err, "write content to TAR")
 
 		err = namesWriter.WriteObject(object, false)
-		tc.Require().NoError(err, "write name to TAR")
+		require.NoError(tc.T(), err, "write name to TAR")
 	}
 
 	contentTar, err := contentWriter.BytesAndReset()
-	tc.Require().NoError(err, "write content TAR to bytes")
+	require.NoError(tc.T(), err, "write content TAR to bytes")
 
 	namesTar, err := namesWriter.BytesAndReset()
-	tc.Require().NoError(err, "write names TAR to bytes")
+	require.NoError(tc.T(), err, "write names TAR to bytes")
 
 	return contentTar, namesTar
 }
@@ -136,7 +137,7 @@ func debugProjects(tc util.TestCtx) {
 		SELECT id, latest_version, pack_patterns
 		FROM dl.projects
 	`)
-	tc.Require().NoError(err, "debug execute project list")
+	require.NoError(tc.T(), err, "debug execute project list")
 
 	fmt.Println("\n[DEBUG] Projects")
 	fmt.Println("id,\tlatest_version,\tpack_patterns")
@@ -145,7 +146,7 @@ func debugProjects(tc util.TestCtx) {
 		var id, latestVersion int64
 		var packPatterns []string
 		err = rows.Scan(&id, &latestVersion, &packPatterns)
-		tc.Require().NoError(err, "debug scan project")
+		require.NoError(tc.T(), err, "debug scan project")
 
 		fmt.Printf("%d,\t%d,\t\t%v\n", id, latestVersion, packPatterns)
 	}
@@ -160,7 +161,7 @@ func debugObjects(tc util.TestCtx) {
 		SELECT project, start_version, stop_version, path, mode, size, packed
 		FROM dl.objects
 	`)
-	tc.Require().NoError(err, "debug execute object list")
+	require.NoError(tc.T(), err, "debug execute object list")
 
 	fmt.Println("\n[DEBUG] Objects")
 	fmt.Println("project,\tstart_version,\tstop_version,\tpath,\tmode,\tsize,\tpacked")
@@ -171,7 +172,7 @@ func debugObjects(tc util.TestCtx) {
 		var path string
 		var packed bool
 		err = rows.Scan(&project, &start_version, &stop_version, &path, &mode, &size, &packed)
-		tc.Require().NoError(err, "debug scan object")
+		require.NoError(tc.T(), err, "debug scan object")
 
 		fmt.Printf("%d,\t\t%d,\t\t%d,\t\t%s,\t%d,\t%d,\t%v\n", project, start_version, stop_version, path, mode, size, packed)
 	}

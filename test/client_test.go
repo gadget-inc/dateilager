@@ -20,6 +20,7 @@ import (
 	"github.com/gadget-inc/dateilager/pkg/client"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -76,7 +77,7 @@ func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, db.CloseFunc
 	pb.RegisterFsServer(s, fs)
 	go func() {
 		err := s.Serve(lis)
-		tc.Require().NoError(err, "Server exited")
+		require.NoError(tc.T(), err, "Server exited")
 	}()
 
 	dialer := func(context.Context, string) (net.Conn, error) {
@@ -84,7 +85,7 @@ func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, db.CloseFunc
 	}
 
 	conn, err := grpc.DialContext(tc.Context(), "bufnet", grpc.WithContextDialer(dialer), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	tc.Require().NoError(err, "Failed to dial bufnet")
+	require.NoError(tc.T(), err, "Failed to dial bufnet")
 
 	c := client.NewClientConn(conn)
 
@@ -103,37 +104,37 @@ func assertObjects(t *testing.T, objects []*pb.Object, expected map[string]strin
 	assert.EqualValues(t, expected, contents, "unexpected contents for objects")
 }
 
-func writeFile(tc util.TestCtx, dir string, path string, content string) {
+func writeFile(t *testing.T, dir string, path string, content string) {
 	fullPath := filepath.Join(dir, path)
 	err := os.WriteFile(fullPath, []byte(content), 0755)
-	tc.Require().NoError(err, "write file %v", path)
+	require.NoError(t, err, "write file %v", path)
 }
 
-func emptyTmpDir(tc util.TestCtx) string {
+func emptyTmpDir(t *testing.T) string {
 	dir, err := os.MkdirTemp("", "dateilager_tests_")
-	tc.Require().NoError(err, "create temp dir")
+	require.NoError(t, err, "create temp dir")
 
 	return dir
 }
 
-func writeTmpFiles(tc util.TestCtx, version int64, files map[string]string) string {
+func writeTmpFiles(t *testing.T, version int64, files map[string]string) string {
 	dir, err := os.MkdirTemp("", "dateilager_tests_")
-	tc.Require().NoError(err, "create temp dir")
+	require.NoError(t, err, "create temp dir")
 
 	for name, content := range files {
-		writeFile(tc, dir, name, content)
+		writeFile(t, dir, name, content)
 	}
 
 	err = client.WriteVersionFile(dir, version)
-	tc.Require().NoError(err, "write version file")
+	require.NoError(t, err, "write version file")
 
 	_, err = client.DiffAndSummarize(dir)
-	tc.Require().NoError(err, "diff and summarize")
+	require.NoError(t, err, "diff and summarize")
 
 	return dir
 }
 
-func verifyDir(tc util.TestCtx, dir string, version int64, files map[string]expectedFile) {
+func verifyDir(t *testing.T, dir string, version int64, files map[string]expectedFile) {
 	dirEntries := make(map[string]fs.FileInfo)
 
 	// Only keep track of empty walked directories
@@ -170,17 +171,17 @@ func verifyDir(tc util.TestCtx, dir string, version int64, files map[string]expe
 		dirEntries[path] = info
 		return nil
 	})
-	tc.Require().NoError(err, "walk directory %v", dir)
+	require.NoError(t, err, "walk directory %v", dir)
 
 	if maybeEmptyDir != nil {
 		dirEntries[fmt.Sprintf("%s/", *maybeEmptyDir)] = *maybeEmptyInfo
 	}
 
 	fileVersion, err := client.ReadVersionFile(dir)
-	tc.Require().NoError(err, "read version file")
+	require.NoError(t, err, "read version file")
 
-	tc.Equal(version, fileVersion, "expected file version %v", version)
-	tc.Equal(len(files), len(dirEntries), "expected %v files in %v", len(files), dir)
+	assert.Equal(t, version, fileVersion, "expected file version %v", version)
+	assert.Equal(t, len(files), len(dirEntries), "expected %v files in %v", len(files), dir)
 
 	for name, file := range files {
 		path := filepath.Join(dir, name)
@@ -192,21 +193,21 @@ func verifyDir(tc util.TestCtx, dir string, version int64, files map[string]expe
 
 		switch file.fileType {
 		case typeDirectory:
-			tc.True(info.IsDir(), "%v is not a directory", name)
+			assert.True(t, info.IsDir(), "%v is not a directory", name)
 
 		case typeSymlink:
-			tc.Equal(fs.ModeSymlink, info.Mode()&fs.ModeSymlink, "%v is not a symlink", name)
+			assert.Equal(t, fs.ModeSymlink, info.Mode()&fs.ModeSymlink, "%v is not a symlink", name)
 
 			target, err := os.Readlink(path)
-			tc.Require().NoError(err, "read link %v", path)
+			require.NoError(t, err, "read link %v", path)
 
-			tc.Equal(file.content, target, "symlink target mismatch in %v", name)
+			assert.Equal(t, file.content, target, "symlink target mismatch in %v", name)
 
 		case typeRegular:
 			bytes, err := os.ReadFile(path)
-			tc.Require().NoError(err, "read file %v", path)
+			require.NoError(t, err, "read file %v", path)
 
-			tc.Equal(file.content, string(bytes), "content mismatch in %v", name)
+			assert.Equal(t, file.content, string(bytes), "content mismatch in %v", name)
 		}
 	}
 }
@@ -221,13 +222,9 @@ func TestGetLatestEmpty(t *testing.T) {
 	defer close(tc.Context())
 
 	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
-	if err != nil {
-		t.Fatalf("client.GetLatest empty: %v", err)
-	}
+	require.NoError(t, err, "client.GetLatest empty")
 
-	if len(objects) != 0 {
-		t.Fatalf("object list should be empty: %v", objects)
-	}
+	require.Empty(t, objects, "object list should be empty")
 }
 
 func TestGet(t *testing.T) {
@@ -324,7 +321,7 @@ func TestGet(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			objects, err := c.Get(tc.Context(), testCase.project, testCase.prefix, testCase.ignores, testCase.vrange)
-			tc.Require().NoError(err, "client.Get")
+			require.NoError(t, err, "client.Get")
 
 			assertObjects(t, objects, testCase.expected)
 		})
@@ -339,9 +336,7 @@ func TestGetVersionMissingProject(t *testing.T) {
 	defer close(tc.Context())
 
 	objects, err := c.Get(tc.Context(), 1, "", nil, toVersion(1))
-	if err == nil {
-		t.Fatalf("client.GetLatest didn't error accessing objects: %v", objects)
-	}
+	require.Error(t, err, "client.GetLatest didn't error accessing objects: %v", objects)
 }
 
 func TestRebuild(t *testing.T) {
@@ -356,21 +351,16 @@ func TestRebuild(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
-	tmpDir := emptyTmpDir(tc)
+	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
 	version, count, err := c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 1 {
-		t.Errorf("expected rebuild version to be 1, got: %v", version)
-	}
-	if count != 3 {
-		t.Errorf("expected rebuild count to be 3, got: %v", count)
-	}
+	require.NoError(t, err, "client.Rebuild")
 
-	verifyDir(tc, tmpDir, 1, map[string]expectedFile{
+	assert.Equal(t, int64(1), version, "expected rebuild version to be 1")
+	assert.Equal(t, uint32(3), count, "expected rebuild count to be 3")
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a": {content: "a v1"},
 		"b": {content: "b v1"},
 		"c": {content: "c v1"},
@@ -393,7 +383,7 @@ func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
-	tmpDir := writeTmpFiles(tc, 1, map[string]string{
+	tmpDir := writeTmpFiles(t, 1, map[string]string{
 		"a": "a v1 - long buffer of content",
 		"b": "b v1",
 		"c": "c v1",
@@ -402,17 +392,12 @@ func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	version, count, err := c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild with overwrites and deletes: %v", err)
-	}
-	if version != 2 {
-		t.Errorf("expected rebuild version to be 2, got: %v", version)
-	}
-	if count != 4 {
-		t.Errorf("expected rebuild count to be 4, got: %v", count)
-	}
+	require.NoError(t, err, "client.Rebuild with overwrites and deletes")
 
-	verifyDir(tc, tmpDir, 2, map[string]expectedFile{
+	assert.Equal(t, int64(2), version, "expected rebuild version to be 2")
+	assert.Equal(t, uint32(4), count, "expected rebuild count to be 4")
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a": {content: "a v2"},
 		"c": {content: "c v1"},
 		"d": {content: "d v2"},
@@ -434,21 +419,15 @@ func TestRebuildWithEmptyDirAndSymlink(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
-	tmpDir := emptyTmpDir(tc)
+	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
 	version, count, err := c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 2 {
-		t.Errorf("expected rebuild version to be 2, got: %v", version)
-	}
-	if count != 5 {
-		t.Errorf("expected rebuild count to be 5, got: %v", count)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(2), version, "expected rebuild version to be 2")
+	assert.Equal(t, uint32(5), count, "expected rebuild count to be 5")
 
-	verifyDir(tc, tmpDir, 2, map[string]expectedFile{
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a":     {content: "a v1"},
 		"d/e":   {content: "e v1"},
 		"b/":    {content: "", fileType: typeDirectory},
@@ -469,21 +448,15 @@ func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
 	c, close := createTestClient(tc, fs)
 	defer close(tc.Context())
 
-	tmpDir := emptyTmpDir(tc)
+	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
 	version, count, err := c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 1 {
-		t.Errorf("expected rebuild version to be 1, got: %v", version)
-	}
-	if count != 2 {
-		t.Errorf("expected rebuild count to be 2, got: %v", count)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(1), version, "expected rebuild version to be 1")
+	assert.Equal(t, uint32(2), count, "expected rebuild count to be 2")
 
-	verifyDir(tc, tmpDir, 1, map[string]expectedFile{
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a/": {content: "", fileType: typeDirectory},
 		"b/": {content: "", fileType: typeDirectory},
 	})
@@ -493,22 +466,14 @@ func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
 	})
 
 	err = fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
+	require.NoError(t, err, "fs.Update")
 
 	version, count, err = c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 2 {
-		t.Errorf("expected rebuild version to be 2, got: %v", version)
-	}
-	if count != 1 {
-		t.Errorf("expected rebuild count to be 1, got: %v", count)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(2), version, "expected rebuild version to be 2")
+	assert.Equal(t, uint32(1), count, "expected rebuild count to be 1")
 
-	verifyDir(tc, tmpDir, 2, map[string]expectedFile{
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a/c": {content: "a/c v2"},
 		"b/":  {content: "", fileType: typeDirectory},
 	})
@@ -524,9 +489,7 @@ func TestRebuildWithManyObjects(t *testing.T) {
 	for i := 0; i < 500; i++ {
 		bytes := make([]byte, 50000)
 		_, err := rand.Read(bytes)
-		if err != nil {
-			t.Fatal("could not generate random bytes")
-		}
+		require.NoError(t, err, "could not generate random bytes")
 		writeObject(tc, 1, 1, nil, fmt.Sprintf("/%d", i), string(bytes))
 		expectedFiles[fmt.Sprintf("/%d", i)] = expectedFile{content: string(bytes)}
 	}
@@ -534,21 +497,15 @@ func TestRebuildWithManyObjects(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
-	tmpDir := emptyTmpDir(tc)
+	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
 	version, count, err := c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 1 {
-		t.Errorf("expected rebuild version to be 1, got: %v", version)
-	}
-	if count != 500 {
-		t.Errorf("expected rebuild count to be 500, got: %v", count)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(1), version, "expected rebuild version to be 1")
+	assert.Equal(t, uint32(500), count, "expected rebuild count to be 500")
 
-	verifyDir(tc, tmpDir, 1, expectedFiles)
+	verifyDir(t, tmpDir, 1, expectedFiles)
 }
 
 func TestUpdateObjects(t *testing.T) {
@@ -560,35 +517,27 @@ func TestUpdateObjects(t *testing.T) {
 	writeObject(tc, 1, 1, nil, "b", "b v1")
 	writeObject(tc, 1, 1, nil, "c", "c v1")
 
-	tmpDir := writeTmpFiles(tc, 1, map[string]string{
+	tmpDir := writeTmpFiles(t, 1, map[string]string{
 		"a": "a v1",
 		"b": "b v1",
 		"c": "c v1",
 	})
 	defer os.RemoveAll(tmpDir)
 
-	writeFile(tc, tmpDir, "a", "a v2")
-	writeFile(tc, tmpDir, "c", "c v2")
-	writeFile(tc, tmpDir, "d", "d v2")
+	writeFile(t, tmpDir, "a", "a v2")
+	writeFile(t, tmpDir, "c", "c v2")
+	writeFile(t, tmpDir, "d", "d v2")
 
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
 	version, count, err := c.Update(tc.Context(), 1, tmpDir)
-	if err != nil {
-		t.Fatalf("client.UpdateObjects: %v", err)
-	}
-	if version != 2 {
-		t.Errorf("expected update version to be 2, got: %v", version)
-	}
-	if count != 3 {
-		t.Errorf("expected update count to be 3, got: %v", count)
-	}
+	require.NoError(t, err, "client.Update")
+	assert.Equal(t, int64(2), version, "expected update version to be 2")
+	assert.Equal(t, uint32(3), count, "expected update count to be 3")
 
 	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
-	if err != nil {
-		t.Fatalf("client.GetLatest after update: %v", err)
-	}
+	require.NoError(t, err, "client.GetLatest after update")
 
 	assertObjects(t, objects, map[string]string{
 		"a": "a v2",
@@ -602,7 +551,7 @@ func TestUpdateWithManyObjects(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
-	tmpDir := emptyTmpDir(tc)
+	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
 	writeProject(tc, 1, 0)
@@ -612,14 +561,12 @@ func TestUpdateWithManyObjects(t *testing.T) {
 	for i := 0; i < 500; i++ {
 		bytes := make([]byte, 50000)
 		_, err := rand.Read(bytes)
-		if err != nil {
-			t.Fatal("could not generate random bytes")
-		}
+		require.NoError(t, err, "could not generate random bytes")
 
 		content := string(bytes)
 
 		path := fmt.Sprintf("%d", i)
-		writeFile(tc, tmpDir, path, content)
+		writeFile(t, tmpDir, path, content)
 		fixtureFiles[path] = content
 	}
 
@@ -627,20 +574,12 @@ func TestUpdateWithManyObjects(t *testing.T) {
 	defer close(tc.Context())
 
 	version, count, err := c.Update(tc.Context(), 1, tmpDir)
-	if err != nil {
-		t.Fatalf("client.UpdateObjects: %v", err)
-	}
-	if version != 1 {
-		t.Errorf("expected update version to be 1, got: %v", version)
-	}
-	if count != 500 {
-		t.Errorf("expected update count to be 500, got: %v", count)
-	}
+	require.NoError(t, err, "client.Update")
+	assert.Equal(t, int64(1), version, "expected update version to be 1")
+	assert.Equal(t, uint32(500), count, "expected update count to be 500")
 
 	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
-	if err != nil {
-		t.Fatalf("client.GetLatest after update: %v", err)
-	}
+	require.NoError(t, err, "client.GetLatest after update")
 
 	assertObjects(t, objects, fixtureFiles)
 }
@@ -658,21 +597,15 @@ func TestUpdateAndRebuild(t *testing.T) {
 	c, close := createTestClient(tc, fs)
 	defer close(tc.Context())
 
-	tmpDir := emptyTmpDir(tc)
+	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
 	version, count, err := c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 1 {
-		t.Errorf("expected rebuild version to be 1, got: %v", version)
-	}
-	if count != 3 {
-		t.Errorf("expected rebuild count to be 3, got: %v", count)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(1), version, "expected update version to be 1")
+	assert.Equal(t, uint32(3), count, "expected update count to be 3")
 
-	verifyDir(tc, tmpDir, 1, map[string]expectedFile{
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a": {content: "a v1"},
 		"b": {content: "b v1"},
 		"c": {content: "c v1"},
@@ -684,22 +617,14 @@ func TestUpdateAndRebuild(t *testing.T) {
 	})
 
 	err = fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
+	require.NoError(t, err, "fs.Update")
 
 	version, count, err = c.Rebuild(tc.Context(), 1, "", i(2), tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 2 {
-		t.Errorf("expected rebuild version to be 2, got: %v", version)
-	}
-	if count != 2 {
-		t.Errorf("expected rebuild count to be 2, got: %v", count)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(2), version, "expected rebuild version to be 2")
+	assert.Equal(t, uint32(2), count, "expected rebuild count to be 2")
 
-	verifyDir(tc, tmpDir, 2, map[string]expectedFile{
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a": {content: "a v2"},
 		"b": {content: "b v1"},
 		"c": {content: "c v2"},
@@ -718,21 +643,15 @@ func TestUpdateAndRebuildWithIdenticalObjects(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
-	tmpDir := emptyTmpDir(tc)
+	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
 	version, count, err := c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 1 {
-		t.Errorf("expected rebuild version to be 1, got: %v", version)
-	}
-	if count != 3 {
-		t.Errorf("expected rebuild count to be 3, got: %v", version)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(1), version, "expected rebuild version to be 1")
+	assert.Equal(t, uint32(3), count, "expected rebuild count to be 3")
 
-	verifyDir(tc, tmpDir, 1, map[string]expectedFile{
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a": {content: "a v1"},
 		"b": {content: "b v1"},
 		"c": {content: "c v1"},
@@ -740,52 +659,32 @@ func TestUpdateAndRebuildWithIdenticalObjects(t *testing.T) {
 
 	currentTime := time.Now().Local()
 	err = os.Chtimes(filepath.Join(tmpDir, "a"), currentTime, currentTime)
-	if err != nil {
-		t.Fatalf("touch file %v: %v", filepath.Join(tmpDir, "a"), err)
-	}
+	require.NoError(t, err, "touch file %v: %v", filepath.Join(tmpDir, "a"))
 
 	err = os.Chtimes(filepath.Join(tmpDir, "b"), currentTime, currentTime)
-	if err != nil {
-		t.Fatalf("touch file %v: %v", filepath.Join(tmpDir, "b"), err)
-	}
+	require.NoError(t, err, "touch file %v: %v", filepath.Join(tmpDir, "b"))
 
-	writeFile(tc, tmpDir, "c", "c v2")
+	writeFile(t, tmpDir, "c", "c v2")
 
 	version, count, err = c.Update(tc.Context(), 1, tmpDir)
-	if err != nil {
-		t.Fatalf("client.UpdateObjects: %v", err)
-	}
-	if version != 2 {
-		t.Errorf("expected update version to be 2, got: %v", version)
-	}
-	if count != 3 {
-		t.Errorf("expected update count to be 3, got: %v", count)
-	}
+	require.NoError(t, err, "client.Update")
+	assert.Equal(t, int64(2), version, "expected update version to be 2")
+	assert.Equal(t, uint32(3), count, "expected update count to be 3")
 
 	// Reset the tmpdir to remove all state and updates
 	os.RemoveAll(tmpDir)
 	os.Mkdir(tmpDir, 0775)
 
 	version, _, err = c.Rebuild(tc.Context(), 1, "", i(1), tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 1 {
-		t.Errorf("expected rebuild version to be 1, got: %v", version)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(1), version, "expected rebuild version to be 1")
 
 	version, count, err = c.Rebuild(tc.Context(), 1, "", i(2), tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 2 {
-		t.Errorf("expected rebuild version to be 2, got: %v", version)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(2), version, "expected rebuild version to be 2")
 
 	// Only one file should be updated since /a and /b were identical but with a new mod times
-	if count != 1 {
-		t.Errorf("expected rebuild count to be 1, got: %v", count)
-	}
+	assert.Equal(t, uint32(1), count, "expected rebuild version to be 1")
 }
 
 func TestUpdateAndRebuildWithPacked(t *testing.T) {
@@ -803,21 +702,15 @@ func TestUpdateAndRebuildWithPacked(t *testing.T) {
 	c, close := createTestClient(tc, fs)
 	defer close(tc.Context())
 
-	tmpDir := emptyTmpDir(tc)
+	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
 	version, count, err := c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 1 {
-		t.Errorf("expected rebuild version to be 1, got: %v", version)
-	}
-	if count != 3 {
-		t.Errorf("expected rebuild count to be 3, got: %v", count)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(1), version, "expected rebuild version to be 1")
+	assert.Equal(t, uint32(3), count, "expected rebuild count to be 3")
 
-	verifyDir(tc, tmpDir, 1, map[string]expectedFile{
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a/c": {content: "a/c v1"},
 		"a/d": {content: "a/d v1"},
 		"b":   {content: "b v1"},
@@ -834,18 +727,12 @@ func TestUpdateAndRebuildWithPacked(t *testing.T) {
 	}
 
 	version, count, err = c.Rebuild(tc.Context(), 1, "", i(2), tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 2 {
-		t.Errorf("expected rebuild version to be 2, got: %v", version)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(2), version, "expected rebuild version to be 2")
 	// We updated one file in a pack so all of them were rebuilt
-	if count != 3 {
-		t.Errorf("expected rebuild count to be 3, got: %v", count)
-	}
+	assert.Equal(t, uint32(3), count, "expected rebuild count to be 3")
 
-	verifyDir(tc, tmpDir, 2, map[string]expectedFile{
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a/c": {content: "a/c v2"},
 		"a/d": {content: "a/d v1"},
 		"b":   {content: "b v2"},
@@ -866,21 +753,15 @@ func TestUpdateAndRebuildWithIdenticalPackedObjects(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
-	tmpDir := emptyTmpDir(tc)
+	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
 	version, count, err := c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 1 {
-		t.Errorf("expected rebuild version to be 1, got: %v", version)
-	}
-	if count != 3 {
-		t.Errorf("expected rebuild count to be 3, got: %v", count)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(1), version, "expected rebuild version to be 1")
+	assert.Equal(t, uint32(3), count, "expected rebuild count to be 3")
 
-	verifyDir(tc, tmpDir, 1, map[string]expectedFile{
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a/c": {content: "a/c v1"},
 		"a/d": {content: "a/d v1"},
 		"b":   {content: "b v1"},
@@ -888,51 +769,31 @@ func TestUpdateAndRebuildWithIdenticalPackedObjects(t *testing.T) {
 
 	currentTime := time.Now().Local()
 	err = os.Chtimes(filepath.Join(tmpDir, "a/c"), currentTime, currentTime)
-	if err != nil {
-		t.Fatalf("touch file %v: %v", filepath.Join(tmpDir, "a/c"), err)
-	}
+	require.NoError(t, err, "touch file %v: %v", filepath.Join(tmpDir, "a/c"))
 
 	err = os.Chtimes(filepath.Join(tmpDir, "a/d"), currentTime, currentTime)
-	if err != nil {
-		t.Fatalf("touch file %v: %v", filepath.Join(tmpDir, "a/d"), err)
-	}
+	require.NoError(t, err, "touch file %v: %v", filepath.Join(tmpDir, "a/d"))
 
-	writeFile(tc, tmpDir, "b", "b v2")
+	writeFile(t, tmpDir, "b", "b v2")
 
 	version, count, err = c.Update(tc.Context(), 1, tmpDir)
-	if err != nil {
-		t.Fatalf("client.UpdateObjects: %v", err)
-	}
-	if version != 2 {
-		t.Errorf("expected update version to be 2, got: %v", version)
-	}
-	if count != 3 {
-		t.Errorf("expected update count to be 3, got: %v", count)
-	}
+	require.NoError(t, err, "client.Update")
+	assert.Equal(t, int64(2), version, "expected update version to be 2")
+	assert.Equal(t, uint32(3), count, "expected update count to be 3")
 
 	os.RemoveAll(tmpDir)
 	os.Mkdir(tmpDir, 0775)
 
 	version, _, err = c.Rebuild(tc.Context(), 1, "", i(1), tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 1 {
-		t.Errorf("expected rebuild version to be 1, got: %v", version)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(1), version, "expected rebuild version to be 1")
 
 	version, count, err = c.Rebuild(tc.Context(), 1, "", i(2), tmpDir)
-	if err != nil {
-		t.Fatalf("client.Rebuild: %v", err)
-	}
-	if version != 2 {
-		t.Errorf("expected rebuild version to be 2, got: %v", version)
-	}
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(2), version, "expected rebuild version to be 2")
 
 	// Only one file should be updated since /a and /b were identical but with a new mod times
-	if count != 1 {
-		t.Errorf("expected rebuild count to be 1, got: %v", count)
-	}
+	assert.Equal(t, uint32(1), count, "expected rebuild count to be 1")
 }
 
 func TestConcurrentUpdatesSetsCorrectMetadata(t *testing.T) {
@@ -946,7 +807,7 @@ func TestConcurrentUpdatesSetsCorrectMetadata(t *testing.T) {
 	writeObject(tc, 1, 1, nil, "b", "b v1")
 	writeObject(tc, 1, 1, nil, "c", "c v1")
 
-	tmpDir := writeTmpFiles(tc, 1, map[string]string{
+	tmpDir := writeTmpFiles(t, 1, map[string]string{
 		"a": "a v1",
 		"b": "b v1",
 		"c": "c v1",
@@ -960,28 +821,20 @@ func TestConcurrentUpdatesSetsCorrectMetadata(t *testing.T) {
 	})
 
 	err := fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
+	require.NoError(t, err, "fs.Update")
 
-	writeFile(tc, tmpDir, "a", "a v3")
-	writeFile(tc, tmpDir, "d", "d v3")
+	writeFile(t, tmpDir, "a", "a v3")
+	writeFile(t, tmpDir, "d", "d v3")
 
 	c, close := createTestClient(tc, fs)
 	defer close(tc.Context())
 
 	version, count, err := c.Update(tc.Context(), 1, tmpDir)
-	if err != nil {
-		t.Fatalf("client.UpdateObjects: %v", err)
-	}
-	if version != 3 {
-		t.Errorf("expected update version to be 3, got: %v", version)
-	}
-	if count != 2 {
-		t.Errorf("expected update count to be 2, got: %v", count)
-	}
+	require.NoError(t, err, "client.Update")
+	assert.Equal(t, int64(3), version, "expected update version to be 3")
+	assert.Equal(t, uint32(2), count, "expected update count to be 2")
 
-	verifyDir(tc, tmpDir, 3, map[string]expectedFile{
+	verifyDir(t, tmpDir, 3, map[string]expectedFile{
 		"a": {content: "a v3"},
 		"b": {content: "b v1"},
 		"c": {content: "c v2"},
@@ -1002,9 +855,7 @@ func TestDeleteProject(t *testing.T) {
 	defer close(tc.Context())
 
 	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
-	if err != nil {
-		t.Fatalf("client.GetLatest with results: %v", err)
-	}
+	require.NoError(t, err, "client.GetLatest with results")
 
 	assertObjects(t, objects, map[string]string{
 		"b": "b v1",
@@ -1012,12 +863,8 @@ func TestDeleteProject(t *testing.T) {
 	})
 
 	err = c.DeleteProject(tc.Context(), 1)
-	if err != nil {
-		t.Fatalf("client.DeleteProject with results: %v", err)
-	}
+	require.NoError(t, err, "client.DeleteProject with results")
 
 	objects, err = c.Get(tc.Context(), 1, "", nil, toVersion(1))
-	if err == nil {
-		t.Fatalf("client.GetLatest didn't error accessing objects: %v", objects)
-	}
+	require.Error(t, err, "client.GetLatest didn't error accessing objects: %v", objects)
 }
