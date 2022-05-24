@@ -41,9 +41,9 @@ type ServerArgs struct {
 func parseArgs() ServerArgs {
 	port := flag.Int("port", 5051, "GRPC server port")
 	dbUri := flag.String("dburi", "postgres://postgres@127.0.0.1:5432/dl", "Postgres URI")
-	certFile := flag.String("cert", "dev/server.crt", "TLS cert file")
-	keyFile := flag.String("key", "dev/server.key", "TLS key file")
-	pasetoFile := flag.String("paseto", "dev/paseto.pub", "Paseto public key file")
+	certFile := flag.String("cert", "development/server.crt", "TLS cert file")
+	keyFile := flag.String("key", "development/server.key", "TLS key file")
+	pasetoFile := flag.String("paseto", "development/paseto.pub", "Paseto public key file")
 	prof := flag.String("prof", "", "Output CPU profile to this path")
 
 	level := zap.LevelFlag("log", zap.DebugLevel, "Log level")

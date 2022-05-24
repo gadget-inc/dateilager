@@ -56,12 +56,12 @@ bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 js/src/%.client.ts: internal/pb/%.proto
 	cd js && npx protoc --experimental_allow_proto3_optional --ts_out ./src --ts_opt long_type_bigint --proto_path ../internal/pb/ ../$^
 
-dev/server.key:
-	mkcert -cert-file dev/server.crt -key-file dev/server.key localhost
+development/server.key:
+	mkcert -cert-file development/server.crt -key-file development/server.key localhost
 
-dev/server.cert: dev/server.key
+development/server.crt: development/server.key
 
-build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui js/src/fs.client.ts dev/server.cert
+build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui js/src/fs.client.ts development/server.crt
 
 release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o $@ $<
@@ -135,9 +135,9 @@ client-rebuild: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-rebuild: export DL_SKIP_SSL_VERIFICATION=1
 client-rebuild:
 ifndef to_version
-	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)" -dir $(output)
+	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)" -dir $(dir)
 else
-	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -to $(to_version) -prefix "$(prefix)" -dir $(output)
+	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -to $(to_version) -prefix "$(prefix)" -dir $(dir)
 endif
 
 webui: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
@@ -164,8 +164,8 @@ k8s/server.properties:
 
 k8s-deploy: k8s/server.properties k8s-build
 	kubectl create -f k8s/namespace.yaml
-	kubectl -n $(PROJECT) create secret tls server-tls --cert=dev/server.crt --key=dev/server.key
-	kubectl -n $(PROJECT) create secret generic server-paseto --from-file=dev/paseto.pub
+	kubectl -n $(PROJECT) create secret tls server-tls --cert=development/server.crt --key=development/server.key
+	kubectl -n $(PROJECT) create secret generic server-paseto --from-file=development/paseto.pub
 	kubectl -n $(PROJECT) create configmap server-config --from-env-file=k8s/server.properties
 	kubectl -n $(PROJECT) apply -f k8s/pod.yaml
 	kubectl -n $(PROJECT) apply -f k8s/service.yaml
@@ -199,7 +199,7 @@ else
 endif
 
 define load-test
-	ghz --cert=dev/server.crt --key=dev/server.key \
+	ghz --cert=development/server.crt --key=development/server.key \
 		--proto internal/pb/fs.proto --call "pb.Fs.$(1)" \
 		--total $(3) --concurrency $(4) --rps $(if $5,$5,0) \
 		--data-file "scripts/load-tests/$(2)" \
