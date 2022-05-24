@@ -95,7 +95,7 @@ func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, db.CloseFunc
 	return c, func(context.Context) { c.Close(); s.Stop() }
 }
 
-// asserts that the given objects contian all the expected paths and file contents
+// asserts that the given objects contain all the expected paths and file contents
 func assertObjects(t *testing.T, objects []*pb.Object, expected map[string]string) {
 	contents := make(map[string]string)
 
