@@ -24,9 +24,7 @@ func writeProject(tc util.TestCtx, id int32, latestVersion int64, packPatterns .
 		INSERT INTO dl.projects (id, latest_version, pack_patterns)
 		VALUES ($1, $2, $3)
 	`, id, latestVersion, packPatterns)
-	if err != nil {
-		tc.Fatalf("insert project: %v", err)
-	}
+	tc.Require().NoError(err, "insert project")
 }
 
 func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, path, content string, mode fs.FileMode) {
@@ -39,15 +37,11 @@ func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, p
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
 	`, project, start, stop, path, h1, h2, mode, len(contentBytes), false)
-	if err != nil {
-		tc.Fatalf("insert object: %v", err)
-	}
+	tc.Require().NoError(err, "insert object")
 
 	contentEncoder := db.NewContentEncoder()
 	encoded, err := contentEncoder.Encode(contentBytes)
-	if err != nil {
-		tc.Fatalf("encode content: %v", err)
-	}
+	tc.Require().NoError(err, "encode content")
 
 	_, err = conn.Exec(tc.Context(), `
 		INSERT INTO dl.contents (hash, bytes)
@@ -55,9 +49,7 @@ func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, p
 		ON CONFLICT
 		   DO NOTHING
 	`, h1, h2, encoded)
-	if err != nil {
-		tc.Fatalf("insert contents: %v", err)
-	}
+	tc.Require().NoError(err, "insert contents")
 }
 
 func writeObject(tc util.TestCtx, project int64, start int64, stop *int64, path string, contents ...string) {
@@ -95,9 +87,7 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
 	`, project, start, stop, path, h1, h2, 0755, len(contentsTar), true)
-	if err != nil {
-		tc.Fatalf("insert object: %v", err)
-	}
+	tc.Require().NoError(err, "insert object")
 
 	_, err = conn.Exec(tc.Context(), `
 		INSERT INTO dl.contents (hash, bytes, names_tar)
@@ -105,9 +95,7 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 		ON CONFLICT
 		DO NOTHING
 	`, h1, h2, contentsTar, namesTar)
-	if err != nil {
-		tc.Fatalf("insert contents: %v", err)
-	}
+	tc.Require().NoError(err, "insert contents")
 }
 
 func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []byte) {
@@ -124,25 +112,17 @@ func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []
 		}
 
 		err := contentWriter.WriteObject(object, true)
-		if err != nil {
-			tc.Fatalf("write content to TAR: %v", err)
-		}
+		tc.Require().NoError(err, "write content to TAR")
 
 		err = namesWriter.WriteObject(object, false)
-		if err != nil {
-			tc.Fatalf("write name to TAR: %v", err)
-		}
+		tc.Require().NoError(err, "write name to TAR")
 	}
 
 	contentTar, err := contentWriter.BytesAndReset()
-	if err != nil {
-		tc.Fatalf("write content TAR to bytes: %v", err)
-	}
+	tc.Require().NoError(err, "write content TAR to bytes")
 
 	namesTar, err := namesWriter.BytesAndReset()
-	if err != nil {
-		tc.Fatalf("write names TAR to bytes: %v", err)
-	}
+	tc.Require().NoError(err, "write names TAR to bytes")
 
 	return contentTar, namesTar
 }
@@ -156,9 +136,7 @@ func debugProjects(tc util.TestCtx) {
 		SELECT id, latest_version, pack_patterns
 		FROM dl.projects
 	`)
-	if err != nil {
-		tc.Fatalf("debug execute project list: %v", err)
-	}
+	tc.Require().NoError(err, "debug execute project list")
 
 	fmt.Println("\n[DEBUG] Projects")
 	fmt.Println("id,\tlatest_version,\tpack_patterns")
@@ -167,9 +145,7 @@ func debugProjects(tc util.TestCtx) {
 		var id, latestVersion int64
 		var packPatterns []string
 		err = rows.Scan(&id, &latestVersion, &packPatterns)
-		if err != nil {
-			tc.Fatalf("debug scan project: %v", err)
-		}
+		tc.Require().NoError(err, "debug scan project")
 
 		fmt.Printf("%d,\t%d,\t\t%v\n", id, latestVersion, packPatterns)
 	}
@@ -184,9 +160,7 @@ func debugObjects(tc util.TestCtx) {
 		SELECT project, start_version, stop_version, path, mode, size, packed
 		FROM dl.objects
 	`)
-	if err != nil {
-		tc.Fatalf("debug execute object list: %v", err)
-	}
+	tc.Require().NoError(err, "debug execute object list")
 
 	fmt.Println("\n[DEBUG] Objects")
 	fmt.Println("project,\tstart_version,\tstop_version,\tpath,\tmode,\tsize,\tpacked")
@@ -197,9 +171,7 @@ func debugObjects(tc util.TestCtx) {
 		var path string
 		var packed bool
 		err = rows.Scan(&project, &start_version, &stop_version, &path, &mode, &size, &packed)
-		if err != nil {
-			tc.Fatalf("debug scan object: %v", err)
-		}
+		tc.Require().NoError(err, "debug scan object")
 
 		fmt.Printf("%d,\t\t%d,\t\t%d,\t\t%s,\t%d,\t%d,\t%v\n", project, start_version, stop_version, path, mode, size, packed)
 	}

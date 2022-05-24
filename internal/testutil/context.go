@@ -10,12 +10,16 @@ import (
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/jackc/pgx/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
 
 type TestCtx struct {
-	t      *testing.T
+	*assert.Assertions
+	require *require.Assertions
+
 	log    *zap.Logger
 	dbConn *DbTestConnector
 	ctx    context.Context
@@ -33,15 +37,14 @@ func NewTestCtx(t *testing.T, role auth.Role, projects ...int64) TestCtx {
 	})
 
 	dbConn, err := newDbTestConnector(ctx, os.Getenv("DB_URI"))
-	if err != nil {
-		t.Fatalf("connecting to DB: %v", err)
-	}
+	require.NoError(t, err, "connecting to DB")
 
 	return TestCtx{
-		t:      t,
-		log:    zaptest.NewLogger(t),
-		dbConn: dbConn,
-		ctx:    ctx,
+		Assertions: assert.New(t),
+		require:    require.New(t),
+		log:        zaptest.NewLogger(t),
+		dbConn:     dbConn,
+		ctx:        ctx,
 	}
 }
 
@@ -59,18 +62,13 @@ func (tc *TestCtx) Context() context.Context {
 
 func (tc *TestCtx) Connect() pgx.Tx {
 	tx, _, err := tc.dbConn.Connect(tc.ctx)
-	if err != nil {
-		tc.Fatalf("connecting to db: %v", err)
-	}
+	tc.require.NoError(err, "connecting to db")
+
 	return tx
 }
 
-func (tc *TestCtx) Errorf(format string, args ...interface{}) {
-	tc.t.Errorf(format, args...)
-}
-
-func (tc *TestCtx) Fatalf(format string, args ...interface{}) {
-	tc.t.Fatalf(format, args...)
+func (tc *TestCtx) Require() *require.Assertions {
+	return tc.require
 }
 
 func (tc *TestCtx) Close() {
