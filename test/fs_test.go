@@ -11,6 +11,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/klauspost/compress/s2"
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 )
 
@@ -149,23 +150,13 @@ func buildCompressRequest(project int64, fromVersion, toVersion *int64, paths ..
 }
 
 func verifyStreamResults(tc util.TestCtx, results []*pb.Object, expected map[string]expectedObject) {
-	if len(results) != len(expected) {
-		tc.Errorf("expected %v objects, got: %v", len(expected), len(results))
-	}
+	tc.Equal(len(expected), len(results), "expected %v objects", len(expected))
 
 	for _, result := range results {
 		object, ok := expected[result.Path]
-		if !ok {
-			tc.Errorf("did not expect %v in stream results", result.Path)
-		}
-
-		if string(result.Content) != object.content {
-			tc.Errorf("mismatch content for %v expected '%v', got '%v'", result.Path, object.content, string(result.Content))
-		}
-
-		if result.Deleted != object.deleted {
-			tc.Errorf("mismatch deleted flag for %v expected %v, got %v", result.Path, object.deleted, result.Deleted)
-		}
+		tc.True(ok, "did not expect %v in stream results", result.Path)
+		tc.Equal(object.content, string(result.Content), "mismatch content for %v", result.Path)
+		tc.Equal(object.deleted, result.Deleted, "mismatch deleted flag for %v", result.Path)
 	}
 }
 
@@ -181,32 +172,22 @@ func verifyTarResults(tc util.TestCtx, results [][]byte, expected map[string]exp
 			if err == io.EOF {
 				break
 			}
-			if err != nil {
-				tc.Fatalf("failed to read next TAR file %v", err)
-			}
+			tc.Require().NoError(err, "failed to read next TAR file")
 
 			expectedMatch, ok := expected[header.Name]
-			if !ok {
-				tc.Errorf("missing %v in TAR", header.Name)
-			}
+			tc.True(ok, "missing %v in TAR", header.Name)
 
 			count += 1
 
 			var buffer bytes.Buffer
 			_, err = io.Copy(&buffer, tarReader)
-			if err != nil {
-				tc.Fatalf("failed to copy content bytes from TAR %v", err)
-			}
+			tc.Require().NoError(err, "failed to copy content bytes from TAR")
 
-			if !bytes.Equal([]byte(expectedMatch.content), buffer.Bytes()) {
-				tc.Errorf("mismatch content for %v expected '%v', got '%v'", header.Name, expectedMatch.content, buffer.String())
-			}
+			tc.Equal([]byte(expectedMatch.content), buffer.Bytes(), "mismatch content for %v", header.Name)
 		}
 	}
 
-	if count != len(expected) {
-		tc.Errorf("expected %v objects, got: %v", len(expected), count)
-	}
+	tc.Equal(len(expected), count, "expected %v objects", len(expected))
 }
 
 func TestNewProject(t *testing.T) {
@@ -730,9 +711,7 @@ func TestUpdate(t *testing.T) {
 		t.Fatalf("fs.Update: %v", err)
 	}
 
-	if updateStream.response.Version != 2 {
-		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
-	}
+	assert.Equal(t, int64(2), updateStream.response.Version, "expected version 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(prefixQuery(1, nil, "/"), stream)
@@ -762,9 +741,7 @@ func TestEmptyUpdate(t *testing.T) {
 		t.Fatalf("fs.Update: %v", err)
 	}
 
-	if updateStream.response.Version != -1 {
-		tc.Errorf("expected version -1, got: %v", updateStream.response.Version)
-	}
+	assert.Equal(t, int64(-1), updateStream.response.Version, "expected version -1")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(prefixQuery(1, nil, "/"), stream)
@@ -799,9 +776,7 @@ func TestUpdatePackedObject(t *testing.T) {
 		t.Fatalf("fs.Update: %v", err)
 	}
 
-	if updateStream.response.Version != 2 {
-		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
-	}
+	assert.Equal(t, int64(2), updateStream.response.Version, "expected version 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, nil, "/a/c"), stream)
@@ -833,9 +808,7 @@ func TestEmptyUpdatePackedObject(t *testing.T) {
 		t.Fatalf("fs.Update: %v", err)
 	}
 
-	if updateStream.response.Version != -1 {
-		tc.Errorf("expected version -1, got: %v", updateStream.response.Version)
-	}
+	assert.Equal(t, int64(-1), updateStream.response.Version, "expected version -1")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, nil, "/a/c"), stream)
@@ -868,9 +841,7 @@ func TestUpdateDeletePackedObject(t *testing.T) {
 		t.Fatalf("fs.Update: %v", err)
 	}
 
-	if updateStream.response.Version != 2 {
-		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
-	}
+	assert.Equal(t, int64(2), updateStream.response.Version, "expected version 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, nil, "/a/c"), stream)
@@ -898,9 +869,7 @@ func TestUpdateWithNewPatternPackedObject(t *testing.T) {
 		t.Fatalf("fs.Update: %v", err)
 	}
 
-	if updateStream.response.Version != 2 {
-		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
-	}
+	assert.Equal(t, int64(2), updateStream.response.Version, "expected version 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, nil, "/a/b/c"), stream)
@@ -934,9 +903,7 @@ func TestUpdateWithExistingPatternPackedObject(t *testing.T) {
 		t.Fatalf("fs.Update: %v", err)
 	}
 
-	if updateStream.response.Version != 2 {
-		tc.Errorf("expected version 2, got: %v", updateStream.response.Version)
-	}
+	assert.Equal(t, int64(2), updateStream.response.Version, "expected version 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, nil, "/a/b/c"), stream)

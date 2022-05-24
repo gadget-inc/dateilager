@@ -20,8 +20,8 @@ import (
 	"github.com/gadget-inc/dateilager/pkg/client"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -75,26 +75,23 @@ func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, db.CloseFunc
 
 	pb.RegisterFsServer(s, fs)
 	go func() {
-		if err := s.Serve(lis); err != nil {
-			tc.Fatalf("Server exited with error: %v", err)
-		}
+		err := s.Serve(lis)
+		tc.Require().NoError(err, "Server exited")
 	}()
 
 	dialer := func(context.Context, string) (net.Conn, error) {
 		return lis.Dial()
 	}
 
-	conn, err := grpc.DialContext(tc.Context(), "bufnet", grpc.WithContextDialer(dialer), grpc.WithInsecure())
-	if err != nil {
-		tc.Fatalf("Failed to dial bufnet: %v", err)
-	}
+	conn, err := grpc.DialContext(tc.Context(), "bufnet", grpc.WithContextDialer(dialer), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	tc.Require().NoError(err, "Failed to dial bufnet")
 
 	c := client.NewClientConn(conn)
 
 	return c, func(context.Context) { c.Close(); s.Stop() }
 }
 
-// asserts that the given objects contain all the expected paths and file contents
+// assertObjects asserts that the given objects contain all the expected paths and file contents
 func assertObjects(t *testing.T, objects []*pb.Object, expected map[string]string) {
 	contents := make(map[string]string)
 
@@ -109,38 +106,29 @@ func assertObjects(t *testing.T, objects []*pb.Object, expected map[string]strin
 func writeFile(tc util.TestCtx, dir string, path string, content string) {
 	fullPath := filepath.Join(dir, path)
 	err := os.WriteFile(fullPath, []byte(content), 0755)
-	if err != nil {
-		tc.Fatalf("write file %v: %v", path, err)
-	}
+	tc.Require().NoError(err, "write file %v", path)
 }
 
 func emptyTmpDir(tc util.TestCtx) string {
 	dir, err := os.MkdirTemp("", "dateilager_tests_")
-	if err != nil {
-		tc.Fatalf("create temp dir: %v", err)
-	}
+	tc.Require().NoError(err, "create temp dir")
+
 	return dir
 }
 
 func writeTmpFiles(tc util.TestCtx, version int64, files map[string]string) string {
 	dir, err := os.MkdirTemp("", "dateilager_tests_")
-	if err != nil {
-		tc.Fatalf("create temp dir: %v", err)
-	}
+	tc.Require().NoError(err, "create temp dir")
 
 	for name, content := range files {
 		writeFile(tc, dir, name, content)
 	}
 
 	err = client.WriteVersionFile(dir, version)
-	if err != nil {
-		tc.Fatalf("write version file: %v", err)
-	}
+	tc.Require().NoError(err, "write version file")
 
 	_, err = client.DiffAndSummarize(dir)
-	if err != nil {
-		tc.Fatalf("diff and summarize: %v", err)
-	}
+	tc.Require().NoError(err, "diff and summarize")
 
 	return dir
 }
@@ -182,26 +170,17 @@ func verifyDir(tc util.TestCtx, dir string, version int64, files map[string]expe
 		dirEntries[path] = info
 		return nil
 	})
-	if err != nil {
-		tc.Fatalf("walk directory %v: %v", dir, err)
-	}
+	tc.Require().NoError(err, "walk directory %v", dir)
 
 	if maybeEmptyDir != nil {
 		dirEntries[fmt.Sprintf("%s/", *maybeEmptyDir)] = *maybeEmptyInfo
 	}
 
 	fileVersion, err := client.ReadVersionFile(dir)
-	if err != nil {
-		tc.Fatalf("read version file: %v", err)
-	}
+	tc.Require().NoError(err, "read version file")
 
-	if fileVersion != version {
-		tc.Errorf("expected file version %v, got: %v", version, fileVersion)
-	}
-
-	if len(dirEntries) != len(files) {
-		tc.Errorf("expected %v files in %v, got: %v", len(files), dir, len(dirEntries))
-	}
+	tc.Equal(version, fileVersion, "expected file version %v", version)
+	tc.Equal(len(files), len(dirEntries), "expected %v files in %v", len(files), dir)
 
 	for name, file := range files {
 		path := filepath.Join(dir, name)
@@ -213,33 +192,21 @@ func verifyDir(tc util.TestCtx, dir string, version int64, files map[string]expe
 
 		switch file.fileType {
 		case typeDirectory:
-			if !info.IsDir() {
-				tc.Errorf("%v is not a directory", name)
-			}
+			tc.True(info.IsDir(), "%v is not a directory", name)
 
 		case typeSymlink:
-			if info.Mode()&fs.ModeSymlink != fs.ModeSymlink {
-				tc.Errorf("%v is not a symlink", name)
-			}
+			tc.Equal(fs.ModeSymlink, info.Mode()&fs.ModeSymlink, "%v is not a symlink", name)
 
 			target, err := os.Readlink(path)
-			if err != nil {
-				tc.Fatalf("read link %v: %v", path, err)
-			}
+			tc.Require().NoError(err, "read link %v", path)
 
-			if target != file.content {
-				tc.Errorf("symlink target mismatch in %v expected: '%v', got: '%v'", name, file.content, target)
-			}
+			tc.Equal(file.content, target, "symlink target mismatch in %v", name)
 
 		case typeRegular:
 			bytes, err := os.ReadFile(path)
-			if err != nil {
-				tc.Fatalf("read file %v: %v", path, err)
-			}
+			tc.Require().NoError(err, "read file %v", path)
 
-			if string(bytes) != file.content {
-				tc.Errorf("content mismatch in %v expected: '%v', got: '%v'", name, file.content, string(bytes))
-			}
+			tc.Equal(file.content, string(bytes), "content mismatch in %v", name)
 		}
 	}
 }
@@ -357,7 +324,7 @@ func TestGet(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			objects, err := c.Get(tc.Context(), testCase.project, testCase.prefix, testCase.ignores, testCase.vrange)
-			require.NoError(t, err, "client.Get")
+			tc.Require().NoError(err, "client.Get")
 
 			assertObjects(t, objects, testCase.expected)
 		})
