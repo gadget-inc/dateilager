@@ -20,6 +20,8 @@ import (
 	"github.com/gadget-inc/dateilager/pkg/client"
 	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
 )
@@ -93,21 +95,16 @@ func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, db.CloseFunc
 	return c, func(context.Context) { c.Close(); s.Stop() }
 }
 
-func verifyObjects(tc util.TestCtx, objects []*pb.Object, expected map[string]string) {
-	if len(expected) != len(objects) {
-		tc.Errorf("expected %v objects, got: %v", len(expected), len(objects))
-	}
+// asserts that the given objects contain all the expected paths and file contents
+func assertObjects(t *testing.T, objects []*pb.Object, expected map[string]string) {
+	contents := make(map[string]string)
 
 	for _, object := range objects {
-		content, ok := expected[object.Path]
-		if !ok {
-			tc.Fatalf("object path %v not in expected objects", object.Path)
-		}
-
-		if string(object.Content) != content {
-			tc.Errorf("content mismatch for %v expected '%v', got '%v'", object.Path, content, string(object.Content))
-		}
+		contents[object.Path] = string(object.Content)
 	}
+
+	// This gives in a much nicer diff in the error message over asserting each object separately.
+	assert.EqualValues(t, expected, contents, "unexpected contents for objects")
 }
 
 func writeTmpFiles(tc util.TestCtx, files map[string]string) string {
@@ -230,7 +227,7 @@ func TestGetLatestEmpty(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
-	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
+	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
 	if err != nil {
 		t.Fatalf("client.GetLatest empty: %v", err)
 	}
@@ -240,39 +237,7 @@ func TestGetLatestEmpty(t *testing.T) {
 	}
 }
 
-func TestGetLatest(t *testing.T) {
-	tc := util.NewTestCtx(t, auth.Project, 1)
-	defer tc.Close()
-
-	writeProject(tc, 1, 2)
-	writeObject(tc, 1, 1, i(2), "/a", "a v1")
-	writeObject(tc, 1, 1, nil, "/b", "b v1")
-	writeObject(tc, 1, 2, nil, "/c", "c v2")
-
-	c, close := createTestClient(tc, tc.FsApi())
-	defer close(tc.Context())
-
-	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
-	if err != nil {
-		t.Fatalf("client.GetLatest with results: %v", err)
-	}
-
-	verifyObjects(tc, objects, map[string]string{
-		"/b": "b v1",
-		"/c": "c v2",
-	})
-
-	objects, err = c.Get(tc.Context(), 1, "/c", emptyVersionRange)
-	if err != nil {
-		t.Fatalf("client.GetLatest with results: %v", err)
-	}
-
-	verifyObjects(tc, objects, map[string]string{
-		"/c": "c v2",
-	})
-}
-
-func TestGetVersion(t *testing.T) {
+func TestGet(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
@@ -285,34 +250,92 @@ func TestGetVersion(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
-	objects, err := c.Get(tc.Context(), 1, "", toVersion(1))
-	if err != nil {
-		t.Fatalf("client.GetLatest with results: %v", err)
+	testCases := []struct {
+		name     string
+		project  int64
+		prefix   string
+		ignores  []string
+		vrange   client.VersionRange
+		expected map[string]string
+	}{
+		{
+			name:    "get version 1",
+			project: 1,
+			vrange:  toVersion(1),
+			expected: map[string]string{
+				"/a": "a v1",
+				"/b": "b v1",
+			},
+		},
+		{
+			name:    "get version 2",
+			project: 1,
+			vrange:  toVersion(2),
+			expected: map[string]string{
+				"/b": "b v1",
+				"/c": "c v2",
+			},
+		},
+		{
+			name:    "get version with prefix",
+			project: 1,
+			prefix:  "/b",
+			vrange:  toVersion(2),
+			expected: map[string]string{
+				"/b": "b v1",
+			},
+		},
+		{
+			name:    "get latest version",
+			project: 1,
+			vrange:  emptyVersionRange,
+			expected: map[string]string{
+				"/b": "b v1",
+				"/c": "c v2",
+				"/d": "d v3",
+			},
+		},
+		{
+			name:    "get latest version with prefix",
+			project: 1,
+			prefix:  "/c",
+			vrange:  emptyVersionRange,
+			expected: map[string]string{
+				"/c": "c v2",
+			},
+		},
+		{
+			name:    "get latest version with ignores",
+			project: 1,
+			prefix:  "",
+			ignores: []string{"/b"},
+			vrange:  emptyVersionRange,
+			expected: map[string]string{
+				"/c": "c v2",
+				"/d": "d v3",
+			},
+		},
+		{
+			name:    "get latest version with ignores and deleted files",
+			project: 1,
+			prefix:  "",
+			ignores: []string{"/a"},
+			vrange:  fromVersion(1), // makes sure the query includes deleted files
+			expected: map[string]string{
+				"/c": "c v2",
+				"/d": "d v3",
+			},
+		},
 	}
 
-	verifyObjects(tc, objects, map[string]string{
-		"/a": "a v1",
-		"/b": "b v1",
-	})
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			objects, err := c.Get(tc.Context(), testCase.project, testCase.prefix, testCase.ignores, testCase.vrange)
+			require.NoError(t, err, "client.Get")
 
-	objects, err = c.Get(tc.Context(), 1, "", toVersion(2))
-	if err != nil {
-		t.Fatalf("client.GetLatest with results: %v", err)
+			assertObjects(t, objects, testCase.expected)
+		})
 	}
-
-	verifyObjects(tc, objects, map[string]string{
-		"/b": "b v1",
-		"/c": "c v2",
-	})
-
-	objects, err = c.Get(tc.Context(), 1, "/b", toVersion(2))
-	if err != nil {
-		t.Fatalf("client.GetLatest with results: %v", err)
-	}
-
-	verifyObjects(tc, objects, map[string]string{
-		"/b": "b v1",
-	})
 }
 
 func TestGetVersionMissingProject(t *testing.T) {
@@ -322,7 +345,7 @@ func TestGetVersionMissingProject(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
-	objects, err := c.Get(tc.Context(), 1, "", toVersion(1))
+	objects, err := c.Get(tc.Context(), 1, "", nil, toVersion(1))
 	if err == nil {
 		t.Fatalf("client.GetLatest didn't error accessing objects: %v", objects)
 	}
@@ -581,12 +604,12 @@ func TestUpdateObjects(t *testing.T) {
 		t.Errorf("expected update count to be 3, got: %v", count)
 	}
 
-	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
+	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
 	if err != nil {
 		t.Fatalf("client.GetLatest after update: %v", err)
 	}
 
-	verifyObjects(tc, objects, map[string]string{
+	assertObjects(t, objects, map[string]string{
 		"/a": "a v2",
 		"/b": "b v1",
 		"/c": "c v2",
@@ -634,12 +657,12 @@ func TestUpdateWithManyObjects(t *testing.T) {
 		t.Errorf("expected update count to be 500, got: %v", count)
 	}
 
-	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
+	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
 	if err != nil {
 		t.Fatalf("client.GetLatest after update: %v", err)
 	}
 
-	verifyObjects(tc, objects, fixtureFiles)
+	assertObjects(t, objects, fixtureFiles)
 }
 
 func TestUpdateObjectsWithMissingFile(t *testing.T) {
@@ -683,12 +706,12 @@ func TestUpdateObjectsWithMissingFile(t *testing.T) {
 		t.Errorf("expected update count to be 3, got: %v", count)
 	}
 
-	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
+	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
 	if err != nil {
 		t.Fatalf("client.GetLatest after update: %v", err)
 	}
 
-	verifyObjects(tc, objects, map[string]string{
+	assertObjects(t, objects, map[string]string{
 		"/a": "a v2",
 		"/b": "b v1",
 	})
@@ -1000,12 +1023,12 @@ func TestDeleteProject(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
-	objects, err := c.Get(tc.Context(), 1, "", emptyVersionRange)
+	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
 	if err != nil {
 		t.Fatalf("client.GetLatest with results: %v", err)
 	}
 
-	verifyObjects(tc, objects, map[string]string{
+	assertObjects(t, objects, map[string]string{
 		"/b": "b v1",
 		"/c": "c v2",
 	})
@@ -1015,7 +1038,7 @@ func TestDeleteProject(t *testing.T) {
 		t.Fatalf("client.DeleteProject with results: %v", err)
 	}
 
-	objects, err = c.Get(tc.Context(), 1, "", toVersion(1))
+	objects, err = c.Get(tc.Context(), 1, "", nil, toVersion(1))
 	if err == nil {
 		t.Fatalf("client.GetLatest didn't error accessing objects: %v", objects)
 	}

@@ -130,7 +130,7 @@ func parseGetArgs(args []string) (*sharedArgs, *getArgs, error) {
 }
 
 func (a *getArgs) run(ctx context.Context, c *client.Client) error {
-	objects, err := c.Get(ctx, a.project, a.prefix, a.vrange)
+	objects, err := c.Get(ctx, a.project, a.prefix, nil, a.vrange)
 	if err != nil {
 		return fmt.Errorf("could not fetch data: %w", err)
 	}

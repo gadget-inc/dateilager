@@ -144,12 +144,13 @@ func (c *Client) DeleteProject(ctx context.Context, project int64) error {
 	return nil
 }
 
-func (c *Client) Get(ctx context.Context, project int64, prefix string, vrange VersionRange) ([]*pb.Object, error) {
+func (c *Client) Get(ctx context.Context, project int64, prefix string, ignores []string, vrange VersionRange) ([]*pb.Object, error) {
 	ctx, span := telemetry.Start(ctx, "client.get", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Prefix.Attribute(prefix),
 		key.FromVersion.Attribute(vrange.From),
 		key.ToVersion.Attribute(vrange.To),
+		key.Ignores.Attribute(ignores),
 	))
 	defer span.End()
 
@@ -159,6 +160,7 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, vrange V
 		Path:        prefix,
 		IsPrefix:    true,
 		WithContent: true,
+		Ignores:     ignores,
 	}
 
 	request := &pb.GetRequest{

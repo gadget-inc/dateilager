@@ -134,7 +134,7 @@ type VersionData struct {
 
 func fetchVersionData(ctx context.Context, dlc *client.Client, project, version int64) (*VersionData, error) {
 	vrange := client.VersionRange{From: nil, To: &version}
-	get, err := dlc.Get(ctx, project, "", vrange)
+	get, err := dlc.Get(ctx, project, "", nil, vrange)
 	if err != nil {
 		return nil, err
 	}

@@ -32,6 +32,7 @@ const (
 	TotalObjectsCount = Int64Key("dl.total_objects_count")
 	Version           = Int64Key("dl.version")
 	Worker            = IntKey("dl.worker")
+	Ignores           = StringSliceKey("dl.ignores")
 )
 
 type BoolKey string

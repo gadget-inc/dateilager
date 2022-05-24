@@ -169,6 +169,7 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 			  AND o.start_version <= $3
 			  AND o.stop_version > $2
 			  AND o.stop_version <= $3
+			  AND o.path NOT LIKE ALL($5::text[])
 			  AND o.path NOT IN (SELECT path FROM updated_files)
 			ORDER BY o.path
 		)
