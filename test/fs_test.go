@@ -12,6 +12,7 @@ import (
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/klauspost/compress/s2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )
 
@@ -149,18 +150,18 @@ func buildCompressRequest(project int64, fromVersion, toVersion *int64, paths ..
 	}
 }
 
-func verifyStreamResults(tc util.TestCtx, results []*pb.Object, expected map[string]expectedObject) {
-	tc.Equal(len(expected), len(results), "expected %v objects", len(expected))
+func verifyStreamResults(t *testing.T, results []*pb.Object, expected map[string]expectedObject) {
+	assert.Equal(t, len(expected), len(results), "expected %v objects", len(expected))
 
 	for _, result := range results {
 		object, ok := expected[result.Path]
-		tc.True(ok, "did not expect %v in stream results", result.Path)
-		tc.Equal(object.content, string(result.Content), "mismatch content for %v", result.Path)
-		tc.Equal(object.deleted, result.Deleted, "mismatch deleted flag for %v", result.Path)
+		assert.True(t, ok, "did not expect %v in stream results", result.Path)
+		assert.Equal(t, object.content, string(result.Content), "mismatch content for %v", result.Path)
+		assert.Equal(t, object.deleted, result.Deleted, "mismatch deleted flag for %v", result.Path)
 	}
 }
 
-func verifyTarResults(tc util.TestCtx, results [][]byte, expected map[string]expectedObject) {
+func verifyTarResults(t *testing.T, results [][]byte, expected map[string]expectedObject) {
 	count := 0
 
 	for _, result := range results {
@@ -172,22 +173,22 @@ func verifyTarResults(tc util.TestCtx, results [][]byte, expected map[string]exp
 			if err == io.EOF {
 				break
 			}
-			tc.Require().NoError(err, "failed to read next TAR file")
+			require.NoError(t, err, "failed to read next TAR file")
 
 			expectedMatch, ok := expected[header.Name]
-			tc.True(ok, "missing %v in TAR", header.Name)
+			assert.True(t, ok, "missing %v in TAR", header.Name)
 
 			count += 1
 
 			var buffer bytes.Buffer
 			_, err = io.Copy(&buffer, tarReader)
-			tc.Require().NoError(err, "failed to copy content bytes from TAR")
+			require.NoError(t, err, "failed to copy content bytes from TAR")
 
-			tc.Equal([]byte(expectedMatch.content), buffer.Bytes(), "mismatch content for %v", header.Name)
+			assert.Equal(t, []byte(expectedMatch.content), buffer.Bytes(), "mismatch content for %v", header.Name)
 		}
 	}
 
-	tc.Equal(len(expected), count, "expected %v objects", len(expected))
+	assert.Equal(t, len(expected), count, "expected %v objects", len(expected))
 }
 
 func TestNewProject(t *testing.T) {
@@ -197,20 +198,14 @@ func TestNewProject(t *testing.T) {
 	fs := tc.FsApi()
 
 	_, err := fs.NewProject(tc.Context(), &pb.NewProjectRequest{Id: 1})
-	if err != nil {
-		t.Fatalf("fs.NewProject: %v", err)
-	}
+	require.NoError(t, err, "fs.NewProject")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 
 	err = fs.Get(&pb.GetRequest{Project: 1}, stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	if len(stream.results) != 0 {
-		t.Fatalf("stream results should be empty: %v", stream.results)
-	}
+	require.Empty(t, stream.results, "stream results should be empty")
 }
 
 func TestNewProjectWithTemplate(t *testing.T) {
@@ -226,18 +221,14 @@ func TestNewProjectWithTemplate(t *testing.T) {
 	fs := tc.FsApi()
 
 	_, err := fs.NewProject(tc.Context(), &pb.NewProjectRequest{Id: 2, Template: i(1)})
-	if err != nil {
-		t.Fatalf("fs.NewProject: %v", err)
-	}
+	require.NoError(t, err, "fs.NewProject")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 
 	err = fs.Get(prefixQuery(2, nil, ""), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/b": {content: "b v3"},
 		"/c": {content: "c v3"},
 	})
@@ -253,13 +244,9 @@ func TestGetEmpty(t *testing.T) {
 	stream := &mockGetServer{ctx: tc.Context()}
 
 	err := fs.Get(&pb.GetRequest{Project: 1}, stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	if len(stream.results) != 0 {
-		t.Fatalf("stream results should be empty: %v", stream.results)
-	}
+	require.Empty(t, stream.results, "stream results should be empty")
 }
 
 func TestGetExactlyOne(t *testing.T) {
@@ -274,11 +261,9 @@ func TestGetExactlyOne(t *testing.T) {
 	stream := &mockGetServer{ctx: tc.Context()}
 
 	err := fs.Get(exactQuery(1, nil, "/a"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a": {content: ""},
 	})
 }
@@ -297,11 +282,9 @@ func TestGetPrefix(t *testing.T) {
 	stream := &mockGetServer{ctx: tc.Context()}
 
 	err := fs.Get(prefixQuery(1, nil, "/a"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/a": {content: ""},
 		"/a/b": {content: ""},
 	})
@@ -323,11 +306,9 @@ func TestGetWithIgnorePattern(t *testing.T) {
 	stream := &mockGetServer{ctx: tc.Context()}
 
 	err := fs.Get(prefixQuery(1, nil, "/a", "/a/b", "/a/h"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/e/f": {content: ""},
 		"/a/e/g": {content: ""},
 	})
@@ -348,11 +329,9 @@ func TestGetRange(t *testing.T) {
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err := fs.Get(rangeQuery(1, i(1), i(2), ""), stream)
-	if err != nil {
-		t.Fatalf("fs.Get 1 to 2: %v", err)
-	}
+	require.NoError(t, err, "fs.Get 1 to 2")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/b": {
 			content: "b v2",
 			deleted: false,
@@ -361,11 +340,9 @@ func TestGetRange(t *testing.T) {
 
 	stream = &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(rangeQuery(1, i(1), i(3), ""), stream)
-	if err != nil {
-		t.Fatalf("fs.Get 1 to 3: %v", err)
-	}
+	require.NoError(t, err, "fs.Get 1 to 3")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a": {
 			content: "",
 			deleted: true,
@@ -388,11 +365,9 @@ func TestGetDeleteAll(t *testing.T) {
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err := fs.Get(rangeQuery(1, i(1), i(2), ""), stream)
-	if err != nil {
-		t.Fatalf("fs.Get 1 to 2: %v", err)
-	}
+	require.NoError(t, err, "fs.Get 1 to 2")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a": {
 			content: "",
 			deleted: true,
@@ -401,11 +376,9 @@ func TestGetDeleteAll(t *testing.T) {
 
 	stream = &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(rangeQuery(1, i(1), i(3), ""), stream)
-	if err != nil {
-		t.Fatalf("fs.Get 1 to 3: %v", err)
-	}
+	require.NoError(t, err, "fs.Get 1 to 3")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a": {
 			content: "",
 			deleted: true,
@@ -422,11 +395,9 @@ func TestGetDeleteAll(t *testing.T) {
 
 	stream = &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(rangeQuery(1, i(2), i(3), ""), stream)
-	if err != nil {
-		t.Fatalf("fs.Get 2 to 3: %v", err)
-	}
+	require.NoError(t, err, "fs.Get 2 to 3")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/b": {
 			content: "",
 			deleted: true,
@@ -451,31 +422,25 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err := fs.Get(exactQuery(1, i(1), "/a"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get version 1: %v", err)
-	}
+	require.NoError(t, err, "fs.Get version 1")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a": {content: "v1"},
 	})
 
 	stream = &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, i(2), "/a"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get version 2: %v", err)
-	}
+	require.NoError(t, err, "fs.Get version 2")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a": {content: "v2"},
 	})
 
 	stream = &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, i(3), "/a"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get version 3: %v", err)
-	}
+	require.NoError(t, err, "fs.Get version 3")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a": {content: "v3"},
 	})
 }
@@ -493,11 +458,9 @@ func TestGetWithoutContent(t *testing.T) {
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err := fs.Get(noContentQuery(1, nil, ""), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a": {content: ""},
 		"/b": {content: ""},
 		"/c": {content: ""},
@@ -517,15 +480,11 @@ func TestGetCompress(t *testing.T) {
 
 	stream := &mockGetCompressServer{ctx: tc.Context()}
 	err := fs.GetCompress(buildCompressRequest(1, nil, nil, ""), stream)
-	if err != nil {
-		t.Fatalf("fs.GetCompress: %v", err)
-	}
+	require.NoError(t, err, "fs.GetCompress")
 
-	if len(stream.results) != 1 {
-		t.Errorf("expected 1 TAR files, got: %v", len(stream.results))
-	}
+	assert.Equal(t, 1, len(stream.results), "expected 1 TAR files")
 
-	verifyTarResults(tc, stream.results, map[string]expectedObject{
+	verifyTarResults(t, stream.results, map[string]expectedObject{
 		"/a": {content: "v3"},
 	})
 }
@@ -544,15 +503,11 @@ func TestGetCompressWithIgnorePattern(t *testing.T) {
 
 	stream := &mockGetCompressServer{ctx: tc.Context()}
 	err := fs.GetCompress(buildCompressRequest(1, nil, nil, "", "/a/e"), stream)
-	if err != nil {
-		t.Fatalf("fs.GetCompress: %v", err)
-	}
+	require.NoError(t, err, "fs.GetCompress")
 
-	if len(stream.results) != 1 {
-		t.Errorf("expected 1 TAR files, got: %v", len(stream.results))
-	}
+	assert.Equal(t, 1, len(stream.results), "expected 1 TAR files")
 
-	verifyTarResults(tc, stream.results, map[string]expectedObject{
+	verifyTarResults(t, stream.results, map[string]expectedObject{
 		"/a/b/c": {content: "a/b/c v1"},
 		"/a/b/d": {content: "a/b/d v1"},
 	})
@@ -575,11 +530,9 @@ func TestGetPackedObjects(t *testing.T) {
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err := fs.Get(prefixQuery(1, nil, "/a"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/c": {content: "a/c v1"},
 		"/a/d": {content: "a/d v1"},
 		"/a/e": {content: "a/e v1"},
@@ -602,11 +555,9 @@ func TestGetPackedObjectsWithoutContent(t *testing.T) {
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err := fs.Get(noContentQuery(1, nil, "/a"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/c": {content: ""},
 		"/a/d": {content: ""},
 		"/a/e": {content: ""},
@@ -627,11 +578,9 @@ func TestGetObjectWithinPack(t *testing.T) {
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err := fs.Get(exactQuery(1, nil, "/a/b"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/b": {content: "a/b v1"},
 	})
 }
@@ -654,11 +603,9 @@ func TestGetObjectWithinPatternPack(t *testing.T) {
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err := fs.Get(exactQuery(1, nil, "/a/b/c"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/b/c": {content: "a/b/c v1"},
 	})
 }
@@ -678,15 +625,11 @@ func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
 
 	stream := &mockGetCompressServer{ctx: tc.Context()}
 	err := fs.GetCompress(buildCompressRequest(1, nil, nil, ""), stream)
-	if err != nil {
-		t.Fatalf("fs.GetCompress: %v", err)
-	}
+	require.NoError(t, err, "fs.GetCompress")
 
-	if len(stream.results) != 2 {
-		t.Errorf("expected 2 TAR files, got: %v", len(stream.results))
-	}
+	assert.Equal(t, 2, len(stream.results), "expected 2 TAR files")
 
-	verifyTarResults(tc, stream.results, map[string]expectedObject{
+	verifyTarResults(t, stream.results, map[string]expectedObject{
 		"/a/c": {content: "a/c v1"},
 		"/a/d": {content: "a/d v1"},
 		"/b":   {content: "b v2"},
@@ -707,19 +650,15 @@ func TestUpdate(t *testing.T) {
 		"/a": {content: "v2"},
 	})
 	err := fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
+	require.NoError(t, err, "fs.Update")
 
 	assert.Equal(t, int64(2), updateStream.response.Version, "expected version 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(prefixQuery(1, nil, "/"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a": {content: "v2"},
 		"/b": {content: "v1"},
 	})
@@ -737,19 +676,15 @@ func TestEmptyUpdate(t *testing.T) {
 
 	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{})
 	err := fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
+	require.NoError(t, err, "fs.Update")
 
 	assert.Equal(t, int64(-1), updateStream.response.Version, "expected version -1")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(prefixQuery(1, nil, "/"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a": {content: "v1"},
 		"/b": {content: "v1"},
 	})
@@ -772,19 +707,15 @@ func TestUpdatePackedObject(t *testing.T) {
 		"/a/c": {content: "a/c v2"},
 	})
 	err := fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
+	require.NoError(t, err, "fs.Update")
 
 	assert.Equal(t, int64(2), updateStream.response.Version, "expected version 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, nil, "/a/c"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/c": {content: "a/c v2"},
 	})
 }
@@ -804,19 +735,15 @@ func TestEmptyUpdatePackedObject(t *testing.T) {
 
 	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{})
 	err := fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
+	require.NoError(t, err, "fs.Update")
 
 	assert.Equal(t, int64(-1), updateStream.response.Version, "expected version -1")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, nil, "/a/c"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/c": {content: "a/c v1"},
 	})
 }
@@ -837,19 +764,15 @@ func TestUpdateDeletePackedObject(t *testing.T) {
 		"/a/c": {deleted: true},
 	})
 	err := fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
+	require.NoError(t, err, "fs.Update")
 
 	assert.Equal(t, int64(2), updateStream.response.Version, "expected version 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, nil, "/a/c"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{})
+	verifyStreamResults(t, stream.results, map[string]expectedObject{})
 }
 
 func TestUpdateWithNewPatternPackedObject(t *testing.T) {
@@ -865,19 +788,15 @@ func TestUpdateWithNewPatternPackedObject(t *testing.T) {
 		"/a/b/c": {content: "a/b/c v2"},
 	})
 	err := fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
+	require.NoError(t, err, "fs.Update")
 
 	assert.Equal(t, int64(2), updateStream.response.Version, "expected version 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, nil, "/a/b/c"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/b/c": {content: "a/b/c v2"},
 	})
 }
@@ -899,19 +818,15 @@ func TestUpdateWithExistingPatternPackedObject(t *testing.T) {
 		"/a/b/c": {content: "a/b/c v2"},
 	})
 	err := fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
+	require.NoError(t, err, "fs.Update")
 
 	assert.Equal(t, int64(2), updateStream.response.Version, "expected version 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(exactQuery(1, nil, "/a/b/c"), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/b/c": {content: "a/b/c v2"},
 	})
 }
@@ -927,30 +842,22 @@ func TestSnapshotAndReset(t *testing.T) {
 	fs := tc.FsApi()
 
 	snapshotResponse, err := fs.Snapshot(tc.Context(), &pb.SnapshotRequest{})
-	if err != nil {
-		t.Fatalf("fs.Snapshot: %v", err)
-	}
+	require.NoError(t, err, "fs.Snapshot")
 
 	project := snapshotResponse.Projects[0]
-	if project.Id != 1 || project.Version != 1 {
-		t.Errorf("expected snaptshotted project (1, 1) got (%v, %v)", project.Id, project.Version)
-	}
+	assert.True(t, project.Id == 1 && project.Version == 1, "expected snaptshotted project (1, 1) got (%v, %v)", project.Id, project.Version)
 
 	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
 		"/a/c": {content: "a/c v2"},
 	})
 	err = fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
+	require.NoError(t, err, "fs.Update")
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(prefixQuery(1, nil, ""), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/c": {content: "a/c v2"},
 		"/a/d": {content: "a/d v1"},
 	})
@@ -960,17 +867,13 @@ func TestSnapshotAndReset(t *testing.T) {
 	_, err = fs.Reset(tc.Context(), &pb.ResetRequest{
 		Projects: snapshotResponse.Projects,
 	})
-	if err != nil {
-		t.Fatalf("fs.Reset: %v", err)
-	}
+	require.NoError(t, err, "fs.Reset")
 
 	stream = &mockGetServer{ctx: tc.Context()}
 	err = fs.Get(prefixQuery(1, nil, ""), stream)
-	if err != nil {
-		t.Fatalf("fs.Get: %v", err)
-	}
+	require.NoError(t, err, "fs.Get")
 
-	verifyStreamResults(tc, stream.results, map[string]expectedObject{
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/c": {content: "a/c v1"},
 		"/a/d": {content: "a/d v1"},
 	})
@@ -987,9 +890,7 @@ func TestResetAll(t *testing.T) {
 	fs := tc.FsApi()
 
 	_, err := fs.Reset(tc.Context(), &pb.ResetRequest{})
-	if err != nil {
-		t.Fatalf("fs.Reset: %v", err)
-	}
+	require.NoError(t, err, "fs.Reset")
 
 	writeProject(tc, 1, 1)
 }
