@@ -92,8 +92,8 @@ func createTestClient(tc util.TestCtx, fs *api.Fs) (*client.Client, db.CloseFunc
 	return c, func(context.Context) { c.Close(); s.Stop() }
 }
 
-// assertObjects asserts that the given objects contain all the expected paths and file contents
-func assertObjects(t *testing.T, objects []*pb.Object, expected map[string]string) {
+// verifyObjects asserts that the given objects contain all the expected paths and file contents
+func verifyObjects(t *testing.T, objects []*pb.Object, expected map[string]string) {
 	contents := make(map[string]string)
 
 	for _, object := range objects {
@@ -323,7 +323,7 @@ func TestGet(t *testing.T) {
 			objects, err := c.Get(tc.Context(), testCase.project, testCase.prefix, testCase.ignores, testCase.vrange)
 			require.NoError(t, err, "client.Get")
 
-			assertObjects(t, objects, testCase.expected)
+			verifyObjects(t, objects, testCase.expected)
 		})
 	}
 }
@@ -539,7 +539,7 @@ func TestUpdateObjects(t *testing.T) {
 	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
 	require.NoError(t, err, "client.GetLatest after update")
 
-	assertObjects(t, objects, map[string]string{
+	verifyObjects(t, objects, map[string]string{
 		"a": "a v2",
 		"b": "b v1",
 		"c": "c v2",
@@ -581,7 +581,7 @@ func TestUpdateWithManyObjects(t *testing.T) {
 	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
 	require.NoError(t, err, "client.GetLatest after update")
 
-	assertObjects(t, objects, fixtureFiles)
+	verifyObjects(t, objects, fixtureFiles)
 }
 
 func TestUpdateAndRebuild(t *testing.T) {
@@ -857,7 +857,7 @@ func TestDeleteProject(t *testing.T) {
 	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
 	require.NoError(t, err, "client.GetLatest with results")
 
-	assertObjects(t, objects, map[string]string{
+	verifyObjects(t, objects, map[string]string{
 		"b": "b v1",
 		"c": "c v2",
 	})

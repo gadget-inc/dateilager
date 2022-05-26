@@ -294,24 +294,50 @@ func TestGetWithIgnorePattern(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
-	writeProject(tc, 1, 1)
+	writeProject(tc, 1, 3)
 	writeObject(tc, 1, 1, nil, "/a/b/c")
 	writeObject(tc, 1, 1, nil, "/a/b/d")
 	writeObject(tc, 1, 1, nil, "/a/e/f")
 	writeObject(tc, 1, 1, nil, "/a/e/g")
-	writeObject(tc, 1, 1, nil, "/a/h/i")
-	writeObject(tc, 1, 1, nil, "/j/k")
+	writeObject(tc, 1, 2, nil, "/a/e/h")
+	writeObject(tc, 1, 1, nil, "/a/i/j")
+	writeObject(tc, 1, 1, i(2), "/a/i/k") // deleted at version 2
+	writeObject(tc, 1, 1, nil, "/l/m")
 
 	fs := tc.FsApi()
-	stream := &mockGetServer{ctx: tc.Context()}
 
-	err := fs.Get(prefixQuery(1, nil, "/a", "/a/b", "/a/h"), stream)
-	require.NoError(t, err, "fs.Get")
+	testCases := []struct {
+		name     string
+		req      *pb.GetRequest
+		expected map[string]expectedObject
+	}{
+		{
+			name: "prefix query",
+			req:  prefixQuery(1, nil, "/a", "/a/b", "/a/i"),
+			expected: map[string]expectedObject{
+				"/a/e/f": {content: ""},
+				"/a/e/g": {content: ""},
+				"/a/e/h": {content: ""},
+			},
+		},
+		{
+			name: "range query",
+			req:  rangeQuery(1, i(1), nil, "/a", "/a/b", "/a/i"),
+			expected: map[string]expectedObject{
+				"/a/e/h": {content: ""},
+			},
+		},
+	}
 
-	verifyStreamResults(t, stream.results, map[string]expectedObject{
-		"/a/e/f": {content: ""},
-		"/a/e/g": {content: ""},
-	})
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stream := &mockGetServer{ctx: tc.Context()}
+			err := fs.Get(testCase.req, stream)
+			require.NoError(t, err, "fs.Get")
+
+			verifyStreamResults(t, stream.results, testCase.expected)
+		})
+	}
 }
 
 func TestGetRange(t *testing.T) {
@@ -327,29 +353,44 @@ func TestGetRange(t *testing.T) {
 
 	fs := tc.FsApi()
 
-	stream := &mockGetServer{ctx: tc.Context()}
-	err := fs.Get(rangeQuery(1, i(1), i(2), ""), stream)
-	require.NoError(t, err, "fs.Get 1 to 2")
-
-	verifyStreamResults(t, stream.results, map[string]expectedObject{
-		"/b": {
-			content: "b v2",
-			deleted: false,
+	testCases := []struct {
+		name     string
+		req      *pb.GetRequest
+		expected map[string]expectedObject
+	}{
+		{
+			name: "1 to 2",
+			req:  rangeQuery(1, i(1), i(2), ""),
+			expected: map[string]expectedObject{
+				"/b": {
+					content: "b v2",
+					deleted: false,
+				},
+			},
 		},
-	})
-
-	stream = &mockGetServer{ctx: tc.Context()}
-	err = fs.Get(rangeQuery(1, i(1), i(3), ""), stream)
-	require.NoError(t, err, "fs.Get 1 to 3")
-
-	verifyStreamResults(t, stream.results, map[string]expectedObject{
-		"/a": {
-			content: "",
-			deleted: true,
+		{
+			name: "1 to 3",
+			req:  rangeQuery(1, i(1), i(3), ""),
+			expected: map[string]expectedObject{
+				"/a": {
+					content: "",
+					deleted: true,
+				},
+				"/b": {content: "b v3"},
+				"/c": {content: ""},
+			},
 		},
-		"/b": {content: "b v3"},
-		"/c": {content: ""},
-	})
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stream := &mockGetServer{ctx: tc.Context()}
+			err := fs.Get(testCase.req, stream)
+			require.NoError(t, err, "fs.Get")
+
+			verifyStreamResults(t, stream.results, testCase.expected)
+		})
+	}
 }
 
 func TestGetDeleteAll(t *testing.T) {
@@ -363,50 +404,64 @@ func TestGetDeleteAll(t *testing.T) {
 
 	fs := tc.FsApi()
 
-	stream := &mockGetServer{ctx: tc.Context()}
-	err := fs.Get(rangeQuery(1, i(1), i(2), ""), stream)
-	require.NoError(t, err, "fs.Get 1 to 2")
+	testCases := []struct {
+		name     string
+		req      *pb.GetRequest
+		expected map[string]expectedObject
+	}{
+		{
+			name: "1 to 2",
+			req:  rangeQuery(1, i(1), i(2), ""),
+			expected: map[string]expectedObject{
+				"/a": {
+					content: "",
+					deleted: true,
+				},
+			},
+		},
+		{
+			name: "1 to 3",
+			req:  rangeQuery(1, i(1), i(3), ""),
+			expected: map[string]expectedObject{
+				"/a": {
+					content: "",
+					deleted: true,
+				},
+				"/b": {
+					content: "",
+					deleted: true,
+				},
+				"/c": {
+					content: "",
+					deleted: true,
+				},
+			},
+		},
+		{
+			name: "2 to 3",
+			req:  rangeQuery(1, i(2), i(3), ""),
+			expected: map[string]expectedObject{
+				"/b": {
+					content: "",
+					deleted: true,
+				},
+				"/c": {
+					content: "",
+					deleted: true,
+				},
+			},
+		},
+	}
 
-	verifyStreamResults(t, stream.results, map[string]expectedObject{
-		"/a": {
-			content: "",
-			deleted: true,
-		},
-	})
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stream := &mockGetServer{ctx: tc.Context()}
+			err := fs.Get(testCase.req, stream)
+			require.NoError(t, err, "fs.Get")
 
-	stream = &mockGetServer{ctx: tc.Context()}
-	err = fs.Get(rangeQuery(1, i(1), i(3), ""), stream)
-	require.NoError(t, err, "fs.Get 1 to 3")
-
-	verifyStreamResults(t, stream.results, map[string]expectedObject{
-		"/a": {
-			content: "",
-			deleted: true,
-		},
-		"/b": {
-			content: "",
-			deleted: true,
-		},
-		"/c": {
-			content: "",
-			deleted: true,
-		},
-	})
-
-	stream = &mockGetServer{ctx: tc.Context()}
-	err = fs.Get(rangeQuery(1, i(2), i(3), ""), stream)
-	require.NoError(t, err, "fs.Get 2 to 3")
-
-	verifyStreamResults(t, stream.results, map[string]expectedObject{
-		"/b": {
-			content: "",
-			deleted: true,
-		},
-		"/c": {
-			content: "",
-			deleted: true,
-		},
-	})
+			verifyStreamResults(t, stream.results, testCase.expected)
+		})
+	}
 }
 
 func TestGetExactlyOneVersioned(t *testing.T) {
@@ -420,29 +475,43 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 
 	fs := tc.FsApi()
 
-	stream := &mockGetServer{ctx: tc.Context()}
-	err := fs.Get(exactQuery(1, i(1), "/a"), stream)
-	require.NoError(t, err, "fs.Get version 1")
+	testCases := []struct {
+		name     string
+		req      *pb.GetRequest
+		expected map[string]expectedObject
+	}{
+		{
+			name: "version 1",
+			req:  exactQuery(1, i(1), "/a"),
+			expected: map[string]expectedObject{
+				"/a": {content: "v1"},
+			},
+		},
+		{
+			name: "version 2",
+			req:  exactQuery(1, i(2), "/a"),
+			expected: map[string]expectedObject{
+				"/a": {content: "v2"},
+			},
+		},
+		{
+			name: "version 3",
+			req:  exactQuery(1, i(3), "/a"),
+			expected: map[string]expectedObject{
+				"/a": {content: "v3"},
+			},
+		},
+	}
 
-	verifyStreamResults(t, stream.results, map[string]expectedObject{
-		"/a": {content: "v1"},
-	})
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stream := &mockGetServer{ctx: tc.Context()}
+			err := fs.Get(testCase.req, stream)
+			require.NoError(t, err, "fs.Get")
 
-	stream = &mockGetServer{ctx: tc.Context()}
-	err = fs.Get(exactQuery(1, i(2), "/a"), stream)
-	require.NoError(t, err, "fs.Get version 2")
-
-	verifyStreamResults(t, stream.results, map[string]expectedObject{
-		"/a": {content: "v2"},
-	})
-
-	stream = &mockGetServer{ctx: tc.Context()}
-	err = fs.Get(exactQuery(1, i(3), "/a"), stream)
-	require.NoError(t, err, "fs.Get version 3")
-
-	verifyStreamResults(t, stream.results, map[string]expectedObject{
-		"/a": {content: "v3"},
-	})
+			verifyStreamResults(t, stream.results, testCase.expected)
+		})
+	}
 }
 
 func TestGetWithoutContent(t *testing.T) {
