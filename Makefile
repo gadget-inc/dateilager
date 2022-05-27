@@ -24,24 +24,34 @@ SERVICE := $(PROJECT).server
 .PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-client-rebuild k8s-client-pack k8s-health
 .PHONY: upload-container-image
 
+TOOLS_DIR := tools
+TOOLS_BIN_DIR := $(TOOLS_DIR)/bin
+GRPC_HEALTH_PROBE := $(TOOLS_BIN_DIR)/grpc-health-probe
+GHZ := $(TOOLS_BIN_DIR)/ghz
+MIGRATE := $(TOOLS_BIN_DIR)/migrate
+
+$(GRPC_HEALTH_PROBE): $(TOOLS_DIR)/go.mod
+	cd $(TOOLS_DIR) && go build -o bin/grpc-health-probe github.com/grpc-ecosystem/grpc-health-probe
+
+$(GHZ): $(TOOLS_DIR)/go.mod
+	cd $(TOOLS_DIR) && go build -o bin/ghz github.com/bojand/ghz/cmd/ghz
+
+$(MIGRATE): $(TOOLS_DIR)/go.mod
+	cd $(TOOLS_DIR) && go build -o bin/migrate -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate
+
 install:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.26
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.1
-	go install github.com/grpc-ecosystem/grpc-health-probe@v0.4
-	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.14
-	go install github.com/bojand/ghz/cmd/ghz@v0.105.0
-	go install github.com/gadget-inc/fsdiff/cmd/fsdiff@v0.4
 	cd js && npm install
 
-migrate:
-	migrate -database $(DB_URI)?sslmode=disable -path $(MIGRATE_DIR) up
+migrate: $(MIGRATE)
+	$(MIGRATE) -database $(DB_URI)?sslmode=disable -path $(MIGRATE_DIR) up
 
-migrate-create:
+migrate-create: $(MIGRATE)
 ifndef name
 	$(error name variable must be set)
 else
 	mkdir -p $(MIGRATE_DIR)
-	migrate create -ext sql -dir $(MIGRATE_DIR) -seq $(name)
+	$(MIGRATE) create -ext sql -dir $(MIGRATE_DIR) -seq $(name)
 endif
 
 internal/pb/%.pb.go: internal/pb/%.proto
@@ -144,9 +154,9 @@ webui: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 webui:
 	go run cmd/webui/main.go -server $(GRPC_SERVER)
 
-health:
-	grpc-health-probe -addr $(GRPC_SERVER)
-	grpc-health-probe -addr $(GRPC_SERVER) -service $(SERVICE)
+health: $(GRPC_HEALTH_PROBE)
+	$(GRPC_HEALTH_PROBE) -addr $(GRPC_SERVER)
+	$(GRPC_HEALTH_PROBE) -addr $(GRPC_SERVER) -service $(SERVICE)
 
 k8s-clear:
 	kubectl -n $(PROJECT) delete --all service
@@ -199,7 +209,7 @@ else
 endif
 
 define load-test
-	ghz --cert=development/server.crt --key=development/server.key \
+	$(GHZ) --cert=development/server.crt --key=development/server.key \
 		--proto internal/pb/fs.proto --call "pb.Fs.$(1)" \
 		--total $(3) --concurrency $(4) --rps $(if $5,$5,0) \
 		--data-file "scripts/load-tests/$(2)" \
@@ -207,11 +217,11 @@ define load-test
 		localhost:$(GRPC_PORT)
 endef
 
-load-test-new:
+load-test-new: $(GHZ) 
 	$(call load-test,NewProject,new.json,100,1)
 
-load-test-get:
+load-test-get: $(GHZ) 
 	$(call load-test,Get,get_all.json,100000,50,5000)
 
-load-test-update:
+load-test-update: $(GHZ) 
 	$(call load-test,Update,update_increment.json,10000,1)
