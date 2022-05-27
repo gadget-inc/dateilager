@@ -71,6 +71,11 @@ buildGoModule rec {
     ln -s "$client/bin/dateilager-client" "$server/bin/dateilager-server" "$webui/bin/dateilager-webui" "$out/bin"
   '';
 
+  shellHook = ''
+    export GOPATH=$(mktemp -d)
+    export PATH="$GOPATH/bin:$PATH"
+  '';
+
   meta = with lib; {
     description = "A shared file system";
     homepage = "https://github.com/gadget-inc/dateilager";
