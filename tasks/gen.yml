@@ -1,0 +1,24 @@
+version: "3"
+
+tasks:
+  protoc:
+    desc: Generate go files from .proto files
+    sources:
+      - internal/pb/*.proto
+    generates:
+      - internal/pb/*.pb.go
+    cmds:
+      - >
+        protoc --experimental_allow_proto3_optional 
+        --go_out=. --go_opt=paths=source_relative 
+        --go-grpc_out=. --go-grpc_opt=paths=source_relative 
+        internal/pb/*.proto
+
+  mkcert:
+    desc: Generate certificate
+    status:
+      - test -f development/server.crt
+      - test -f development/server.key
+    method: checksum
+    cmds:
+      - mkcert -cert-file development/server.crt -key-file development/server.key localhost

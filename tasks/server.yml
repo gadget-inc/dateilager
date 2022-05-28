@@ -1,0 +1,29 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Build the dateilager server
+    deps:
+      - :gen:protoc
+      - :gen:mkcert
+    sources:
+      - cmd/server/main.go
+      - internal/**/*.go
+      - pkg/**/*.go
+      - go.sum
+    generates:
+      - bin/server
+    cmds:
+      - go build {{.BUILD_FLAGS}} -o bin/server cmd/server/main.go
+    env:
+      CGO_ENABLED: 0
+      BUILD_FLAGS: '{{.BUILD_FLAGS | default "-ldflags=-s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.VERSION}}"}}'
+
+  start:
+    desc: Start the dateilager server
+    deps:
+      - build
+    cmds:
+      - bin/server -dburi "{{.DB_URI}}" -port "{{.GRPC_PORT}}"
+    env:
+      DL_ENV: dev

@@ -1,0 +1,30 @@
+version: "3"
+
+vars:
+  MIGRATE_DIR: "migrations"
+
+tasks:
+  reset:
+    desc: Reset the database to its initial state
+    cmds:
+      - task: migrate:down
+      - task: migrate:up
+      - psql "{{.DB_URI}}" -c "INSERT INTO dl.projects (id, latest_version, pack_patterns) VALUES (1, 0, '{\"node_modules/.*/\"}');"
+
+  migrate:create:
+    desc: Create a new set of up/down migration files
+    preconditions:
+      - sh: test -n "{{.NAME}}"
+        msg: NAME is required
+    cmds:
+      - migrate create -ext sql -dir "{{.MIGRATE_DIR}}" -seq "{{.NAME}}"
+
+  migrate:up:
+    desc: Apply all or N up migrations
+    cmds:
+      - migrate -database "{{.DB_URI}}" -path "{{.MIGRATE_DIR}}" up {{.CLI_ARGS}}
+
+  migrate:down:
+    desc: Apply all or N down migrations
+    cmds:
+      - migrate -database "{{.DB_URI}}" -path "{{.MIGRATE_DIR}}" down {{.CLI_ARGS}}

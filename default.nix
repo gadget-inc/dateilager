@@ -10,6 +10,7 @@
 , mkcert
 , postgresql
 , clean
+, go-task
 }:
 
 buildGoModule rec {
@@ -27,6 +28,7 @@ buildGoModule rec {
     protobuf
     protoc-gen-go
     protoc-gen-go-grpc
+    go-task
 
     # TODO: Figure out a way to only add this for `nix develop`, this isn't needed to build
     clean

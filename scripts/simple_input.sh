@@ -34,12 +34,12 @@ v2() {
     local dir="${1}"
 
     echo "c" > "${dir}/c"
-    ln -s a "${dir}/e"
+    ln -sf a "${dir}/e"
     mkdir -p "${dir}/f"
 
     (
         cd "${dir}/n1/n2"
-        ln -s "../g" h
+        ln -sf "../g" h
     )
 
     log "wrote v2 to ${dir}"
