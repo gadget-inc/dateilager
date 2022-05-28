@@ -21,10 +21,9 @@ tasks:
     generates:
       - bin/client
     cmds:
-      - go build {{.BUILD_FLAGS}} -o bin/client cmd/client/main.go
+      - go build -ldflags="-s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.VERSION}}" -o bin/client cmd/client/main.go
     env:
       CGO_ENABLED: 0
-      BUILD_FLAGS: '{{.BUILD_FLAGS | default "-ldflags=-s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.VERSION}}"}}'
 
   get:
     desc: Get
