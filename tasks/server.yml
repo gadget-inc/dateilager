@@ -4,7 +4,7 @@ tasks:
   build:
     desc: Build the dateilager server
     deps:
-      - :gen:protoc
+      - :gen:protoc-go
       - :gen:mkcert
     sources:
       - cmd/server/main.go

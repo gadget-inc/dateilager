@@ -5,8 +5,8 @@ import { GrpcTransport } from "@protobuf-ts/grpc-transport";
 import type { ClientStreamingCall, RpcOptions } from "@protobuf-ts/runtime-rpc";
 import pMemoize from "p-memoize";
 import { TextDecoder, TextEncoder } from "util";
-import type { Objekt, Project, UpdateRequest, UpdateResponse } from "./fs";
-import { FsClient } from "./fs.client";
+import type { Objekt, Project, UpdateRequest, UpdateResponse } from "./fs_pb";
+import { FsClient } from "./fs_pb.client";
 import { traced, tracer } from "./telemetry";
 
 const MB = 1024 * 1024;

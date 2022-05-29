@@ -10,39 +10,19 @@ vars:
   VERSION:
     sh: git describe --tags --abbrev=0
 
-  DB_HOST: '{{.DB_HOST | default "127.0.0.1"}}'
-  DB_PORT: "{{.DB_PORT | default 5432}}"
-  DB_USER: '{{.DB_USER | default "postgres"}}'
-  DB_PASS: '{{.DB_PASS | default "password"}}'
-  DB_NAME: '{{.DB_NAME | default "dl"}}'
+  DB_HOST: "127.0.0.1"
+  DB_PORT: 5432
+  DB_USER: "postgres"
+  DB_PASS: "password"
+  DB_NAME: "dl"
   DB_URI: "postgres://{{.DB_USER}}:{{.DB_PASS}}@{{.DB_HOST}}:{{.DB_PORT}}/{{.DB_NAME}}?sslmode=disable"
 
-  GRPC_HOST: '{{.GRPC_HOST | default "127.0.0.1"}}'
-  GRPC_PORT: "{{.GRPC_PORT | default 5051}}"
+  GRPC_HOST: "127.0.0.1"
+  GRPC_PORT: 5051
   GRPC_SERVER: "{{.GRPC_HOST}}:{{.GRPC_PORT}}"
 
 tasks:
-  install:
-    desc: Install development dependencies
-    deps:
-      - install:go
-      - install:js
-
-  install:go:
-    desc: Install go development dependencies
+  vars:
+    silent: true
     cmds:
-      - go install github.com/grpc-ecosystem/grpc-health-probe@v0.4
-      - go install github.com/bojand/ghz/cmd/ghz@v0.105.0
-    status:
-      - which grpc-health-probe
-      - which ghz
-
-  install:js:
-    desc: Install js development dependencies
-    sources:
-      - js/package.json
-      - js/package-lock.json
-    generates:
-      - js/node_modules/**/*
-    cmds:
-      - cd js && npm install
+      - echo {{toPrettyJson . | shellQuote}}

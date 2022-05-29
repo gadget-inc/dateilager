@@ -12,7 +12,7 @@ tasks:
   build:
     desc: Build the dateilager client
     deps:
-      - :gen:protoc
+      - :gen:protoc-go
     sources:
       - cmd/server/client.go
       - internal/**/*.go
@@ -32,7 +32,6 @@ tasks:
     cmds:
       - bin/client get -project 1 -server "{{.GRPC_SERVER}}" -to {{.TO_VERSION}} -prefix "{{.PREFIX}}"
     vars:
-      PREFIX: "{{.PREFIX | default .CLI_ARGS}}"
       TO_VERSION: "{{.TO_VERSION | default -1}}"
 
   rebuild:
@@ -42,7 +41,6 @@ tasks:
     cmds:
       - bin/client rebuild -project 1 -server "{{.GRPC_SERVER}}" -to {{.TO_VERSION}} -prefix "{{.PREFIX}}" -dir "{{.DIR}}"
     vars:
-      PREFIX: "{{.PREFIX | default .CLI_ARGS}}"
       TO_VERSION: "{{.TO_VERSION | default -1}}"
       DIR: '{{.DIR | default "rebuild"}}'
 

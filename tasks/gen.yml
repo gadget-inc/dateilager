@@ -1,24 +1,52 @@
 version: "3"
 
 tasks:
-  protoc:
-    desc: Generate go files from .proto files
+  node_modules:
+    desc: Generate node_modules
+    sources:
+      - js/package.json
+      - js/package-lock.json
+    generates:
+      - js/node_modules
+    cmds:
+      - cd js && npm install
+
+  protoc-go:
+    desc: Generate go files from proto files
     sources:
       - internal/pb/*.proto
     generates:
       - internal/pb/*.pb.go
     cmds:
       - >
-        protoc --experimental_allow_proto3_optional 
+        protoc 
+        --experimental_allow_proto3_optional 
         --go_out=. --go_opt=paths=source_relative 
         --go-grpc_out=. --go-grpc_opt=paths=source_relative 
         internal/pb/*.proto
 
+  protoc-js:
+    desc: Generate js files from proto files
+    deps:
+      - node_modules
+    sources:
+      - internal/pb/*.proto
+    generates:
+      - js/src/*_pb.ts
+      - js/src/*_pb.client.ts
+    cmds:
+      - >
+        protoc
+        --experimental_allow_proto3_optional
+        --plugin=js/node_modules/@protobuf-ts/plugin/bin/protoc-gen-ts
+        --proto_path internal/pb
+        --ts_out=js/src --ts_opt=long_type_bigint,add_pb_suffix
+        internal/pb/*.proto
+
   mkcert:
-    desc: Generate certificate
+    desc: Generate development certificates
     status:
       - test -f development/server.crt
       - test -f development/server.key
-    method: checksum
     cmds:
       - mkcert -cert-file development/server.crt -key-file development/server.key localhost
