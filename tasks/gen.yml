@@ -18,12 +18,11 @@ tasks:
     generates:
       - internal/pb/*.pb.go
     cmds:
-      - >
-        protoc 
-        --experimental_allow_proto3_optional 
-        --go_out=. --go_opt=paths=source_relative 
-        --go-grpc_out=. --go-grpc_opt=paths=source_relative 
-        internal/pb/*.proto
+      - |
+        protoc --experimental_allow_proto3_optional \
+          --go_out=. --go_opt=paths=source_relative \
+          --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+          internal/pb/*.proto
 
   protoc-js:
     desc: Generate js files from proto files
@@ -35,13 +34,12 @@ tasks:
       - js/src/*_pb.ts
       - js/src/*_pb.client.ts
     cmds:
-      - >
-        protoc
-        --experimental_allow_proto3_optional
-        --plugin=js/node_modules/@protobuf-ts/plugin/bin/protoc-gen-ts
-        --proto_path internal/pb
-        --ts_out=js/src --ts_opt=long_type_bigint,add_pb_suffix
-        internal/pb/*.proto
+      - |
+        protoc --experimental_allow_proto3_optional \
+          --plugin=js/node_modules/@protobuf-ts/plugin/bin/protoc-gen-ts \
+          --proto_path internal/pb \
+          --ts_out=js/src --ts_opt=long_type_bigint,add_pb_suffix \
+          internal/pb/*.proto
 
   mkcert:
     desc: Generate development certificates

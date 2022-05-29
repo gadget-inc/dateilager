@@ -1,0 +1,20 @@
+version: "3"
+
+tasks:
+  grpc-health-probe:
+    desc: Build grpc-health-probe
+    sources:
+      - tools/go.sum
+    generates:
+      - bin/grpc-health-probe
+    cmds:
+      - cd tools && go build -o ../bin/grpc-health-probe github.com/grpc-ecosystem/grpc-health-probe
+
+  ghz:
+    desc: Build ghz
+    sources:
+      - tools/go.sum
+    generates:
+      - bin/ghz
+    cmds:
+      - cd tools && go build -o ../bin/ghz github.com/bojand/ghz/cmd/ghz

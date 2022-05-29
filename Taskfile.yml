@@ -5,6 +5,7 @@ includes:
   db: ./tasks/db.yml
   gen: ./tasks/gen.yml
   server: ./tasks/server.yml
+  tools: ./tasks/tools.yml
 
 vars:
   VERSION:
@@ -21,8 +22,25 @@ vars:
   GRPC_PORT: 5051
   GRPC_SERVER: "{{.GRPC_HOST}}:{{.GRPC_PORT}}"
 
+  DEV_TOKEN_ADMIN: '{{.DEV_TOKEN_ADMIN | default "v2.public.eyJzdWIiOiJhZG1pbiIsImlhdCI6IjIwMjEtMTAtMTVUMTE6MjA6MDAuMDM0WiJ9WtEey8KfQQRy21xoHq1C5KQatEevk8RxS47k4bRfMwVCPHumZmVuk6ADcfDHTmSnMtEGfFXdxnYOhRP6Clb_Dw"}}'
+
 tasks:
+  test:
+    desc: Test
+    preconditions:
+      - sh: task db:health
+        msg: database must be running
+    cmds:
+      - task: db:migrate:up
+        vars:
+          DB_URI: "postgres://{{.DB_USER}}:{{.DB_PASS}}@{{.DB_HOST}}:{{.DB_PORT}}/dl_tests?sslmode=disable"
+      - cd test && go test
+    env:
+      DB_URI: "postgres://{{.DB_USER}}:{{.DB_PASS}}@{{.DB_HOST}}:{{.DB_PORT}}/dl_tests?sslmode=disable"
+
   vars:
     silent: true
     cmds:
       - echo {{toPrettyJson . | shellQuote}}
+    vars:
+      DB_NAME: dl_tests

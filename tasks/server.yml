@@ -5,7 +5,6 @@ tasks:
     desc: Build the dateilager server
     deps:
       - :gen:protoc-go
-      - :gen:mkcert
     sources:
       - cmd/server/main.go
       - internal/**/*.go
@@ -22,7 +21,76 @@ tasks:
     desc: Start the dateilager server
     deps:
       - build
+      - :db:migrate:up
+      - :gen:mkcert
     cmds:
       - bin/server -dburi "{{.DB_URI}}" -port "{{.GRPC_PORT}}"
     env:
       DL_ENV: dev
+
+  health:
+    desc: Healthcheck the dateilager server
+    deps:
+      - :tools:grpc-health-probe
+    cmds:
+      - bin/grpc-health-probe -addr "{{.GRPC_SERVER}}" -tls -tls-no-verify {{.CLI_ARGS}}
+      - bin/grpc-health-probe -addr "{{.GRPC_SERVER}}" -tls -tls-no-verify -service dateilager.server  {{.CLI_ARGS}}
+
+  load-test-new:
+    desc: Load test pb.Fs.NewProject
+    cmds:
+      - task: load-test
+        vars:
+          METHOD: NewProject
+          DATA_FILE: new.json
+          TOTAL: 100
+          CONCURRENCY: 1
+
+  load-test-get:
+    desc: Load test pb.Fs.Get
+    cmds:
+      - task: load-test
+        vars:
+          METHOD: Get
+          DATA_FILE: get_all.json
+          TOTAL: 100000
+          CONCURRENCY: 50
+          RPS: 5000
+
+  load-test-update:
+    desc: Load test pb.Fs.Get
+    cmds:
+      - task: load-test
+        vars:
+          METHOD: Update
+          DATA_FILE: update_increment.json
+          TOTAL: 10000
+          CONCURRENCY: 1
+
+  load-test:
+    desc: Load test the dateilager server
+    deps:
+      - :tools:ghz
+    preconditions:
+      - sh: task server:health
+        msg: server must be running
+      - sh: test -n "{{.METHOD}}"
+        msg: METHOD is required
+      - sh: test -n "{{.TOTAL}}"
+        msg: TOTAL is required
+      - sh: test -n "{{.CONCURRENCY}}"
+        msg: CONCURRENCY is required
+      - sh: test -n "{{.DATA_FILE}}"
+        msg: DATA_FILE is required
+    cmds:
+      - |
+        bin/ghz --cert development/server.crt --key development/server.key \
+          --skipTLS \
+          --proto internal/pb/fs.proto \
+          --call "pb.Fs.{{.METHOD}}" \
+          --total {{.TOTAL}} \
+          --concurrency {{.CONCURRENCY}} \
+          --rps {{default 0 .RPS}} \
+          --data-file "scripts/load-tests/{{.DATA_FILE}}" \
+          --metadata '{"authorization": "Bearer {{.DEV_TOKEN_ADMIN}}"}' \
+          "{{.GRPC_SERVER}}"

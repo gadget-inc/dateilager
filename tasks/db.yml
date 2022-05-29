@@ -4,12 +4,30 @@ vars:
   MIGRATE_DIR: "migrations"
 
 tasks:
+  start:
+    desc: Start a local postgres database (requires nix)
+    status:
+      - task db:health
+    cmds:
+      - dev
+
+  health:
+    desc: Check if the database is ready to receive connections
+    cmds:
+      - pg_isready -d "{{.DB_URI}}"
+
+  setup:
+    desc: Insert an empty project
+    status:
+      - psql "{{.DB_URI}}" -c "SELECT EXISTS(SELECT 1 FROM dl.projects WHERE id = 1);" --tuples-only | egrep t
+    cmds:
+      - psql "{{.DB_URI}}" -c "INSERT INTO dl.projects (id, latest_version, pack_patterns) VALUES (1, 0, '{\"node_modules/.*/\"}');"
+
   reset:
     desc: Reset the database to its initial state
     cmds:
       - task: migrate:down
       - task: migrate:up
-      - psql "{{.DB_URI}}" -c "INSERT INTO dl.projects (id, latest_version, pack_patterns) VALUES (1, 0, '{\"node_modules/.*/\"}');"
 
   migrate:create:
     desc: Create a new set of up/down migration files

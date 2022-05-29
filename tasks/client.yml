@@ -1,9 +1,5 @@
 version: "3"
 
-vars:
-  DEV_TOKEN_ADMIN: '{{.DEV_TOKEN_ADMIN | default "v2.public.eyJzdWIiOiJhZG1pbiIsImlhdCI6IjIwMjEtMTAtMTVUMTE6MjA6MDAuMDM0WiJ9WtEey8KfQQRy21xoHq1C5KQatEevk8RxS47k4bRfMwVCPHumZmVuk6ADcfDHTmSnMtEGfFXdxnYOhRP6Clb_Dw"}}'
-  DEV_TOKEN_PROJECT_1: '{{.DEV_TOKEN_PROJECT_1 | default "v2.public.eyJzdWIiOiIxIiwiaWF0IjoiMjAyMS0xMC0xNVQxMToyMDowMC4wMzVaIn2MQ14RfIGpoEycCuvRu9J3CZp6PppUXf5l5w8uKKydN3C31z6f6GgOEPNcnwODqBnX7Pjarpz4i2uzWEqLgQYD"}}'
-
 env:
   DL_TOKEN: "{{.DL_TOKEN | default .DEV_TOKEN_ADMIN}}"
   DL_SKIP_SSL_VERIFICATION: "{{.DL_SKIP_SSL_VERIFICATION | default 1}}"
@@ -46,7 +42,11 @@ tasks:
 
   simple:
     desc: Update simple inputs
+    preconditions:
+      - sh: task server:health
+        msg: server must be running
     deps:
+      - :db:setup
       - build
     cmds:
       - scripts/simple_input.sh 1
@@ -58,7 +58,11 @@ tasks:
 
   complex:
     desc: Update complex inputs
+    preconditions:
+      - sh: task server:health
+        msg: server must be running
     deps:
+      - :db:setup
       - build
     cmds:
       - scripts/complex_input.sh 1
