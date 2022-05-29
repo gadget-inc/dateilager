@@ -14,7 +14,7 @@ tasks:
     generates:
       - bin/server
     cmds:
-      - go build  -ldflags="-s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.VERSION}}" -o bin/server cmd/server/main.go
+      - go build -ldflags="-s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.VERSION}}" -o bin/server cmd/server/main.go
     env:
       CGO_ENABLED: 0
 
