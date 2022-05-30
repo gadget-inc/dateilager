@@ -11,14 +11,14 @@ vars:
   VERSION:
     sh: git describe --tags --abbrev=0
 
-  DB_HOST: "127.0.0.1"
+  DB_HOST: "localhost"
   DB_PORT: 5432
   DB_USER: "postgres"
   DB_PASS: "password"
   DB_NAME: "dl"
   DB_URI: "postgres://{{.DB_USER}}:{{.DB_PASS}}@{{.DB_HOST}}:{{.DB_PORT}}/{{.DB_NAME}}?sslmode=disable"
 
-  GRPC_HOST: "127.0.0.1"
+  GRPC_HOST: "localhost"
   GRPC_PORT: 5051
   GRPC_SERVER: "{{.GRPC_HOST}}:{{.GRPC_PORT}}"
 
@@ -26,9 +26,9 @@ vars:
 
 tasks:
   test:
-    desc: Test
+    desc: Run tests
     preconditions:
-      - sh: task db:health
+      - sh: task db:health DB_URI="postgres://{{.DB_USER}}:{{.DB_PASS}}@{{.DB_HOST}}:{{.DB_PORT}}/dl_tests?sslmode=disable"
         msg: database must be running
     cmds:
       - task: db:migrate:up
