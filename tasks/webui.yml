@@ -1,0 +1,32 @@
+version: "3"
+
+env:
+  DL_TOKEN: "{{.DL_TOKEN | default .DEV_TOKEN_ADMIN}}"
+  DL_SKIP_SSL_VERIFICATION: "{{.DL_SKIP_SSL_VERIFICATION | default 1}}"
+
+tasks:
+  build:
+    desc: Build the dateilager webui
+    deps:
+      - :gen:protoc-go
+    sources:
+      - cmd/webui/main.go
+      - internal/**/*.go
+      - pkg/**/*.go
+      - go.sum
+    generates:
+      - bin/webui
+    cmds:
+      - go build -ldflags="-s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.VERSION}}" -o bin/webui cmd/webui/main.go
+    env:
+      CGO_ENABLED: 0
+
+  start:
+    desc: Start the dateilager webui
+    deps:
+      - build
+    preconditions:
+      - sh: task server:health
+        msg: server must running
+    cmds:
+      - bin/webui -server "{{.GRPC_SERVER}}"

@@ -72,8 +72,6 @@ tasks:
     deps:
       - :tools:ghz
     preconditions:
-      - sh: task server:health
-        msg: server must be running
       - sh: test -n "{{.METHOD}}"
         msg: METHOD is required
       - sh: test -n "{{.TOTAL}}"

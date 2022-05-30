@@ -6,6 +6,7 @@ includes:
   gen: ./tasks/gen.yml
   server: ./tasks/server.yml
   tools: ./tasks/tools.yml
+  webui: ./tasks/webui.yml
 
 vars:
   VERSION:
@@ -27,20 +28,12 @@ vars:
 tasks:
   test:
     desc: Run tests
-    preconditions:
-      - sh: task db:health DB_URI="postgres://{{.DB_USER}}:{{.DB_PASS}}@{{.DB_HOST}}:{{.DB_PORT}}/dl_tests?sslmode=disable"
-        msg: database must be running
-    cmds:
+    deps:
+      - gen:protoc-go
       - task: db:migrate:up
         vars:
           DB_URI: "postgres://{{.DB_USER}}:{{.DB_PASS}}@{{.DB_HOST}}:{{.DB_PORT}}/dl_tests?sslmode=disable"
+    cmds:
       - cd test && go test
     env:
       DB_URI: "postgres://{{.DB_USER}}:{{.DB_PASS}}@{{.DB_HOST}}:{{.DB_PORT}}/dl_tests?sslmode=disable"
-
-  vars:
-    silent: true
-    cmds:
-      - echo {{toPrettyJson . | shellQuote}}
-    vars:
-      DB_NAME: dl_tests

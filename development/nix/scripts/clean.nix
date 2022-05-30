@@ -8,6 +8,7 @@ let
     # Local-specific files
     ".envrc.local"
     ".vscode"
+    ".idea"
     "TODO"
 
     # Cache files

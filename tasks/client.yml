@@ -42,9 +42,6 @@ tasks:
 
   simple:
     desc: Update simple inputs
-    preconditions:
-      - sh: task server:health
-        msg: server must be running
     deps:
       - :db:setup
       - build
@@ -58,9 +55,6 @@ tasks:
 
   complex:
     desc: Update complex inputs
-    preconditions:
-      - sh: task server:health
-        msg: server must be running
     deps:
       - :db:setup
       - build
