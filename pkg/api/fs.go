@@ -378,7 +378,9 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	ctx, span := telemetry.Start(stream.Context(), "fs.update")
 	defer span.End()
 
-	version := int64(-1)
+	shouldUpdateVersion := false
+	latestVersion := int64(-1)
+	nextVersion := int64(-1)
 	project, err := requireProjectAuth(ctx)
 	if err != nil {
 		return err
@@ -406,12 +408,12 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 				return status.Errorf(errStatus.Code(), "FS receive update request: %v", err)
 			}
 
-			if version == -1 {
+			if nextVersion == -1 {
 				if project == -1 {
 					project = req.Project
 				}
 
-				latestVersion, err := db.LockLatestVersion(ctx, tx, project)
+				latestVersion, err = db.LockLatestVersion(ctx, tx, project)
 				if errors.Is(err, db.ErrNotFound) {
 					return status.Errorf(codes.NotFound, "FS update missing latest version: %v", err)
 				}
@@ -419,8 +421,8 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 					return status.Errorf(codes.Internal, "FS update lock latest version: %v", err)
 				}
 
-				version = latestVersion + 1
-				logger.Debug(ctx, "FS.Update[Init]", key.Project.Field(project), key.Version.Field(version))
+				nextVersion = latestVersion + 1
+				logger.Debug(ctx, "FS.Update[Init]", key.Project.Field(project), key.Version.Field(nextVersion))
 
 				packManager, err = db.NewPackManager(ctx, tx, project)
 				if err != nil {
@@ -429,7 +431,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 
 				span.SetAttributes(
 					key.Project.Attribute(project),
-					key.Version.Attribute(version),
+					key.Version.Attribute(nextVersion),
 				)
 			}
 
@@ -445,14 +447,20 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 
 			logger.Debug(ctx, "FS.Update[Object]",
 				key.Project.Field(project),
-				key.Version.Field(version),
+				key.Version.Field(nextVersion),
 				key.ObjectPath.Field(req.Object.Path),
 			)
 
 			if req.Object.Deleted {
-				err = db.DeleteObject(ctx, tx, project, version, req.Object.Path)
+				err = db.DeleteObject(ctx, tx, project, nextVersion, req.Object.Path)
+				shouldUpdateVersion = true
 			} else {
-				err = db.UpdateObject(ctx, tx, contentEncoder, project, version, req.Object)
+				var contentChanged bool
+				contentChanged, err = db.UpdateObject(ctx, tx, contentEncoder, project, nextVersion, req.Object)
+
+				if contentChanged {
+					shouldUpdateVersion = true
+				}
 			}
 
 			if err != nil {
@@ -468,7 +476,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	}
 
 	// No updates were received from the stream which prevented us from detecting the project and version
-	if version == -1 {
+	if nextVersion == -1 {
 		err = tx.Rollback(ctx)
 		if err != nil {
 			return status.Errorf(codes.Internal, "FS rollback empty update: %v", err)
@@ -482,14 +490,19 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		for parent, objects := range buffer {
 			logger.Debug(ctx, "FS.Update[PackedObject]",
 				key.Project.Field(project),
-				key.Version.Field(version),
+				key.Version.Field(nextVersion),
 				key.ObjectsParent.Field(parent),
 				key.ObjectsCount.Field(len(objects)),
 			)
 
-			err = db.UpdatePackedObjects(ctx, tx, project, version, parent, objects)
+			var contentChanged bool
+			contentChanged, err = db.UpdatePackedObjects(ctx, tx, project, nextVersion, parent, objects)
 			if err != nil {
 				return status.Errorf(codes.Internal, "FS update packed objects for %v: %v", parent, err)
+			}
+
+			if contentChanged {
+				shouldUpdateVersion = true
 			}
 		}
 
@@ -500,7 +513,11 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return err
 	}
 
-	err = db.UpdateLatestVersion(ctx, tx, project, version)
+	if !shouldUpdateVersion {
+		return stream.SendAndClose(&pb.UpdateResponse{Version: latestVersion})
+	}
+
+	err = db.UpdateLatestVersion(ctx, tx, project, nextVersion)
 	if err != nil {
 		return status.Errorf(codes.Internal, "FS update latest version: %v", err)
 	}
@@ -510,9 +527,9 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return status.Errorf(codes.Internal, "FS update commit tx: %v", err)
 	}
 
-	logger.Debug(ctx, "FS.Update[Commit]", key.Project.Field(project), key.Version.Field(version))
+	logger.Debug(ctx, "FS.Update[Commit]", key.Project.Field(project), key.Version.Field(nextVersion))
 
-	return stream.SendAndClose(&pb.UpdateResponse{Version: version})
+	return stream.SendAndClose(&pb.UpdateResponse{Version: nextVersion})
 }
 
 func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectResponse, error) {

@@ -61,7 +61,7 @@ func newMockUpdateServer(ctx context.Context, project int64, updates map[string]
 	for path, object := range updates {
 		objects = append(objects, &pb.Object{
 			Path:    path,
-			Mode:    0666,
+			Mode:    0755,
 			Size:    int64(len(object.content)),
 			Deleted: object.deleted,
 			Content: []byte(object.content),
@@ -759,6 +759,32 @@ func TestEmptyUpdate(t *testing.T) {
 	})
 }
 
+func TestIdenticalUpdate(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "/a", "v1")
+
+	fs := tc.FsApi()
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"/a": {content: "v1"},
+	})
+	err := fs.Update(updateStream)
+	require.NoError(t, err, "fs.Update")
+
+	assert.Equal(t, int64(1), updateStream.response.Version, "expected version 1")
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(1, nil, "/"), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"/a": {content: "v1"},
+	})
+}
+
 func TestUpdatePackedObject(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
@@ -813,6 +839,37 @@ func TestEmptyUpdatePackedObject(t *testing.T) {
 	require.NoError(t, err, "fs.Get")
 
 	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+	})
+}
+
+func TestIdenticalUpdatePackedObject(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "/a/")
+	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
+		"/a/b": {content: "a/b v1"},
+		"/a/c": {content: "a/c v1"},
+	})
+
+	fs := tc.FsApi()
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"/a/b": {content: "a/b v1"},
+		"/a/c": {content: "a/c v1"},
+	})
+	err := fs.Update(updateStream)
+	require.NoError(t, err, "fs.Update")
+
+	assert.Equal(t, int64(1), updateStream.response.Version, "expected version 1")
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(1, nil, "/a"), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"/a/b": {content: "a/b v1"},
 		"/a/c": {content: "a/c v1"},
 	})
 }
