@@ -47,7 +47,7 @@
 
             ## Pinned packages from nixpkgs
 
-            go = pkgs.go_1_17;
+            go = pkgs.go_1_18;
 
             nodejs = pkgs.nodejs-16_x;
 
