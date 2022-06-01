@@ -35,6 +35,6 @@ func (d *DbTestConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 }
 
 func (d *DbTestConnector) close(ctx context.Context) {
-	d.tx.Rollback(ctx)
+	_ = d.tx.Rollback(ctx)
 	d.conn.Close(ctx)
 }

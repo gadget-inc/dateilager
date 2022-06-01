@@ -262,7 +262,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 	defer span.End()
 
 	var diffCount uint32
-	fromVersion := int64(-1)
+	var fromVersion int64
 
 	fromVersion, err := ReadVersionFile(dir)
 	if err != nil {

@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 )
 
-type Object = Objekt
-
 func tarTypeFromMode(mode fs.FileMode) byte {
 	if mode.IsDir() {
 		return tar.TypeDir

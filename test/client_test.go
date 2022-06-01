@@ -673,7 +673,8 @@ func TestUpdateAndRebuildWithIdenticalObjects(t *testing.T) {
 
 	// Reset the tmpdir to remove all state and updates
 	os.RemoveAll(tmpDir)
-	os.Mkdir(tmpDir, 0775)
+	err = os.Mkdir(tmpDir, 0775)
+	require.NoError(t, err, "os.Mkdir")
 
 	version, _, err = c.Rebuild(tc.Context(), 1, "", i(1), tmpDir)
 	require.NoError(t, err, "client.Rebuild")
@@ -782,7 +783,8 @@ func TestUpdateAndRebuildWithIdenticalPackedObjects(t *testing.T) {
 	assert.Equal(t, uint32(3), count, "expected update count to be 3")
 
 	os.RemoveAll(tmpDir)
-	os.Mkdir(tmpDir, 0775)
+	err = os.Mkdir(tmpDir, 0775)
+	require.NoError(t, err, "os.Mkdir")
 
 	version, _, err = c.Rebuild(tc.Context(), 1, "", i(1), tmpDir)
 	require.NoError(t, err, "client.Rebuild")

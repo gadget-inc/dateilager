@@ -66,7 +66,7 @@ func parseNewArgs(args []string) (*sharedArgs, *newArgs, error) {
 	template := set.Int64("template", -1, "Template ID")
 	patterns := set.String("patterns", "", "Comma separated pack patterns")
 
-	set.Parse(args)
+	_ = set.Parse(args)
 
 	if *id == -1 {
 		return nil, nil, errors.New("required arg: -id")
@@ -108,7 +108,7 @@ func parseGetArgs(args []string) (*sharedArgs, *getArgs, error) {
 	to := set.Int64("to", -1, "To version ID (optional)")
 	prefix := set.String("prefix", "", "Search prefix")
 
-	set.Parse(args)
+	_ = set.Parse(args)
 
 	if *project == -1 {
 		return nil, nil, errors.New("required arg: -project")
@@ -158,7 +158,7 @@ func parseRebuildArgs(args []string) (*sharedArgs, *rebuildArgs, error) {
 	prefix := set.String("prefix", "", "Search prefix")
 	dir := set.String("dir", "", "Output directory")
 
-	set.Parse(args)
+	_ = set.Parse(args)
 
 	if *project == -1 {
 		return nil, nil, errors.New("required arg: -project")
@@ -213,7 +213,7 @@ func parseUpdateArgs(args []string) (*sharedArgs, *updateArgs, error) {
 	project := set.Int64("project", -1, "Project ID (required)")
 	dir := set.String("dir", "", "Directory containing updated files")
 
-	set.Parse(args)
+	_ = set.Parse(args)
 
 	if *project == -1 {
 		return nil, nil, errors.New("required arg: -project")
@@ -250,7 +250,7 @@ func parseInspectArgs(args []string) (*sharedArgs, *inspectArgs, error) {
 	shared := parseSharedArgs(set)
 	project := set.Int64("project", -1, "Project ID (required)")
 
-	set.Parse(args)
+	_ = set.Parse(args)
 
 	if *project == -1 {
 		return nil, nil, errors.New("required arg: -project")
@@ -284,7 +284,7 @@ func parseSnapshotArgs(args []string) (*sharedArgs, *snapshotArgs, error) {
 
 	shared := parseSharedArgs(set)
 
-	set.Parse(args)
+	_ = set.Parse(args)
 
 	return shared, &snapshotArgs{}, nil
 }
@@ -310,7 +310,7 @@ func parseResetArgs(args []string) (*sharedArgs, *resetArgs, error) {
 	shared := parseSharedArgs(set)
 	state := set.String("state", "", "State string from a snapshot command")
 
-	set.Parse(args)
+	_ = set.Parse(args)
 
 	return shared, &resetArgs{
 		state: *state,
@@ -400,7 +400,7 @@ func main() {
 		os.Exit(exitCode)
 	}()
 
-	defer logger.Sync()
+	defer logger.Sync() // nolint:errcheck
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()

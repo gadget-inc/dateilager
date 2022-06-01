@@ -113,7 +113,7 @@ func getIndex(dlc *client.Client, tmpls *template.Template) (http.HandlerFunc, e
 			return
 		}
 
-		indexTmpl.Execute(w, data)
+		_ = indexTmpl.Execute(w, data)
 	}, nil
 }
 
@@ -201,6 +201,6 @@ func getVersion(dlc *client.Client, tmpls *template.Template) (http.HandlerFunc,
 			return
 		}
 
-		versionTmpl.Execute(w, data)
+		_ = versionTmpl.Execute(w, data)
 	}, nil
 }

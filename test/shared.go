@@ -130,7 +130,7 @@ func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []
 
 // Use debugProjects(tc) and debugObjects(tc) within a failing test to log the state of the DB
 
-//lint:ignore U1000 leave these utilities around for debugging
+//nolint:unused // leave these utilities around for debugging
 func debugProjects(tc util.TestCtx) {
 	conn := tc.Connect()
 	rows, err := conn.Query(tc.Context(), `
@@ -154,7 +154,7 @@ func debugProjects(tc util.TestCtx) {
 	fmt.Println()
 }
 
-//lint:ignore U1000 leave these utilities around for debugging
+//nolint:unused // leave these utilities around for debugging
 func debugObjects(tc util.TestCtx) {
 	conn := tc.Connect()
 	rows, err := conn.Query(tc.Context(), `

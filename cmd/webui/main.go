@@ -46,7 +46,7 @@ func main() {
 	if err != nil {
 		stdlog.Fatal(err.Error())
 	}
-	defer logger.Sync()
+	defer logger.Sync() //nolint:errcheck
 
 	args := parseArgs()
 
@@ -80,5 +80,8 @@ func main() {
 	}
 
 	logger.Info(ctx, "start webui", zap.Int("port", args.port), zap.String("assets", args.assetsDir))
-	http.ListenAndServe(":"+strconv.Itoa(args.port), handler)
+	err = http.ListenAndServe(":"+strconv.Itoa(args.port), handler)
+	if err != nil {
+		logger.Fatal(ctx, "starting server", zap.Error(err))
+	}
 }
