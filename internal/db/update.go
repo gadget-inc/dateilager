@@ -54,7 +54,8 @@ func DeleteObjects(ctx context.Context, tx pgx.Tx, project int64, version int64,
 	return nil
 }
 
-func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, project int64, version int64, object *pb.Object) error {
+// UpdateObject returns true if content changed, false otherwise
+func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, project int64, version int64, object *pb.Object) (bool, error) {
 	content := object.Content
 	if content == nil {
 		content = []byte("")
@@ -63,7 +64,7 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 
 	encoded, err := encoder.Encode(content)
 	if err != nil {
-		return fmt.Errorf("encode updated content, project %v, version %v, path %v: %w", project, version, object.Path, err)
+		return false, fmt.Errorf("encode updated content, project %v, version %v, path %v: %w", project, version, object.Path, err)
 	}
 
 	rows, err := tx.Query(ctx, `
@@ -74,14 +75,14 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 		RETURNING project
 	`, project, version, object.Path, h1, h2, object.Mode, object.Size, false)
 	if err != nil {
-		return fmt.Errorf("insert new object, project %v, version %v, path %v: %w", project, version, object.Path, err)
+		return false, fmt.Errorf("insert new object, project %v, version %v, path %v: %w", project, version, object.Path, err)
 	}
 
 	isIdentical := !rows.Next()
 	rows.Close()
 
 	if isIdentical {
-		return nil
+		return false, nil
 	}
 
 	batch := &pgx.Batch{}
@@ -106,18 +107,19 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 
 	_, err = results.Exec()
 	if err != nil {
-		return fmt.Errorf("update previous object, project %v, version %v, path %v: %w", project, version, object.Path, err)
+		return false, fmt.Errorf("update previous object, project %v, version %v, path %v: %w", project, version, object.Path, err)
 	}
 
 	_, err = results.Exec()
 	if err != nil {
-		return fmt.Errorf("insert updated content, hash %x-%x: %w", h1, h2, err)
+		return false, fmt.Errorf("insert updated content, hash %x-%x: %w", h1, h2, err)
 	}
 
-	return nil
+	return true, nil
 }
 
-func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version int64, parent string, updates []*pb.Object) error {
+// UpdatePackedObjects returns true if content changed, false otherwise
+func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version int64, parent string, updates []*pb.Object) (bool, error) {
 	var h1, h2 []byte
 	var content []byte
 
@@ -132,13 +134,13 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 		  AND stop_version IS NULL
 	`, project, parent)
 	if err != nil {
-		return fmt.Errorf("select existing packed object, project %v, version %v, parent %v: %w", project, version, parent, err)
+		return false, fmt.Errorf("select existing packed object, project %v, version %v, parent %v: %w", project, version, parent, err)
 	}
 
 	if rows.Next() {
 		err = rows.Scan(&h1, &h2, &content)
 		if err != nil {
-			return fmt.Errorf("scan hash and packed content from existing object, project %v, version %v, parent %v: %w", project, version, parent, err)
+			return false, fmt.Errorf("scan hash and packed content from existing object, project %v, version %v, parent %v: %w", project, version, parent, err)
 		}
 	}
 	rows.Close()
@@ -149,13 +151,14 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 		// If the newly packed object is empty, we only need to delete the old one.
 		shouldInsert = false
 	} else if err != nil {
-		return fmt.Errorf("update packed object: %w", err)
+		return false, fmt.Errorf("update packed object: %w", err)
 	}
 
 	newH1, newH2 := HashContent(updated)
 
 	if bytes.Equal(h1, newH1) && bytes.Equal(h2, newH2) {
-		return nil
+		// content didn't change
+		return false, nil
 	}
 
 	batch := &pgx.Batch{}
@@ -187,20 +190,21 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 
 	_, err = results.Exec()
 	if err != nil {
-		return fmt.Errorf("update existing object, project %v, version %v, parent %v: %w", project, version, parent, err)
+		return false, fmt.Errorf("update existing object, project %v, version %v, parent %v: %w", project, version, parent, err)
 	}
 
 	if shouldInsert {
 		_, err = results.Exec()
 		if err != nil {
-			return fmt.Errorf("insert new packed object, project %v, version %v, parent %v: %w", project, version, parent, err)
+			return false, fmt.Errorf("insert new packed object, project %v, version %v, parent %v: %w", project, version, parent, err)
 		}
 
 		_, err = results.Exec()
 		if err != nil {
-			return fmt.Errorf("insert packed content, hash %x-%x: %w", newH1, newH2, err)
+			return false, fmt.Errorf("insert packed content, hash %x-%x: %w", newH1, newH2, err)
 		}
 	}
 
-	return nil
+	// content did change
+	return true, nil
 }
