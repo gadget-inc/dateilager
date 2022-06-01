@@ -39,6 +39,14 @@ This will build the server and client executables along with the `*.proto` files
 $ make build
 ```
 
+### Lint
+
+This will lint the whole project and report any problems:
+
+```bash
+$ make lint
+```
+
 ## API Testing
 
 Ensure there is a Postgres database named `dl_tests`. These tests will write to a real database instance
