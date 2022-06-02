@@ -136,7 +136,7 @@ func (a *getArgs) run(ctx context.Context, c *client.Client) error {
 
 	logger.Info(ctx, "listing objects in project", key.Project.Field(a.project), key.ObjectsCount.Field(len(objects)))
 	for _, object := range objects {
-		logger.Info(ctx, "object", key.ObjectPath.Field(object.Path), key.ObjectContent.Field(string(object.Content)[:10]))
+		logger.Info(ctx, "object", key.ObjectPath.Field(object.Path), key.ObjectContent.Field(string(object.Content)))
 	}
 
 	return nil
