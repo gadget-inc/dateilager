@@ -5,7 +5,6 @@ linters:
   # Enable specific linter
   # https://golangci-lint.run/usage/linters/#enabled-by-default-linters
   enable:
-    - bodyclose
     - depguard
     - dogsled
     - errcheck
@@ -21,15 +20,18 @@ linters:
     - ineffassign
     - misspell
     - nakedret
-    - noctx
     - nolintlint
     - staticcheck
-    - structcheck
     - typecheck
     - unconvert
     - unused
     - varcheck
     - whitespace
+
+  # linters disabled because of go1.18 (see https://github.com/golangci/golangci-lint/issues/2649):
+  # - bodyclose
+  # - noctx
+  # - structcheck
 
   # don't enable:
   # - wsl
