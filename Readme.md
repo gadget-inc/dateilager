@@ -31,12 +31,35 @@ You will also require `npm`.
 $ make install
 ```
 
+### Setup VSCode (Optional)
+
+We recommend using VSCode for development, and there's an example settings file at `.vscode/settings.example.json` to get started with:
+
+```
+cp .vscode/settings.example.json .vscode/settings.json
+```
+
+#### Install `golangci-lint`
+
+```
+brew tap golangci/tap
+brew install golangci/tap/golangci-lint
+```
+
 ### Build
 
 This will build the server and client executables along with the `*.proto` files.
 
 ```bash
 $ make build
+```
+
+### Lint
+
+This will lint the whole project and report any problems:
+
+```bash
+$ make lint
 ```
 
 ## API Testing

@@ -139,7 +139,7 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 	}
 
 	ignoreArray := &pgtype.TextArray{}
-	ignoreArray.Set(ignorePatterns)
+	_ = ignoreArray.Set(ignorePatterns)
 
 	fetchDeleted := `
 		UNION

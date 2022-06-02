@@ -1,0 +1,45 @@
+linters:
+  # Disable all linters.
+  # Default: false
+  disable-all: true
+  # Enable specific linter
+  # https://golangci-lint.run/usage/linters/#enabled-by-default-linters
+  enable:
+    - depguard
+    - dogsled
+    - errcheck
+    - exportloopref
+    - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - goprintffuncname
+    - gosimple
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - nolintlint
+    - staticcheck
+    - typecheck
+    - unconvert
+    - unused
+    - varcheck
+    - whitespace
+
+  # linters disabled because of go1.18 (see https://github.com/golangci/golangci-lint/issues/2649):
+  # - bodyclose
+  # - noctx
+  # - structcheck
+
+  # don't enable:
+  # - wsl
+  # - gochecknoinits
+  # - gomnd
+
+# Options for analysis running.
+run:
+  skip-files:
+  - "internal/pb/*.pb.go$"
+  - internal/pb/object.go

@@ -61,7 +61,7 @@ func ResetProject(ctx context.Context, tx pgx.Tx, project, version int64) error 
 
 func DropOtherProjects(ctx context.Context, tx pgx.Tx, projects []int64) error {
 	projectsArray := &pgtype.Int8Array{}
-	projectsArray.Set(projects)
+	_ = projectsArray.Set(projects)
 
 	_, err := tx.Exec(ctx, `
 		DELETE FROM dl.projects

@@ -68,7 +68,7 @@ func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 		return nil, nil, err
 	}
 
-	return tx, func(ctx context.Context) { tx.Rollback(ctx); conn.Release() }, nil
+	return tx, func(ctx context.Context) { _ = tx.Rollback(ctx); conn.Release() }, nil
 }
 
 type Server struct {
@@ -87,7 +87,7 @@ func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certifica
 				grpc_recovery.UnaryServerInterceptor(),
 				otelgrpc.UnaryServerInterceptor(),
 				logger.UnaryServerInterceptor(),
-				grpc.UnaryServerInterceptor(validateTokenUnary(validator)),
+				validateTokenUnary(validator),
 			),
 		),
 		grpc.StreamInterceptor(
@@ -95,7 +95,7 @@ func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certifica
 				grpc_recovery.StreamServerInterceptor(),
 				otelgrpc.StreamServerInterceptor(),
 				logger.StreamServerInterceptor(),
-				grpc.StreamServerInterceptor(validateTokenStream(validator)),
+				validateTokenStream(validator),
 			),
 		),
 		grpc.MaxRecvMsgSize(100*MB),

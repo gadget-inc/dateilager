@@ -116,14 +116,14 @@ func main() {
 	if err != nil {
 		stdlog.Fatal(err.Error())
 	}
-	defer logger.Sync()
+	defer logger.Sync() //nolint:errcheck
 
 	if args.prof != "" {
 		file, err := os.Create(args.prof)
 		if err != nil {
 			logger.Fatal(ctx, "open pprof file", zap.String("file", args.prof), zap.Error(err))
 		}
-		pprof.StartCPUProfile(file)
+		_ = pprof.StartCPUProfile(file)
 		defer pprof.StopCPUProfile()
 	}
 
@@ -166,7 +166,7 @@ func main() {
 	}
 	s.RegisterFs(ctx, fs)
 
-	osSignals := make(chan os.Signal)
+	osSignals := make(chan os.Signal, 1)
 	signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-osSignals
@@ -178,7 +178,7 @@ func main() {
 		if args.prof != "" {
 			pprof.StopCPUProfile()
 		}
-		logger.Sync()
+		_ = logger.Sync()
 		os.Exit(0)
 	}()
 

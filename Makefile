@@ -19,10 +19,17 @@ INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
+TOOLS_DIR := tools
+TOOLS_BIN_DIR := $(TOOLS_DIR)/bin
+GOLANGCI_LINT := $(TOOLS_BIN_DIR)/golangci-lint
+
 .PHONY: install migrate migrate-create build release test
 .PHONY: reset-db setup-local server server-profile client-update client-get client-rebuild client-pack health
 .PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-client-rebuild k8s-client-pack k8s-health
 .PHONY: upload-container-image
+
+$(GOLANGCI_LINT): $(TOOLS_DIR)/go.mod
+	cd $(TOOLS_DIR) && go build -o bin/golangci-lint github.com/golangci/golangci-lint/cmd/golangci-lint
 
 install:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.26
@@ -215,3 +222,6 @@ load-test-get:
 
 load-test-update:
 	$(call load-test,Update,update_increment.json,10000,1)
+
+lint: $(GOLANGCI_LINT)
+	$(GOLANGCI_LINT) run ./... --fast

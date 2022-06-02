@@ -19,3 +19,14 @@ tmp/*
 .envrc.local
 
 .vscode/*
+!.vscode/settings.example.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# Local History for Visual Studio Code
+.history/
+
+# Built Visual Studio Code Extensions
+*.vsix
