@@ -9,13 +9,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type updateArgs struct {
-	project int64
-	dir     string
-}
-
 func NewCmdUpdate(b client.ClientBuilder) *cobra.Command {
-	a := updateArgs{}
+	var (
+		project int64
+		dir     string
+	)
 
 	cmd := &cobra.Command{
 		Use: "update",
@@ -28,13 +26,13 @@ func NewCmdUpdate(b client.ClientBuilder) *cobra.Command {
 			}
 			defer client.Close()
 
-			version, count, err := client.Update(ctx, a.project, a.dir)
+			version, count, err := client.Update(ctx, project, dir)
 			if err != nil {
 				return fmt.Errorf("update objects: %w", err)
 			}
 
 			logger.Info(ctx, "updated objects",
-				key.Project.Field(a.project),
+				key.Project.Field(project),
 				key.Version.Field(version),
 				key.DiffCount.Field(count),
 			)
@@ -44,8 +42,8 @@ func NewCmdUpdate(b client.ClientBuilder) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Int64Var(&a.project, "project", -1, "Project ID (required)")
-	cmd.Flags().StringVar(&a.dir, "dir", "", "Directory containing updated files")
+	cmd.Flags().Int64Var(&project, "project", -1, "Project ID (required)")
+	cmd.Flags().StringVar(&dir, "dir", "", "Directory containing updated files")
 
 	_ = cmd.MarkFlagRequired("project")
 

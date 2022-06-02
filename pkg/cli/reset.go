@@ -9,12 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type resetArgs struct {
-	state string
-}
-
 func NewCmdReset(b client.ClientBuilder) *cobra.Command {
-	a := resetArgs{}
+	var state string
 
 	cmd := &cobra.Command{
 		Use: "reset",
@@ -27,17 +23,17 @@ func NewCmdReset(b client.ClientBuilder) *cobra.Command {
 			}
 			defer client.Close()
 
-			err = client.Reset(ctx, a.state)
+			err = client.Reset(ctx, state)
 			if err != nil {
 				return fmt.Errorf("reset: %w", err)
 			}
 
-			logger.Info(ctx, "successful reset", key.State.Field(a.state))
+			logger.Info(ctx, "successful reset", key.State.Field(state))
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&a.state, "state", "", "State string from a snapshot command")
+	cmd.Flags().StringVar(&state, "state", "", "State string from a snapshot command")
 
 	return cmd
 }

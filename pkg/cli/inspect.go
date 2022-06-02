@@ -9,12 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type inspectArgs struct {
-	project int64
-}
-
 func NewCmdInspect(b client.ClientBuilder) *cobra.Command {
-	a := inspectArgs{}
+	var project int64
 
 	cmd := &cobra.Command{
 		Use: "inspect",
@@ -27,13 +23,13 @@ func NewCmdInspect(b client.ClientBuilder) *cobra.Command {
 			}
 			defer client.Close()
 
-			inspect, err := client.Inspect(ctx, a.project)
+			inspect, err := client.Inspect(ctx, project)
 			if err != nil {
 				return fmt.Errorf("inspect project: %w", err)
 			}
 
 			logger.Info(ctx, "inspect objects",
-				key.Project.Field(a.project),
+				key.Project.Field(project),
 				key.LatestVersion.Field(inspect.LatestVersion),
 				key.LiveObjectsCount.Field(inspect.LiveObjectsCount),
 				key.TotalObjectsCount.Field(inspect.TotalObjectsCount),
@@ -43,7 +39,7 @@ func NewCmdInspect(b client.ClientBuilder) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Int64Var(&a.project, "project", -1, "Project ID (required)")
+	cmd.Flags().Int64Var(&project, "project", -1, "Project ID (required)")
 
 	_ = cmd.MarkFlagRequired("project")
 

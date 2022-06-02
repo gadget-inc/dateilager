@@ -20,13 +20,12 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-type sharedArgs struct {
-	level    zapcore.Level
-	encoding string
-}
-
 func NewRootCommand() *cobra.Command {
-	shared := &sharedArgs{}
+	var (
+		level    *zapcore.Level
+		encoding string
+	)
+
 	b := client.ClientBuilder{}
 
 	cmd := &cobra.Command{
@@ -38,7 +37,7 @@ func NewRootCommand() *cobra.Command {
 			cmd.SilenceUsage = true // silence usage when an error occurs after flags have been parsed
 			cmd.SilenceErrors = true
 
-			err := initLogger(shared.level, shared.encoding)
+			err := initLogger(*level, encoding)
 			if err != nil {
 				return fmt.Errorf("could not initialize logger: %w", err)
 			}
@@ -50,12 +49,12 @@ func NewRootCommand() *cobra.Command {
 		},
 	}
 
-	zap.LevelFlag("log", zap.DebugLevel, "Log level")
+	level = zap.LevelFlag("log", zap.DebugLevel, "Log level")
 	cmd.PersistentFlags().AddGoFlag(flag.CommandLine.Lookup("log"))
 
 	b.AddPersistentFlags(cmd)
 
-	cmd.PersistentFlags().StringVar(&shared.encoding, "encoding", "console", "Log encoding (console | json)")
+	cmd.PersistentFlags().StringVar(&encoding, "encoding", "console", "Log encoding (console | json)")
 	_ = cmd.PersistentFlags().Bool("tracing", false, "Whether tracing is enabled")
 	_ = cmd.PersistentFlags().String("otel-context", "", "Open Telemetry context")
 

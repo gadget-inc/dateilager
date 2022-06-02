@@ -9,27 +9,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type getArgs struct {
-	project int64
-	to      *int64
-	from    *int64
-	prefix  string
-}
-
 func NewCmdGet(b client.ClientBuilder) *cobra.Command {
-	a := getArgs{}
+	var (
+		project int64
+		to      *int64
+		from    *int64
+		prefix  string
+	)
 
 	cmd := &cobra.Command{
 		Use: "get",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if *a.from == -1 {
-				a.from = nil
+			if *from == -1 {
+				from = nil
 			}
-			if *a.to == -1 {
-				a.to = nil
+			if *to == -1 {
+				to = nil
 			}
 
-			vrange := client.VersionRange{From: a.from, To: a.to}
+			vrange := client.VersionRange{From: from, To: to}
 
 			ctx := cmd.Context()
 
@@ -39,12 +37,12 @@ func NewCmdGet(b client.ClientBuilder) *cobra.Command {
 			}
 			defer client.Close()
 
-			objects, err := client.Get(ctx, a.project, a.prefix, nil, vrange)
+			objects, err := client.Get(ctx, project, prefix, nil, vrange)
 			if err != nil {
 				return fmt.Errorf("could not fetch data: %w", err)
 			}
 
-			logger.Info(ctx, "listing objects in project", key.Project.Field(a.project), key.ObjectsCount.Field(len(objects)))
+			logger.Info(ctx, "listing objects in project", key.Project.Field(project), key.ObjectsCount.Field(len(objects)))
 			for _, object := range objects {
 				logger.Info(ctx, "object", key.ObjectPath.Field(object.Path), key.ObjectContent.Field(string(object.Content)[:10]))
 			}
@@ -53,10 +51,10 @@ func NewCmdGet(b client.ClientBuilder) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Int64Var(&a.project, "project", -1, "Project ID (required)")
-	cmd.Flags().StringVar(&a.prefix, "prefix", "", "Search prefix")
-	a.from = cmd.Flags().Int64("from", -1, "From version ID (optional)")
-	a.to = cmd.Flags().Int64("to", -1, "To version ID (optional)")
+	cmd.Flags().Int64Var(&project, "project", -1, "Project ID (required)")
+	cmd.Flags().StringVar(&prefix, "prefix", "", "Search prefix")
+	from = cmd.Flags().Int64("from", -1, "From version ID (optional)")
+	to = cmd.Flags().Int64("to", -1, "To version ID (optional)")
 
 	_ = cmd.MarkFlagRequired("project")
 

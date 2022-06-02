@@ -9,14 +9,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type newArgs struct {
-	id       int64
-	template int64
-	patterns string
-}
-
 func NewCmdNew(b client.ClientBuilder) *cobra.Command {
-	a := newArgs{}
+	var (
+		id       int64
+		template int64
+		patterns string
+	)
 
 	cmd := &cobra.Command{
 		Use: "new",
@@ -29,19 +27,19 @@ func NewCmdNew(b client.ClientBuilder) *cobra.Command {
 			}
 			defer client.Close()
 
-			err = client.NewProject(ctx, a.id, &a.template, a.patterns)
+			err = client.NewProject(ctx, id, &template, patterns)
 			if err != nil {
 				return fmt.Errorf("could not create new project: %w", err)
 			}
 
-			logger.Info(ctx, "created new project", key.Project.Field(a.id))
+			logger.Info(ctx, "created new project", key.Project.Field(id))
 			return nil
 		},
 	}
 
-	cmd.Flags().Int64Var(&a.id, "id", -1, "Project ID (required)")
-	cmd.Flags().Int64Var(&a.template, "template", -1, "Template ID")
-	cmd.Flags().StringVar(&a.patterns, "patterns", "", "Comma separated pack patterns")
+	cmd.Flags().Int64Var(&id, "id", -1, "Project ID (required)")
+	cmd.Flags().Int64Var(&template, "template", -1, "Template ID")
+	cmd.Flags().StringVar(&patterns, "patterns", "", "Comma separated pack patterns")
 
 	_ = cmd.MarkFlagRequired("id")
 
