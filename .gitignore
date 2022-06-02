@@ -19,7 +19,7 @@ tmp/*
 .envrc.local
 
 .vscode/*
-!.vscode/settings.json
+!.vscode/settings.example.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json

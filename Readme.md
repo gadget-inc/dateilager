@@ -31,6 +31,14 @@ You will also require `npm`.
 $ make install
 ```
 
+### Setup VSCode (Optional)
+
+We recommend using VSCode for development, and there's an example settings file at `.vscode/settings.example.json` to get started with:
+
+```
+cp .vscode/settings.example.json .vscode/settings.json
+```
+
 ### Build
 
 This will build the server and client executables along with the `*.proto` files.
