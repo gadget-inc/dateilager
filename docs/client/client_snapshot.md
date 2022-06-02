@@ -24,5 +24,5 @@ client snapshot [flags]
 
 ### SEE ALSO
 
-* [client](client.md)	 - DatiLager client
+* [client](client.md)	 - DateiLager client
 

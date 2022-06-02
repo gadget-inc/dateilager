@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdReset(b client.ClientBuilder) *cobra.Command {
+func NewCmdReset(b *client.ClientBuilder) *cobra.Command {
 	var state string
 
 	cmd := &cobra.Command{

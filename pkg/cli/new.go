@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdNew(b client.ClientBuilder) *cobra.Command {
+func NewCmdNew(b *client.ClientBuilder) *cobra.Command {
 	var (
 		id       int64
 		template int64

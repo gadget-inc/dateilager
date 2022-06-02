@@ -26,7 +26,7 @@ func NewRootCommand() *cobra.Command {
 		encoding string
 	)
 
-	b := client.ClientBuilder{}
+	b := &client.ClientBuilder{}
 
 	cmd := &cobra.Command{
 		Use:               "client",

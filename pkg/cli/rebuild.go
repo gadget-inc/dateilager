@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdRebuild(b client.ClientBuilder) *cobra.Command {
+func NewCmdRebuild(b *client.ClientBuilder) *cobra.Command {
 	var (
 		project int64
 		to      *int64

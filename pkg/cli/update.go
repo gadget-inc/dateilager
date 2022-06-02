@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdUpdate(b client.ClientBuilder) *cobra.Command {
+func NewCmdUpdate(b *client.ClientBuilder) *cobra.Command {
 	var (
 		project int64
 		dir     string

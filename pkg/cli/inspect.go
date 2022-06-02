@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdInspect(b client.ClientBuilder) *cobra.Command {
+func NewCmdInspect(b *client.ClientBuilder) *cobra.Command {
 	var project int64
 
 	cmd := &cobra.Command{

@@ -1,6 +1,6 @@
 ## client
 
-DatiLager client
+DateiLager client
 
 ### Options
 
