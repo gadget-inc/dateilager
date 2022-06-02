@@ -39,6 +39,13 @@ We recommend using VSCode for development, and there's an example settings file 
 cp .vscode/settings.example.json .vscode/settings.json
 ```
 
+#### Install `golangci-lint`
+
+```
+brew tap golangci/tap
+brew install golangci/tap/golangci-lint
+```
+
 ### Build
 
 This will build the server and client executables along with the `*.proto` files.
