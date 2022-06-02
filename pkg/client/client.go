@@ -49,17 +49,17 @@ func NewClientConn(conn *grpc.ClientConn) *Client {
 	return &Client{conn: conn, fs: pb.NewFsClient(conn)}
 }
 
-type Options struct {
+type options struct {
 	token string
 }
 
-func WithToken(token string) func(*Options) {
-	return func(o *Options) {
+func WithToken(token string) func(*options) {
+	return func(o *options) {
 		o.token = token
 	}
 }
 
-func NewClient(ctx context.Context, server string, opts ...func(*Options)) (*Client, error) {
+func NewClient(ctx context.Context, server string, opts ...func(*options)) (*Client, error) {
 	ctx, span := telemetry.Start(ctx, "client.new", trace.WithAttributes(
 		key.Server.Attribute(server),
 	))
@@ -73,7 +73,7 @@ func NewClient(ctx context.Context, server string, opts ...func(*Options)) (*Cli
 	sslVerification := os.Getenv("DL_SKIP_SSL_VERIFICATION")
 	creds := credentials.NewTLS(&tls.Config{RootCAs: pool, InsecureSkipVerify: sslVerification == "1"})
 
-	o := &Options{}
+	o := &options{}
 	for _, opt := range opts {
 		opt(o)
 	}
