@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdGet(b *client.ClientBuilder) *cobra.Command {
+func NewCmdGet(server *string) *cobra.Command {
 	var (
 		project int64
 		to      *int64
@@ -31,7 +31,7 @@ func NewCmdGet(b *client.ClientBuilder) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			client, err := b.Build(ctx)
+			client, err := client.NewClient(ctx, *server)
 			if err != nil {
 				return err
 			}

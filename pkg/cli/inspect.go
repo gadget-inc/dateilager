@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdInspect(b *client.ClientBuilder) *cobra.Command {
+func NewCmdInspect(server *string) *cobra.Command {
 	var project int64
 
 	cmd := &cobra.Command{
@@ -17,7 +17,7 @@ func NewCmdInspect(b *client.ClientBuilder) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			client, err := b.Build(ctx)
+			client, err := client.NewClient(ctx, *server)
 			if err != nil {
 				return err
 			}

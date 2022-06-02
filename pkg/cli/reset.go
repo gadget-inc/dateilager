@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdReset(b *client.ClientBuilder) *cobra.Command {
+func NewCmdReset(server *string) *cobra.Command {
 	var state string
 
 	cmd := &cobra.Command{
@@ -17,7 +17,7 @@ func NewCmdReset(b *client.ClientBuilder) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			client, err := b.Build(ctx)
+			client, err := client.NewClient(ctx, *server)
 			if err != nil {
 				return err
 			}

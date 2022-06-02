@@ -11,7 +11,6 @@ import (
 
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
-	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/version"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel"
@@ -25,8 +24,6 @@ func NewRootCommand() *cobra.Command {
 		level    *zapcore.Level
 		encoding string
 	)
-
-	b := &client.ClientBuilder{}
 
 	cmd := &cobra.Command{
 		Use:               "client",
@@ -52,19 +49,18 @@ func NewRootCommand() *cobra.Command {
 	level = zap.LevelFlag("log", zap.DebugLevel, "Log level")
 	cmd.PersistentFlags().AddGoFlag(flag.CommandLine.Lookup("log"))
 
-	b.AddPersistentFlags(cmd)
-
 	cmd.PersistentFlags().StringVar(&encoding, "encoding", "console", "Log encoding (console | json)")
 	_ = cmd.PersistentFlags().Bool("tracing", false, "Whether tracing is enabled")
 	_ = cmd.PersistentFlags().String("otel-context", "", "Open Telemetry context")
+	server := cmd.PersistentFlags().String("server", "", "Server GRPC address")
 
-	cmd.AddCommand(NewCmdGet(b))
-	cmd.AddCommand(NewCmdInspect(b))
-	cmd.AddCommand(NewCmdNew(b))
-	cmd.AddCommand(NewCmdRebuild(b))
-	cmd.AddCommand(NewCmdReset(b))
-	cmd.AddCommand(NewCmdSnapshot(b))
-	cmd.AddCommand(NewCmdUpdate(b))
+	cmd.AddCommand(NewCmdGet(server))
+	cmd.AddCommand(NewCmdInspect(server))
+	cmd.AddCommand(NewCmdNew(server))
+	cmd.AddCommand(NewCmdRebuild(server))
+	cmd.AddCommand(NewCmdReset(server))
+	cmd.AddCommand(NewCmdSnapshot(server))
+	cmd.AddCommand(NewCmdUpdate(server))
 
 	return cmd
 }

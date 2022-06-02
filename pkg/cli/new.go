@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdNew(b *client.ClientBuilder) *cobra.Command {
+func NewCmdNew(server *string) *cobra.Command {
 	var (
 		id       int64
 		template int64
@@ -21,7 +21,7 @@ func NewCmdNew(b *client.ClientBuilder) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 
-			client, err := b.Build(ctx)
+			client, err := client.NewClient(ctx, *server)
 			if err != nil {
 				return err
 			}
