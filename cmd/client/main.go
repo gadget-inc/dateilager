@@ -427,7 +427,7 @@ func main() {
 	ctx, span := telemetry.Start(ctx, "cmd.main")
 	defer span.End()
 
-	c, err := client.NewClient(ctx, *shared.server, token)
+	c, err := client.NewClient(ctx, *shared.server)
 	if err != nil {
 		logger.Error(ctx, "could not connect to server", key.Server.Field(*shared.server), zap.Error(err))
 		return
