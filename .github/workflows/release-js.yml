@@ -1,0 +1,25 @@
+name: Release JS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ./js/package.json
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/setup-env
+      - run: nix develop -c make build
+      - uses: JS-DevTools/npm-publish@v1
+        with:
+          token: ${{ secrets.NPM_TOKEN }}
+          package: ./js/package.json
+          access: public

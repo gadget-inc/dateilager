@@ -8,8 +8,21 @@ jobs:
   test:
     runs-on: ubuntu-20.04
     steps:
-    - uses: actions/checkout@v2
-    - uses: ./.github/actions/setup-env
-    - run: nix develop -c dev &
-    - run: nix develop -c make build
-    - run: nix develop -c make test
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/setup-env
+      - run: nix develop -c dev &
+      - run: nix develop -c make build
+      - run: nix develop -c make test
+
+  test-js:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/setup-env
+      - run: nix develop -c dev &
+      - run: nix develop -c make build
+      - run: nix develop -c make setup-local
+      - run: nix develop -c make server &
+      - run: nix develop -c make lint-js
+      - run: nix develop -c make typecheck-js
+      - run: nix develop -c make test-js

@@ -124,10 +124,10 @@ $ ls -lah ./rebuild
 
 Ensure a server is running with `make server`.
 
-Import the `DateiLagerClient` from the module in `js/` and use it to query objects:
+Import the `DateiLagerGrpcClient` from the module in `js/` and use it to query objects:
 
 ```javascript
-const client = new DateiLagerClient("localhost", 5051);
+const client = new DateiLagerGrpcClient("localhost", 5051);
 
 // Get a single object
 const object = await client.getObject(1n, "a");

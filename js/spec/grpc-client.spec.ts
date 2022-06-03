@@ -1,16 +1,13 @@
-import { DateiLagerClient, encodeContent } from "../src";
-import type { Project } from "../src/fs";
+import { DateiLagerGrpcClient, encodeContent } from "../src";
+import type { Project } from "../src/pb/fs_pb";
 
 const devAdminToken =
   "v2.public.eyJzdWIiOiJhZG1pbiIsImlhdCI6IjIwMjEtMTAtMTVUMTE6MjA6MDAuMDM0WiJ9WtEey8KfQQRy21xoHq1C5KQatEevk8RxS47k4bRfMwVCPHumZmVuk6ADcfDHTmSnMtEGfFXdxnYOhRP6Clb_Dw";
 
-describe("client operations", () => {
-  let client: DateiLagerClient;
-  let snapshot: Project[];
+describe("grpc client operations", () => {
+  const client = new DateiLagerGrpcClient({ server: "localhost:5051", token: devAdminToken });
 
-  beforeAll(() => {
-    client = new DateiLagerClient("localhost", 5051, () => Promise.resolve(devAdminToken));
-  });
+  let snapshot: Project[];
 
   beforeEach(async () => {
     snapshot = await client.snapshotInDevOrTests();
@@ -18,6 +15,10 @@ describe("client operations", () => {
 
   afterEach(async () => {
     await client.resetToSnapshotInDevOrTests(snapshot);
+  });
+
+  afterAll(() => {
+    client.close();
   });
 
   test("create and read an object", async () => {
