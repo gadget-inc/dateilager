@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdGet(server *string) *cobra.Command {
+func NewCmdGet() *cobra.Command {
 	var (
 		project int64
 		to      *int64
@@ -32,11 +32,7 @@ func NewCmdGet(server *string) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			client, err := client.NewClient(ctx, *server)
-			if err != nil {
-				return err
-			}
-			defer client.Close()
+			client := ctx.Value(clientCtxKey{}).(*client.Client)
 
 			objects, err := client.Get(ctx, project, prefix, nil, vrange)
 			if err != nil {

@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdUpdate(server *string) *cobra.Command {
+func NewCmdUpdate() *cobra.Command {
 	var (
 		project int64
 		dir     string
@@ -20,11 +20,7 @@ func NewCmdUpdate(server *string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			client, err := client.NewClient(ctx, *server)
-			if err != nil {
-				return err
-			}
-			defer client.Close()
+			client := ctx.Value(clientCtxKey{}).(*client.Client)
 
 			version, count, err := client.Update(ctx, project, dir)
 			if err != nil {

@@ -8,17 +8,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdSnapshot(server *string) *cobra.Command {
+func NewCmdSnapshot() *cobra.Command {
 	return &cobra.Command{
 		Use: "snapshot",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			client, err := client.NewClient(ctx, *server)
-			if err != nil {
-				return err
-			}
-			defer client.Close()
+			client := ctx.Value(clientCtxKey{}).(*client.Client)
 
 			state, err := client.Snapshot(ctx)
 			if err != nil {

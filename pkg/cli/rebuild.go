@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdRebuild(server *string) *cobra.Command {
+func NewCmdRebuild() *cobra.Command {
 	var (
 		project int64
 		to      *int64
@@ -26,11 +26,7 @@ func NewCmdRebuild(server *string) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			client, err := client.NewClient(ctx, *server)
-			if err != nil {
-				return err
-			}
-			defer client.Close()
+			client := ctx.Value(clientCtxKey{}).(*client.Client)
 
 			version, count, err := client.Rebuild(ctx, project, prefix, to, dir)
 			if err != nil {

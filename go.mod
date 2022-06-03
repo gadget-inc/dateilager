@@ -11,7 +11,7 @@ require (
 	github.com/klauspost/compress v1.13.6
 	github.com/minio/sha256-simd v1.0.0
 	github.com/o1egl/paseto v1.0.0
-	github.com/spf13/cobra v1.4.0
+	github.com/spf13/cobra v1.4.1-0.20220321173535-3a1795bc253b
 	github.com/stretchr/testify v1.7.1
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.31.0
 	go.opentelemetry.io/otel v1.6.3

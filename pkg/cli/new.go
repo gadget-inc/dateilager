@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdNew(server *string) *cobra.Command {
+func NewCmdNew() *cobra.Command {
 	var (
 		id       int64
 		template int64
@@ -21,13 +21,9 @@ func NewCmdNew(server *string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 
-			client, err := client.NewClient(ctx, *server)
-			if err != nil {
-				return err
-			}
-			defer client.Close()
+			client := ctx.Value(clientCtxKey{}).(*client.Client)
 
-			err = client.NewProject(ctx, id, &template, patterns)
+			err := client.NewProject(ctx, id, &template, patterns)
 			if err != nil {
 				return fmt.Errorf("could not create new project: %w", err)
 			}
