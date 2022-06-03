@@ -23,7 +23,7 @@ TOOLS_DIR := tools
 TOOLS_BIN_DIR := $(TOOLS_DIR)/bin
 GOLANGCI_LINT := $(TOOLS_BIN_DIR)/golangci-lint
 
-.PHONY: install migrate migrate-create build release test
+.PHONY: install migrate migrate-create build release test test-js lint-js typecheck-js
 .PHONY: reset-db setup-local server server-profile client-update client-get client-rebuild client-pack health
 .PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-client-rebuild k8s-client-pack k8s-health
 .PHONY: upload-container-image
@@ -60,15 +60,18 @@ internal/pb/%_grpc.pb.go: internal/pb/%.proto
 bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 go build $(BUILD_FLAGS) -o $@ $<
 
-js/src/%.client.ts: internal/pb/%.proto
-	cd js && npx protoc --experimental_allow_proto3_optional --ts_out ./src --ts_opt long_type_bigint --proto_path ../internal/pb/ ../$^
+js/src/pb: internal/pb/*.proto
+	cd js && mkdir -p ./src/pb && npx protoc --experimental_allow_proto3_optional --ts_out ./src/pb --ts_opt long_type_bigint,ts_nocheck,eslint_disable,add_pb_suffix --proto_path ../internal/pb/ ../$^
+
+js/dist: js/src/pb
+	cd js && npm run build
 
 development/server.key:
 	mkcert -cert-file development/server.crt -key-file development/server.key localhost
 
 development/server.crt: development/server.key
 
-build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui js/src/fs.client.ts development/server.crt
+build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui js/dist development/server.crt
 
 release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o $@ $<
@@ -94,6 +97,15 @@ release: release/assets.tar.gz release/migrations.tar.gz
 test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test: migrate
 	cd test && go test
+
+test-js:
+	cd js && npm run test
+
+lint-js:
+	cd js && npm run lint
+
+typecheck-js:
+	cd js && npm run typecheck
 
 reset-db: migrate
 	psql $(DB_URI) -c "truncate dl.objects; truncate dl.contents; truncate dl.projects;"
