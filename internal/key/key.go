@@ -1,6 +1,7 @@
 package key
 
 import (
+	"github.com/gadget-inc/dateilager/pkg/stringutil"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
@@ -12,7 +13,6 @@ const (
 	FromVersion       = Int64pKey("dl.from_version")
 	LatestVersion     = Int64Key("dl.latest_version")
 	LiveObjectsCount  = Int64Key("dl.live_objects_count")
-	ObjectContent     = StringKey("dl.object.content")
 	ObjectPath        = StringKey("dl.object.path")
 	ObjectsCount      = IntKey("dl.object_count")
 	ObjectsParent     = StringKey("dl.object_parent")
@@ -32,6 +32,10 @@ const (
 	Version           = Int64Key("dl.version")
 	Worker            = IntKey("dl.worker")
 	Ignores           = StringSliceKey("dl.ignores")
+)
+
+var (
+	ObjectContent = ShortenedStringKey{"dl.object.content", 10}
 )
 
 type BoolKey string
@@ -62,6 +66,19 @@ func (ssk StringSliceKey) Field(value []string) zap.Field {
 
 func (ssk StringSliceKey) Attribute(value []string) attribute.KeyValue {
 	return attribute.StringSlice(string(ssk), value)
+}
+
+type ShortenedStringKey struct {
+	key string
+	n   int
+}
+
+func (s ShortenedStringKey) Field(value string) zap.Field {
+	return zap.String(s.key, stringutil.ShortenString(value, s.n))
+}
+
+func (s ShortenedStringKey) Attribute(value string) attribute.KeyValue {
+	return attribute.String(s.key, stringutil.ShortenString(value, s.n))
 }
 
 type IntKey string
