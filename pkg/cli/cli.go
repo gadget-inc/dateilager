@@ -83,10 +83,10 @@ func NewRootCommand() *cobra.Command {
 		},
 	}
 
-	level = zap.LevelFlag("log", zap.DebugLevel, "Log level")
-	cmd.PersistentFlags().AddGoFlag(flag.CommandLine.Lookup("log"))
+	level = zap.LevelFlag("log-level", zap.DebugLevel, "Log level")
+	cmd.PersistentFlags().AddGoFlag(flag.CommandLine.Lookup("log-level"))
 
-	cmd.PersistentFlags().StringVar(&encoding, "encoding", "console", "Log encoding (console | json)")
+	cmd.PersistentFlags().StringVar(&encoding, "log-encoding", "console", "Log encoding (console | json)")
 	cmd.PersistentFlags().BoolVar(&tracing, "tracing", false, "Whether tracing is enabled")
 	cmd.PersistentFlags().StringVar(&otelContext, "otel-context", "", "Open Telemetry context")
 	cmd.PersistentFlags().StringVar(&server, "server", "", "Server GRPC address")

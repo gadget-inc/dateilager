@@ -193,10 +193,10 @@ export class DateiLagerBinaryClient {
     args: string[],
     options?: { timeout: number }
   ): Promise<ExecaReturnValue> {
-    const baseArgs = [method, "--project", String(project), "--server", this._options.server, "--encoding", "json"];
+    const baseArgs = [method, "--project", String(project), "--server", this._options.server, "--log-encoding", "json"];
 
     if (this._options.logger) {
-      baseArgs.push("--log", this._options.logger.level);
+      baseArgs.push("--log-level", this._options.logger.level);
     }
 
     if (this._options.tracing) {

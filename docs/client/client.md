@@ -5,9 +5,9 @@ DateiLager client
 ### Options
 
 ```
-      --encoding string       Log encoding (console | json) (default "console")
   -h, --help                  help for client
-      --log Level             Log level (default debug)
+      --log-encoding string   Log encoding (console | json) (default "console")
+      --log-level Level       Log level (default debug)
       --otel-context string   Open Telemetry context
       --server string         Server GRPC address
       --tracing               Whether tracing is enabled
