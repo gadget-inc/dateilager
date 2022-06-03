@@ -125,38 +125,38 @@ client-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-update: export DL_SKIP_SSL_VERIFICATION=1
 client-update:
 	scripts/simple_input.sh 1
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -dir input/simple
+	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/simple
 	scripts/simple_input.sh 2
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -dir input/simple
+	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/simple
 	scripts/simple_input.sh 3
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -dir input/simple
+	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/simple
 
 client-large-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-large-update: export DL_SKIP_SSL_VERIFICATION=1
 client-large-update:
 	scripts/complex_input.sh 1
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -dir input/complex
+	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/complex
 	scripts/complex_input.sh 2
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -dir input/complex
+	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/complex
 	scripts/complex_input.sh 3
-	go run cmd/client/main.go update -project 1 -server $(GRPC_SERVER) -dir input/complex
+	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/complex
 
 client-get: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-get: export DL_SKIP_SSL_VERIFICATION=1
 client-get:
 ifndef to_version
-	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)"
+	go run cmd/client/main.go get --project 1 --server $(GRPC_SERVER) --prefix "$(prefix)"
 else
-	go run cmd/client/main.go get -project 1 -server $(GRPC_SERVER) -to $(to_version) -prefix "$(prefix)"
+	go run cmd/client/main.go get --project 1 --server $(GRPC_SERVER) --to $(to_version) --prefix "$(prefix)"
 endif
 
 client-rebuild: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-rebuild: export DL_SKIP_SSL_VERIFICATION=1
 client-rebuild:
 ifndef to_version
-	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -prefix "$(prefix)" -dir $(dir)
+	go run cmd/client/main.go rebuild --project 1 --server $(GRPC_SERVER) --prefix "$(prefix)" --dir $(dir)
 else
-	go run cmd/client/main.go rebuild -project 1 -server $(GRPC_SERVER) -to $(to_version) -prefix "$(prefix)" -dir $(dir)
+	go run cmd/client/main.go rebuild --project 1 --server $(GRPC_SERVER) --to $(to_version) --prefix "$(prefix)" --dir $(dir)
 endif
 
 webui: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
@@ -237,3 +237,6 @@ load-test-update:
 
 lint: $(GOLANGCI_LINT)
 	$(GOLANGCI_LINT) run ./... --fast
+
+gen-docs:
+	go run cmd/gen-docs/main.go

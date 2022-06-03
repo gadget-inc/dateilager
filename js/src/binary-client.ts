@@ -136,7 +136,7 @@ export class DateiLagerBinaryClient {
         },
       },
       async () => {
-        const result = await this._call("update", project, directory, ["-dir", directory], options);
+        const result = await this._call("update", project, directory, ["--dir", directory], options);
 
         if (result.stdout == "-1") {
           return null;
@@ -170,9 +170,9 @@ export class DateiLagerBinaryClient {
       async () => {
         await fs.mkdir(directory, { recursive: true });
 
-        const args = ["-dir", directory];
+        const args = ["--dir", directory];
         if (to) {
-          args.push("-to", String(to));
+          args.push("--to", String(to));
         }
 
         const result = await this._call("rebuild", project, directory, args, options);
@@ -193,10 +193,10 @@ export class DateiLagerBinaryClient {
     args: string[],
     options?: { timeout: number }
   ): Promise<ExecaReturnValue> {
-    const baseArgs = [method, "-project", String(project), "-server", this._options.server, "-encoding", "json"];
+    const baseArgs = [method, "--project", String(project), "--server", this._options.server, "--log-encoding", "json"];
 
     if (this._options.logger) {
-      baseArgs.push("-log", this._options.logger.level);
+      baseArgs.push("--log-level", this._options.logger.level);
     }
 
     if (this._options.tracing) {
@@ -204,7 +204,7 @@ export class DateiLagerBinaryClient {
       propagation.inject(context.active(), carrier);
       const otelContext = JSON.stringify(carrier);
 
-      baseArgs.push("-tracing", "-otel-context", otelContext);
+      baseArgs.push("--tracing", "--otel-context", otelContext);
     }
 
     const subprocess = execa(this._options.command, baseArgs.concat(args), {
