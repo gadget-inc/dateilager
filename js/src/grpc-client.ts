@@ -9,6 +9,8 @@ import { trace, tracer } from "./internal/telemetry";
 import type { Objekt, Project, UpdateRequest, UpdateResponse } from "./pb/fs_pb";
 import { FsClient } from "./pb/fs_pb.client";
 
+export type { Objekt, Project };
+
 /**
  * Options for {@link DateiLagerGrpcClient}.
  */
@@ -284,7 +286,7 @@ export class DateiLagerGrpcClient {
    *
    * @param    project The id of the project.
    * @param    obj     The object to update.
-   * @returns          The new project version.
+   * @returns          The latest project version or `null` if something went wrong.
    */
   public async updateObject(project: bigint, obj: Objekt): Promise<bigint | null> {
     const stream = this.updateObjects(project);
@@ -358,7 +360,7 @@ class UpdateInputStream {
   /**
    * Complete the update request.
    *
-   * @returns  The new project version.
+   * @returns  The latest project version or `null` if something went wrong.
    */
   public async complete(): Promise<bigint | null> {
     try {
