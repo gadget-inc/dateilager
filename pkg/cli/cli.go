@@ -43,7 +43,6 @@ func NewRootCommand() *cobra.Command {
 		Version:           version.Version,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			cmd.SilenceUsage = true // silence usage when an error occurs after flags have been parsed
-			cmd.SilenceErrors = true
 
 			err := initLogger(*level, encoding)
 			if err != nil {
