@@ -6,6 +6,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/pkg/client"
+	"github.com/gadget-inc/dateilager/pkg/stringutil"
 	"github.com/spf13/cobra"
 )
 
@@ -44,7 +45,12 @@ func NewCmdGet(server *string) *cobra.Command {
 
 			logger.Info(ctx, "listing objects in project", key.Project.Field(project), key.ObjectsCount.Field(len(objects)))
 			for _, object := range objects {
-				logger.Info(ctx, "object", key.ObjectPath.Field(object.Path), key.ObjectContent.Field(string(object.Content)[:10]))
+				logger.Info(
+					ctx,
+					"object",
+					key.ObjectPath.Field(object.Path),
+					key.ObjectContent.Field(stringutil.ShortenString(string(object.Content), 10)),
+				)
 			}
 
 			return nil
