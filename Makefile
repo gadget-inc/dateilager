@@ -237,3 +237,6 @@ load-test-update:
 
 lint: $(GOLANGCI_LINT)
 	$(GOLANGCI_LINT) run ./... --fast
+
+gen-docs:
+	go run cmd/gen-docs/main.go

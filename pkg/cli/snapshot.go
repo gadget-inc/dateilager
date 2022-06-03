@@ -1,0 +1,34 @@
+package cli
+
+import (
+	"fmt"
+
+	"github.com/gadget-inc/dateilager/internal/logger"
+	"github.com/gadget-inc/dateilager/pkg/client"
+	"github.com/spf13/cobra"
+)
+
+func NewCmdSnapshot(b client.ClientBuilder) *cobra.Command {
+	return &cobra.Command{
+		Use: "snapshot",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			client, err := b.Build(ctx)
+			if err != nil {
+				return err
+			}
+			defer client.Close()
+
+			state, err := client.Snapshot(ctx)
+			if err != nil {
+				return fmt.Errorf("snapshot: %w", err)
+			}
+
+			logger.Info(ctx, "successful snapshot")
+			fmt.Println(state)
+
+			return nil
+		},
+	}
+}
