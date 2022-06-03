@@ -31,7 +31,7 @@ func NewRootCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:               "client",
-		Short:             "DatiLager client",
+		Short:             "DateiLager client",
 		DisableAutoGenTag: true,
 		Version:           version.Version,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
