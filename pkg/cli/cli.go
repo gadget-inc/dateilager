@@ -20,8 +20,6 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-type clientCtxKey struct{}
-
 var (
 	shutdownTelemetry func()
 	span              trace.Span
@@ -44,7 +42,12 @@ func NewRootCommand() *cobra.Command {
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			cmd.SilenceUsage = true // silence usage when an error occurs after flags have been parsed
 
-			err := initLogger(*level, encoding)
+			config := zap.NewProductionConfig()
+			config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+			config.Level = zap.NewAtomicLevelAt(*level)
+			config.Encoding = encoding
+
+			err := logger.Init(config)
 			if err != nil {
 				return fmt.Errorf("could not initialize logger: %w", err)
 			}
@@ -70,12 +73,12 @@ func NewRootCommand() *cobra.Command {
 
 			ctx, span = telemetry.Start(ctx, "cmd.main")
 
-			client, err := client.NewClient(ctx, server)
+			cl, err := client.NewClient(ctx, server)
 			if err != nil {
 				return err
 			}
 
-			ctx = context.WithValue(ctx, clientCtxKey{}, client)
+			ctx = client.IntoContext(ctx, cl)
 
 			cmd.SetContext(ctx)
 
@@ -102,15 +105,6 @@ func NewRootCommand() *cobra.Command {
 	return cmd
 }
 
-func initLogger(level zapcore.Level, encoding string) error {
-	config := zap.NewProductionConfig()
-	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	config.Level = zap.NewAtomicLevelAt(level)
-	config.Encoding = encoding
-
-	return logger.Init(config)
-}
-
 func Execute() {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()
@@ -119,8 +113,8 @@ func Execute() {
 
 	err := rootCmd.ExecuteContext(ctx)
 
-	client, ok := rootCmd.Context().Value(clientCtxKey{}).(*client.Client)
-	if ok {
+	client := client.FromContext(rootCmd.Context())
+	if client != nil {
 		client.Close()
 	}
 

@@ -21,7 +21,7 @@ func NewCmdNew() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 
-			client := ctx.Value(clientCtxKey{}).(*client.Client)
+			client := client.FromContext(ctx)
 
 			err := client.NewProject(ctx, id, &template, patterns)
 			if err != nil {

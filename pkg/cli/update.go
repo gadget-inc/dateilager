@@ -20,7 +20,7 @@ func NewCmdUpdate() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			client := ctx.Value(clientCtxKey{}).(*client.Client)
+			client := client.FromContext(ctx)
 
 			version, count, err := client.Update(ctx, project, dir)
 			if err != nil {

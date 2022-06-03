@@ -26,7 +26,7 @@ func NewCmdRebuild() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			client := ctx.Value(clientCtxKey{}).(*client.Client)
+			client := client.FromContext(ctx)
 
 			version, count, err := client.Rebuild(ctx, project, prefix, to, dir)
 			if err != nil {

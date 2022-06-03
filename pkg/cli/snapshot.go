@@ -14,7 +14,7 @@ func NewCmdSnapshot() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			client := ctx.Value(clientCtxKey{}).(*client.Client)
+			client := client.FromContext(ctx)
 
 			state, err := client.Snapshot(ctx)
 			if err != nil {

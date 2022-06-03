@@ -31,7 +31,7 @@ func NewCmdGet() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			client := ctx.Value(clientCtxKey{}).(*client.Client)
+			client := client.FromContext(ctx)
 
 			objects, err := client.Get(ctx, project, prefix, nil, vrange)
 			if err != nil {

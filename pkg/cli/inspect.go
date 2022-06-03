@@ -17,7 +17,7 @@ func NewCmdInspect() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			client := ctx.Value(clientCtxKey{}).(*client.Client)
+			client := client.FromContext(ctx)
 
 			inspect, err := client.Inspect(ctx, project)
 			if err != nil {

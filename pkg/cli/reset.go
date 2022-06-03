@@ -17,7 +17,7 @@ func NewCmdReset() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			client := ctx.Value(clientCtxKey{}).(*client.Client)
+			client := client.FromContext(ctx)
 
 			err := client.Reset(ctx, state)
 			if err != nil {
