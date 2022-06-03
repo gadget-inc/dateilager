@@ -39,11 +39,27 @@ export interface DateiLagerBinaryClientOptions {
   command?: string;
 
   /**
-   * The default number of milliseconds to wait before terminating the process.
+   * The default number of milliseconds to wait before terminating any command.
    *
    * @default Infinity
    */
-  timeout?: number;
+  timeout?:
+    | number
+    | {
+        /**
+         * The default number of milliseconds to wait before terminating the update command.
+         *
+         * @default Infinity
+         */
+        update?: number;
+
+        /**
+         * The default number of milliseconds to wait before terminating the rebuild command.
+         *
+         * @default Infinity
+         */
+        rebuild?: number;
+      };
 
   /**
    * Whether the dateilager binary client should enable tracing.
@@ -85,7 +101,17 @@ export class DateiLagerBinaryClient {
       server: typeof options.server === "string" ? options.server : `${options.server.host}:${options.server.port}`,
       token: typeof options.token === "string" ? () => Promise.resolve(options.token as string) : options.token,
       command: options.command ?? "dateilager-client",
-      timeout: options.timeout ?? Infinity,
+      timeout:
+        typeof options.timeout === "number"
+          ? {
+              update: options.timeout,
+              rebuild: options.timeout,
+            }
+          : {
+              update: Infinity,
+              rebuild: Infinity,
+              ...options.timeout,
+            },
       tracing: options.tracing ?? false,
       logger: options.logger,
     };
@@ -183,7 +209,7 @@ export class DateiLagerBinaryClient {
 
     const subprocess = execa(this._options.command, baseArgs.concat(args), {
       cwd,
-      timeout: options?.timeout ?? this._options.timeout,
+      timeout: options?.timeout ?? this._options.timeout[method],
       env: { DL_TOKEN: await this._options.token() },
     });
 
