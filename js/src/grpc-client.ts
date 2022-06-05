@@ -208,7 +208,7 @@ export class DateiLagerGrpcClient {
         }
       }
 
-      await call;
+      await call.status;
     } finally {
       span.end();
     }
@@ -251,7 +251,7 @@ export class DateiLagerGrpcClient {
           object = response.object;
         }
 
-        await call;
+        await call.status;
 
         return object;
       }
