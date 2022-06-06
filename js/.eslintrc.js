@@ -56,6 +56,14 @@ module.exports = {
     "jsdoc/require-returns-type": ["off"],
     "jsdoc/sort-tags": ["warn"],
   },
+  overrides: [
+    {
+      files: "**/spec/**",
+      rules: {
+        "jsdoc/require-jsdoc": ["off"],
+      },
+    },
+  ],
   settings: {
     "import/extensions": [".js", ".jsx", ".ts", ".tsx"],
     jsdoc: { ignoreInternal: true },

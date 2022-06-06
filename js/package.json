@@ -27,7 +27,7 @@
     "build": "rm -rf dist && npx tsc --project tsconfig.cjs.json && npx tsc --project tsconfig.esm.json",
     "fmt": "npx prettier --write . && npx eslint --fix .",
     "lint": "npx prettier --check . && npx eslint .",
-    "test": "NODE_EXTRA_CA_CERTS=\"$(mkcert -CAROOT)/rootCA.pem\" npx jest",
+    "test": "DL_SKIP_SSL_VERIFICATION=1 NODE_EXTRA_CA_CERTS=\"$(mkcert -CAROOT)/rootCA.pem\" npx jest",
     "typecheck": "npx tsc --project tsconfig.eslint.json && npx tsc --project spec/tsconfig.json"
   },
   "dependencies": {
