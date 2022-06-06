@@ -38,7 +38,7 @@ install:
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.14
 	go install github.com/bojand/ghz/cmd/ghz@v0.105.0
 	go install github.com/gadget-inc/fsdiff/cmd/fsdiff@v0.4
-	cd js && npm install
+	cd js && npm ci
 
 migrate:
 	migrate -database $(DB_URI)?sslmode=disable -path $(MIGRATE_DIR) up
