@@ -12,12 +12,12 @@ jobs:
     needs: test
     runs-on: ubuntu-20.04
     steps:
-    - uses: actions/checkout@v2
-    - uses: ./.github/actions/setup-env
-    - run: nix develop -c make internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go js/src/fs.client.ts
-    - uses: goreleaser/goreleaser-action@v2
-      with:
-        version: latest
-        args: release --rm-dist
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/setup-env
+      - run: nix develop -c make internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
+      - uses: goreleaser/goreleaser-action@v2
+        with:
+          version: latest
+          args: release --rm-dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
