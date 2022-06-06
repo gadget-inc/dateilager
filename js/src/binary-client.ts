@@ -41,7 +41,7 @@ export interface DateiLagerBinaryClientOptions {
   /**
    * The default number of milliseconds to wait before terminating any command.
    *
-   * @default Infinity
+   * @default 0 No timeout.
    */
   timeout?:
     | number
@@ -49,14 +49,14 @@ export interface DateiLagerBinaryClientOptions {
         /**
          * The default number of milliseconds to wait before terminating the update command.
          *
-         * @default Infinity
+         * @default 0 No timeout.
          */
         update?: number;
 
         /**
          * The default number of milliseconds to wait before terminating the rebuild command.
          *
-         * @default Infinity
+         * @default 0 No timeout.
          */
         rebuild?: number;
       };
@@ -108,8 +108,8 @@ export class DateiLagerBinaryClient {
               rebuild: options.timeout,
             }
           : {
-              update: Infinity,
-              rebuild: Infinity,
+              update: 0,
+              rebuild: 0,
               ...options.timeout,
             },
       tracing: options.tracing ?? false,
