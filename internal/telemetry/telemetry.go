@@ -150,6 +150,9 @@ func Init(ctx context.Context, t Type) (shutdown func(), err error) {
 	})
 
 	return func() {
+		ctx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+
 		_ = traceProvider.Shutdown(ctx)
 	}, nil
 }
