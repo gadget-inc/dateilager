@@ -415,12 +415,12 @@ func runIteration(ctx context.Context, client *dlc.Client, project int64, operat
 		return -1, fmt.Errorf("failed to create reset dir %s: %w", dirs.Reset(project), err)
 	}
 
-	_, _, err = client.Rebuild(ctx, project, "", nil, dirs.Reset(project), nil, "", false)
+	_, _, err = client.Rebuild(ctx, project, "", nil, dirs.Reset(project), nil, "")
 	if err != nil {
 		return -1, fmt.Errorf("failed to rebuild reset project %d: %w", project, err)
 	}
 
-	_, _, err = client.Rebuild(ctx, project, "", nil, dirs.OneStep(project), nil, "", false)
+	_, _, err = client.Rebuild(ctx, project, "", nil, dirs.OneStep(project), nil, "")
 	if err != nil {
 		return -1, fmt.Errorf("failed to rebuild continue project %d: %w", project, err)
 	}
@@ -431,11 +431,11 @@ func runIteration(ctx context.Context, client *dlc.Client, project int64, operat
 	}
 
 	randomStepVersion := int64(rand.Intn(int(version)))
-	_, _, err = client.Rebuild(ctx, project, "", &randomStepVersion, dirs.RandomStep(project), nil, "", false)
+	_, _, err = client.Rebuild(ctx, project, "", &randomStepVersion, dirs.RandomStep(project), nil, "")
 	if err != nil {
 		return -1, fmt.Errorf("failed to rebuild step project %d: %w", project, err)
 	}
-	_, _, err = client.Rebuild(ctx, project, "", &version, dirs.RandomStep(project), nil, "", false)
+	_, _, err = client.Rebuild(ctx, project, "", &version, dirs.RandomStep(project), nil, "")
 	if err != nil {
 		return -1, fmt.Errorf("failed to rebuild step project %d: %w", project, err)
 	}

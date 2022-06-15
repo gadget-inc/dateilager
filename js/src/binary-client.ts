@@ -13,18 +13,18 @@ export interface DateiLagerBinaryClientOptions {
    * The address of the dateilager server.
    */
   server:
-    | string
-    | {
-        /**
-         * The host of the dateilager server.
-         */
-        host: string;
+  | string
+  | {
+    /**
+     * The host of the dateilager server.
+     */
+    host: string;
 
-        /**
-         * The port of the dateilager server.
-         */
-        port: number;
-      };
+    /**
+     * The port of the dateilager server.
+     */
+    port: number;
+  };
 
   /**
    * The token that will be sent as authorization metadata to the dateilager server.
@@ -44,22 +44,22 @@ export interface DateiLagerBinaryClientOptions {
    * @default 0 No timeout.
    */
   timeout?:
-    | number
-    | {
-        /**
-         * The default number of milliseconds to wait before terminating the update command.
-         *
-         * @default 0 No timeout.
-         */
-        update?: number;
+  | number
+  | {
+    /**
+     * The default number of milliseconds to wait before terminating the update command.
+     *
+     * @default 0 No timeout.
+     */
+    update?: number;
 
-        /**
-         * The default number of milliseconds to wait before terminating the rebuild command.
-         *
-         * @default 0 No timeout.
-         */
-        rebuild?: number;
-      };
+    /**
+     * The default number of milliseconds to wait before terminating the rebuild command.
+     *
+     * @default 0 No timeout.
+     */
+    rebuild?: number;
+  };
 
   /**
    * Whether the dateilager binary client should enable tracing.
@@ -85,6 +85,22 @@ export interface DateiLagerBinaryClientOptions {
 }
 
 /**
+ * A record of one file being changed during an update operation
+ **/
+export interface Update {
+  operation: "ADD" | "DELETE" | "CHANGE";
+  path: string;
+}
+
+/**
+ * The result of running an update operation. Reports the new project version, and a list of updated files if the `logUpdates` option was passed.
+ */
+export interface UpdateResult {
+  version: bigint;
+  updates?: Update[];
+}
+
+/**
  * A version of the DateiLager client that uses the compiled binary client instead of the Javascript one.
  *
  * Useful for working directly with a real filesystem instead of in memory objects.
@@ -104,14 +120,14 @@ export class DateiLagerBinaryClient {
       timeout:
         typeof options.timeout === "number"
           ? {
-              update: options.timeout,
-              rebuild: options.timeout,
-            }
+            update: options.timeout,
+            rebuild: options.timeout,
+          }
           : {
-              update: 0,
-              rebuild: 0,
-              ...options.timeout,
-            },
+            update: 0,
+            rebuild: 0,
+            ...options.timeout,
+          },
       tracing: options.tracing ?? false,
       logger: options.logger,
     };
@@ -120,13 +136,14 @@ export class DateiLagerBinaryClient {
   /**
    * Update objects in a project based on the differences in a local directory.
    *
-   * @param project         The id of the project.
-   * @param directory       The path of the directory to send updates from.
-   * @param options         Object of options.
-   * @param options.timeout Number of milliseconds to wait before terminating the process.
-   * @returns                 The latest project version or `null` if something went wrong.
+   * @param    project             The id of the project.
+   * @param    directory           The path of the directory to send updates from.
+   * @param    options             Object of options.
+   * @param    options.timeout     Number of milliseconds to wait before terminating the process.
+   * @param    options.listUpdated Should we return a list of the updated files to the caller
+   * @returns                      An update result or `null` if something went wrong.
    */
-  public async update(project: bigint, directory: string, options?: { timeout?: number }): Promise<bigint | null> {
+  public async update(project: bigint, directory: string, options?: { timeout?: number, listUpdated?: boolean }): Promise<UpdateResult | null> {
     return await trace(
       "dateilager-binary-client.update",
       {
@@ -136,13 +153,14 @@ export class DateiLagerBinaryClient {
         },
       },
       async () => {
-        const result = await this._call("update", project, directory, ["--dir", directory], options);
+        const result = await this._call("update", project, directory, ["--dir", directory, `--log-updates=${String(!!options?.listUpdated)}`, String(!!options?.listUpdated)], options);
 
-        if (result.stdout == "-1") {
-          return null;
-        }
+        const { version, updates } = this.parseUpdateResult(result);
 
-        return BigInt(result.stdout);
+        return {
+          updates: options?.listUpdated ? updates : undefined,
+          version: BigInt(version),
+        };
       }
     );
   }
@@ -163,7 +181,7 @@ export class DateiLagerBinaryClient {
     project: bigint,
     to: bigint | null,
     directory: string,
-    options?: { timeout?: number; ignores?: string[]; summarize?: boolean }
+    options?: { timeout?: number; ignores?: string[]; listUpdated?: boolean }
   ): Promise<bigint | null> {
     return await trace(
       "dateilager-binary-client.rebuild",
@@ -177,7 +195,7 @@ export class DateiLagerBinaryClient {
       async () => {
         await fs.mkdir(directory, { recursive: true });
 
-        const args = ["--dir", directory];
+        const args = ["--dir", directory, `--log-updates=${String(!!options?.listUpdated)}`];
         if (to) {
           args.push("--to", String(to));
         }
@@ -186,16 +204,13 @@ export class DateiLagerBinaryClient {
           args.push("--ignores", options.ignores.join(","));
         }
 
-        if (options?.summarize === false) {
-          args.push("--summarize=false");
-        }
-
         const result = await this._call("rebuild", project, directory, args, options);
-        if (result.stdout == "-1") {
+        const { version } = this.parseUpdateResult(result);
+        if (version == "-1") {
           return null;
         }
 
-        return BigInt(result.stdout);
+        return BigInt(version);
       }
     );
   }
@@ -248,5 +263,18 @@ export class DateiLagerBinaryClient {
     }
 
     return subprocess;
+  }
+
+  private parseUpdateResult(result: ExecaReturnValue<string>) {
+    const lines = result.stdout.split("\n");
+    const version = lines.pop()!.trim();
+
+    const updates = lines.map((line) => {
+      const [operation, path] = line.split(/ (.+)?/, 2);
+      return { operation: operation as any, path: path as string };
+    })
+
+    return { version, updates }
+
   }
 }

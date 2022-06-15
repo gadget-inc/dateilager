@@ -194,7 +194,7 @@ func TestCombinedWithChangingObjectTypes(t *testing.T) {
 
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
-		count:   3,
+		count:   5,
 	})
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
@@ -235,7 +235,7 @@ func TestCombinedNonEmptyDirectoryIntoFile(t *testing.T) {
 
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
-		count:   1,
+		count:   2,
 	})
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
@@ -275,7 +275,7 @@ func TestCombinedNonEmptyDirectoryIntoSymlink(t *testing.T) {
 
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
-		count:   2,
+		count:   3,
 	})
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
@@ -315,7 +315,7 @@ func TestCombinedFileIntoNonEmptyDirectory(t *testing.T) {
 
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
-		count:   1,
+		count:   2,
 	})
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
@@ -354,7 +354,7 @@ func TestCombinedFileIntoEmptyDirectory(t *testing.T) {
 
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
-		count:   1,
+		count:   2,
 	})
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
@@ -405,7 +405,7 @@ func TestCombinedWithPacked(t *testing.T) {
 
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
-		count:   3, // We updated a pack so all of them were rebuilt
+		count:   4, // We updated a pack so all of them were rebuilt
 	})
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{

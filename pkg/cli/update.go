@@ -11,8 +11,9 @@ import (
 
 func NewCmdUpdate() *cobra.Command {
 	var (
-		project int64
-		dir     string
+		project    int64
+		dir        string
+		logUpdates bool
 	)
 
 	cmd := &cobra.Command{
@@ -22,7 +23,7 @@ func NewCmdUpdate() *cobra.Command {
 
 			client := client.FromContext(ctx)
 
-			version, count, err := client.Update(ctx, project, dir)
+			version, diff, err := client.Update(ctx, project, dir)
 			if err != nil {
 				return fmt.Errorf("update objects: %w", err)
 			}
@@ -30,8 +31,13 @@ func NewCmdUpdate() *cobra.Command {
 			logger.Info(ctx, "updated objects",
 				key.Project.Field(project),
 				key.Version.Field(version),
-				key.DiffCount.Field(count),
+				key.DiffCount.Field(uint32(len(diff.Updates))),
 			)
+
+			if logUpdates {
+				LogUpdates(diff)
+			}
+
 			fmt.Println(version)
 
 			return nil
@@ -40,6 +46,7 @@ func NewCmdUpdate() *cobra.Command {
 
 	cmd.Flags().Int64Var(&project, "project", -1, "Project ID (required)")
 	cmd.Flags().StringVar(&dir, "dir", "", "Directory containing updated files")
+	cmd.Flags().BoolVar(&logUpdates, "log-updates", false, "Log all updated files to the console")
 
 	_ = cmd.MarkFlagRequired("project")
 

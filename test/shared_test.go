@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -393,19 +394,20 @@ func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64,
 		cacheDir = &newCacheDir
 	}
 
-	version, count, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, *cacheDir, true)
+	version, diff, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, *cacheDir)
 	require.NoError(tc.T(), err, "client.Rebuild")
 
 	assert.Equal(tc.T(), expected.version, version, "mismatch rebuild version")
-	assert.Equal(tc.T(), expected.count, count, "mismatch rebuild count")
+	diffMsg, _ := json.Marshal(diff.Updates)
+	assert.Equal(tc.T(), expected.count, uint32(len(diff.Updates)), "mismatch rebuild count, diff is %v", string(diffMsg))
 }
 
 func update(tc util.TestCtx, c *client.Client, project int64, dir string, expected expectedResponse) {
-	version, count, err := c.Update(tc.Context(), project, dir)
+	version, diff, err := c.Update(tc.Context(), project, dir)
 	require.NoError(tc.T(), err, "client.Update")
 
 	assert.Equal(tc.T(), expected.version, version, "mismatch update version")
-	assert.Equal(tc.T(), expected.count, count, "mismatch update count")
+	assert.Equal(tc.T(), expected.count, uint32(len(diff.Updates)), "mismatch update count")
 }
 
 type mockGetServer struct {

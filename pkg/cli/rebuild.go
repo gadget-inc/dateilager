@@ -7,17 +7,18 @@ import (
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/pkg/client"
+	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
 	"github.com/spf13/cobra"
 )
 
 func NewCmdRebuild() *cobra.Command {
 	var (
-		project   int64
-		to        *int64
-		prefix    string
-		dir       string
-		ignores   string
-		summarize bool
+		project    int64
+		to         *int64
+		prefix     string
+		dir        string
+		ignores    string
+		logUpdates bool
 	)
 
 	cmd := &cobra.Command{
@@ -35,9 +36,16 @@ func NewCmdRebuild() *cobra.Command {
 				ignoreList = strings.Split(ignores, ",")
 			}
 
-			version, count, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, "", summarize)
+			version, diff, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, "")
 			if err != nil {
 				return fmt.Errorf("could not rebuild project: %w", err)
+			}
+
+			var count uint32
+			if diff != nil {
+				count = uint32(len(diff.Updates))
+			} else {
+				count = 0
 			}
 
 			if version == -1 {
@@ -55,6 +63,10 @@ func NewCmdRebuild() *cobra.Command {
 				)
 			}
 
+			if logUpdates {
+				LogUpdates(diff)
+			}
+
 			fmt.Println(version)
 			return nil
 		},
@@ -64,10 +76,16 @@ func NewCmdRebuild() *cobra.Command {
 	cmd.Flags().StringVar(&prefix, "prefix", "", "Search prefix")
 	cmd.Flags().StringVar(&dir, "dir", "", "Output directory")
 	cmd.Flags().StringVar(&ignores, "ignores", "", "Comma separated list of ignore paths")
-	cmd.Flags().BoolVar(&summarize, "summarize", true, "Should include the summary file (required for future updates)")
+	cmd.Flags().BoolVar(&logUpdates, "log-updates", false, "Log all updated files to the console")
 	to = cmd.Flags().Int64("to", -1, "To version ID (optional)")
 
 	_ = cmd.MarkFlagRequired("project")
 
 	return cmd
+}
+
+func LogUpdates(diff *fsdiff_pb.Diff) {
+	for _, update := range diff.Updates {
+		fmt.Printf("%v %v\n", update.Action, update.Path)
+	}
 }

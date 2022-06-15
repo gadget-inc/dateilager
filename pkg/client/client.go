@@ -12,7 +12,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/gadget-inc/dateilager/internal/db"
@@ -232,7 +231,7 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, ignores 
 	return objects, nil
 }
 
-func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, ignores []string, cacheDir string, summarize bool) (int64, uint32, error) {
+func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, ignores []string, cacheDir string) (int64, *fsdiff_pb.Diff, error) {
 	ctx, span := telemetry.Start(ctx, "client.rebuild", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Prefix.Attribute(prefix),
@@ -241,14 +240,14 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 	))
 	defer span.End()
 
-	var diffCount uint32
+	var diff *fsdiff_pb.Diff
 
 	fromVersion, err := ReadVersionFile(dir)
 	if err != nil {
-		return fromVersion, diffCount, err
+		return fromVersion, diff, err
 	}
 	if toVersion != nil && fromVersion == *toVersion {
-		return *toVersion, diffCount, nil
+		return *toVersion, diff, nil
 	}
 
 	span.SetAttributes(key.FromVersion.Attribute(&fromVersion))
@@ -271,17 +270,17 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 	stream, err := c.fs.GetCompress(ctx, request)
 	if err != nil {
-		return fromVersion, diffCount, fmt.Errorf("connect fs.GetCompress: %w", err)
+		return fromVersion, diff, fmt.Errorf("connect fs.GetCompress: %w", err)
 	}
 
 	// Pull one response before booting workers
 	// This is a short circuit for cases where there are no diffs to apply
 	response, err := stream.Recv()
 	if err == io.EOF {
-		return fromVersion, diffCount, nil
+		return fromVersion, diff, nil
 	}
 	if err != nil {
-		return fromVersion, diffCount, fmt.Errorf("receive fs.GetCompress: %w", err)
+		return fromVersion, diff, fmt.Errorf("receive fs.GetCompress: %w", err)
 	}
 
 	tarChan := make(chan *pb.GetCompressResponse, 32)
@@ -336,13 +335,11 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 					tarReader.FromBytes(response.Bytes)
 
-					count, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath)
+					_, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath)
 					if err != nil {
 						cancel()
 						return err
 					}
-
-					atomic.AddUint32(&diffCount, count)
 				}
 			}
 		})
@@ -350,25 +347,23 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 	err = group.Wait()
 	if err != nil {
-		return -1, diffCount, err
+		return -1, diff, err
 	}
 
 	err = WriteVersionFile(dir, *toVersion)
 	if err != nil {
-		return -1, diffCount, err
+		return -1, diff, err
 	}
 
-	if summarize {
-		_, err = DiffAndSummarize(ctx, dir)
-		if err != nil {
-			return -1, diffCount, err
-		}
+	diff, err = DiffAndSummarize(ctx, dir)
+	if err != nil {
+		return -1, diff, err
 	}
 
-	return *toVersion, diffCount, nil
+	return *toVersion, diff, nil
 }
 
-func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int64, uint32, error) {
+func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int64, *fsdiff_pb.Diff, error) {
 	rootCtx, span := telemetry.Start(rootCtx, "client.update", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Directory.Attribute(dir),
@@ -377,16 +372,16 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 
 	fromVersion, err := ReadVersionFile(dir)
 	if err != nil {
-		return -1, 0, err
+		return -1, nil, err
 	}
 
 	diff, err := DiffAndSummarize(rootCtx, dir)
 	if err != nil {
-		return -1, 0, err
+		return -1, nil, err
 	}
 
 	if len(diff.Updates) == 0 {
-		return fromVersion, 0, nil
+		return fromVersion, diff, nil
 	}
 
 	toVersion := int64(-1)
@@ -492,24 +487,22 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 
 	err = group.Wait()
 	if err != nil {
-		return -1, 0, err
+		return -1, nil, err
 	}
-
-	updateCount := uint32(len(diff.Updates))
 
 	if (fromVersion + 1) == toVersion {
 		err = WriteVersionFile(dir, toVersion)
 		if err != nil {
-			return -1, updateCount, err
+			return -1, diff, err
 		}
 	} else {
-		toVersion, _, err = c.Rebuild(rootCtx, project, "", nil, dir, nil, "", true)
+		toVersion, _, err = c.Rebuild(rootCtx, project, "", nil, dir, nil, "")
 		if err != nil {
-			return -1, updateCount, err
+			return -1, nil, err
 		}
 	}
 
-	return toVersion, updateCount, nil
+	return toVersion, diff, nil
 }
 
 func (c *Client) Inspect(ctx context.Context, project int64) (*pb.InspectResponse, error) {
