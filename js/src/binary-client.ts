@@ -85,6 +85,22 @@ export interface DateiLagerBinaryClientOptions {
 }
 
 /**
+ * A record of one file being changed during an update operation
+ **/
+export interface Update {
+  operation: "ADD" | "DELETE" | "CHANGE";
+  path: string;
+}
+
+/**
+ * The result of running an update operation. Reports the new project version, and a list of updated files.
+ */
+export interface UpdateResult {
+  version: bigint;
+  updates: Update[];
+}
+
+/**
  * A version of the DateiLager client that uses the compiled binary client instead of the Javascript one.
  *
  * Useful for working directly with a real filesystem instead of in memory objects.
@@ -124,9 +140,9 @@ export class DateiLagerBinaryClient {
    * @param    directory       The path of the directory to send updates from.
    * @param    options         Object of options.
    * @param    options.timeout Number of milliseconds to wait before terminating the process.
-   * @returns                  The latest project version or `null` if something went wrong.
+   * @returns                  An update result or `null` if something went wrong.
    */
-  public async update(project: bigint, directory: string, options?: { timeout: number }): Promise<bigint | null> {
+  public async update(project: bigint, directory: string, options?: { timeout: number }): Promise<UpdateResult | null> {
     return await trace(
       "dateilager-binary-client.update",
       {
@@ -138,11 +154,20 @@ export class DateiLagerBinaryClient {
       async () => {
         const result = await this._call("update", project, directory, ["--dir", directory], options);
 
-        if (result.stdout == "-1") {
+        const lines = result.stdout.split("\n");
+        const versionLine = lines.pop()!.trim();
+
+        if (versionLine == "-1") {
           return null;
         }
 
-        return BigInt(result.stdout);
+        return {
+          updates: lines.map((line) => {
+            const [operation, path] = line.split(/ (.+)?/, 2);
+            return { operation: operation as any, path: path as string };
+          }),
+          version: BigInt(versionLine),
+        };
       }
     );
   }

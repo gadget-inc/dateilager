@@ -531,10 +531,10 @@ func TestUpdateObjects(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
-	version, count, err := c.Update(tc.Context(), 1, tmpDir)
+	version, diff, err := c.Update(tc.Context(), 1, tmpDir)
 	require.NoError(t, err, "client.Update")
 	assert.Equal(t, int64(2), version, "expected update version to be 2")
-	assert.Equal(t, uint32(3), count, "expected update count to be 3")
+	assert.Equal(t, uint32(3), uint32(len(diff.Updates)), "expected update count to be 3")
 
 	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
 	require.NoError(t, err, "client.GetLatest after update")
@@ -573,10 +573,10 @@ func TestUpdateWithManyObjects(t *testing.T) {
 	c, close := createTestClient(tc, tc.FsApi())
 	defer close(tc.Context())
 
-	version, count, err := c.Update(tc.Context(), 1, tmpDir)
+	version, diff, err := c.Update(tc.Context(), 1, tmpDir)
 	require.NoError(t, err, "client.Update")
 	assert.Equal(t, int64(1), version, "expected update version to be 1")
-	assert.Equal(t, uint32(500), count, "expected update count to be 500")
+	assert.Equal(t, uint32(500), uint32(len(diff.Updates)), "expected update count to be 500")
 
 	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
 	require.NoError(t, err, "client.GetLatest after update")
@@ -666,10 +666,10 @@ func TestUpdateAndRebuildWithIdenticalObjects(t *testing.T) {
 
 	writeFile(t, tmpDir, "c", "c v2")
 
-	version, count, err = c.Update(tc.Context(), 1, tmpDir)
+	version, diff, err := c.Update(tc.Context(), 1, tmpDir)
 	require.NoError(t, err, "client.Update")
 	assert.Equal(t, int64(2), version, "expected update version to be 2")
-	assert.Equal(t, uint32(3), count, "expected update count to be 3")
+	assert.Equal(t, uint32(3), uint32(len(diff.Updates)), "expected update count to be 3")
 
 	// Reset the tmpdir to remove all state and updates
 	os.RemoveAll(tmpDir)
@@ -777,10 +777,10 @@ func TestUpdateAndRebuildWithIdenticalPackedObjects(t *testing.T) {
 
 	writeFile(t, tmpDir, "b", "b v2")
 
-	version, count, err = c.Update(tc.Context(), 1, tmpDir)
+	version, diff, err := c.Update(tc.Context(), 1, tmpDir)
 	require.NoError(t, err, "client.Update")
 	assert.Equal(t, int64(2), version, "expected update version to be 2")
-	assert.Equal(t, uint32(3), count, "expected update count to be 3")
+	assert.Equal(t, uint32(3), uint32(len(diff.Updates)), "expected update count to be 3")
 
 	os.RemoveAll(tmpDir)
 	err = os.Mkdir(tmpDir, 0775)
@@ -831,10 +831,10 @@ func TestConcurrentUpdatesSetsCorrectMetadata(t *testing.T) {
 	c, close := createTestClient(tc, fs)
 	defer close(tc.Context())
 
-	version, count, err := c.Update(tc.Context(), 1, tmpDir)
+	version, diff, err := c.Update(tc.Context(), 1, tmpDir)
 	require.NoError(t, err, "client.Update")
 	assert.Equal(t, int64(3), version, "expected update version to be 3")
-	assert.Equal(t, uint32(2), count, "expected update count to be 2")
+	assert.Equal(t, uint32(2), uint32(len(diff.Updates)), "expected update count to be 2")
 
 	verifyDir(t, tmpDir, 3, map[string]expectedFile{
 		"a": {content: "a v3"},

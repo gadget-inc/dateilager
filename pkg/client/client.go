@@ -407,7 +407,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 	return *toVersion, diffCount, nil
 }
 
-func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int64, uint32, error) {
+func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int64, *fsdiff_pb.Diff, error) {
 	rootCtx, span := telemetry.Start(rootCtx, "client.update", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Directory.Attribute(dir),
@@ -416,16 +416,16 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 
 	fromVersion, err := ReadVersionFile(dir)
 	if err != nil {
-		return -1, 0, err
+		return -1, nil, err
 	}
 
 	diff, err := DiffAndSummarize(dir)
 	if err != nil {
-		return -1, 0, err
+		return -1, nil, err
 	}
 
 	if len(diff.Updates) == 0 {
-		return fromVersion, 0, nil
+		return fromVersion, diff, nil
 	}
 
 	toVersion := int64(-1)
@@ -518,24 +518,22 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 
 	err = group.Wait()
 	if err != nil {
-		return -1, 0, err
+		return -1, nil, err
 	}
-
-	updateCount := uint32(len(diff.Updates))
 
 	if (fromVersion + 1) == toVersion {
 		err = WriteVersionFile(dir, toVersion)
 		if err != nil {
-			return -1, updateCount, err
+			return -1, diff, err
 		}
 	} else {
 		toVersion, _, err = c.Rebuild(rootCtx, project, "", nil, dir)
 		if err != nil {
-			return -1, updateCount, err
+			return -1, nil, err
 		}
 	}
 
-	return toVersion, updateCount, nil
+	return toVersion, diff, nil
 }
 
 func (c *Client) Inspect(ctx context.Context, project int64) (*pb.InspectResponse, error) {

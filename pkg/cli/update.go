@@ -22,7 +22,7 @@ func NewCmdUpdate() *cobra.Command {
 
 			client := client.FromContext(ctx)
 
-			version, count, err := client.Update(ctx, project, dir)
+			version, diff, err := client.Update(ctx, project, dir)
 			if err != nil {
 				return fmt.Errorf("update objects: %w", err)
 			}
@@ -30,8 +30,12 @@ func NewCmdUpdate() *cobra.Command {
 			logger.Info(ctx, "updated objects",
 				key.Project.Field(project),
 				key.Version.Field(version),
-				key.DiffCount.Field(count),
+				key.DiffCount.Field(uint32(len(diff.Updates))),
 			)
+
+			for _, update := range diff.Updates {
+				fmt.Printf("%v %v\n", update.Action, update.Path)
+			}
 			fmt.Println(version)
 
 			return nil
