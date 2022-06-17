@@ -156,21 +156,27 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 			FROM dl.objects o
 			%s
 			WHERE o.project = $1
-			  AND o.start_version > $2
-			  AND o.start_version <= $3
-			  AND (o.stop_version IS NULL OR o.stop_version > $3)
-			  AND %s
-			  AND o.path NOT LIKE ALL($5::text[])
+				AND o.start_version > $2
+				AND o.start_version <= $3
+				AND (o.stop_version IS NULL OR o.stop_version > $3)
+				AND %s
+				AND o.path NOT LIKE ALL($5::text[])
 			ORDER BY o.path
 		), removed_files AS (
 			SELECT o.path, o.mode, 0 AS size, ''::bytea as bytes, o.packed, true AS deleted
 			FROM dl.objects o
 			WHERE o.project = $1
-			  AND o.start_version <= $3
-			  AND o.stop_version > $2
-			  AND o.stop_version <= $3
-			  AND o.path NOT LIKE ALL($5::text[])
-			  AND o.path NOT IN (SELECT path FROM updated_files)
+				AND o.start_version <= $3
+				AND o.stop_version > $2
+				AND o.stop_version <= $3
+				AND o.path NOT LIKE ALL($5::text[])
+				AND (
+					-- Skip removing files if they are in the updated_files list
+					(RIGHT(o.path, 1) != '/' AND o.path NOT IN (SELECT path FROM updated_files))
+					OR
+					-- Skip removing empty directories if any updated_files are within that directory
+					(RIGHT(o.path, 1) = '/' AND NOT EXISTS (SELECT true FROM updated_files WHERE STARTS_WITH(path, o.path)))
+				)
 			ORDER BY o.path
 		)
 		SELECT path, mode, size, bytes, packed, deleted

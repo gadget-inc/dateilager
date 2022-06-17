@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/jackc/pgx/v4"
@@ -87,13 +88,20 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 
 	batch := &pgx.Batch{}
 
+	previousPaths := []string{object.Path}
+	pathChunks := strings.Split(object.Path, "/")
+
+	for i := 1; i < len(pathChunks); i++ {
+		previousPaths = append(previousPaths, fmt.Sprintf("%s/", strings.Join(pathChunks[:i], "/")))
+	}
+
 	batch.Queue(`
 		UPDATE dl.objects SET stop_version = $1
 		WHERE project = $2
-		  AND path = $3
+		  AND path = ANY($3)
 		  AND stop_version IS NULL
 		  AND start_version != $4
-	`, version, project, object.Path, version)
+	`, version, project, previousPaths, version)
 
 	batch.Queue(`
 		INSERT INTO dl.contents (hash, bytes, names_tar)
