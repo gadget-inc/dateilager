@@ -106,7 +106,9 @@ func verifyObjects(t *testing.T, objects []*pb.Object, expected map[string]strin
 
 func writeFile(t *testing.T, dir string, path string, content string) {
 	fullPath := filepath.Join(dir, path)
-	err := os.WriteFile(fullPath, []byte(content), 0755)
+	err := os.MkdirAll(filepath.Dir(fullPath), 0755)
+	require.NoError(t, err, "mkdir %v", filepath.Dir(fullPath))
+	err = os.WriteFile(fullPath, []byte(content), 0755)
 	require.NoError(t, err, "write file %v", path)
 }
 
@@ -796,6 +798,52 @@ func TestUpdateAndRebuildWithIdenticalPackedObjects(t *testing.T) {
 
 	// Only one file should be updated since /a and /b were identical but with a new mod times
 	assert.Equal(t, uint32(1), count, "expected rebuild count to be 1")
+}
+
+func TestUpdateWithEmptyDirectories(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeEmptyDir(tc, 1, 1, nil, "a/")
+	writeEmptyDir(tc, 1, 1, nil, "b/")
+	writeEmptyDir(tc, 1, 1, nil, "c/")
+
+	fs := tc.FsApi()
+	c, close := createTestClient(tc, fs)
+	defer close(tc.Context())
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	version, count, err := c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(1), version, "expected rebuild version to be 1")
+	assert.Equal(t, uint32(3), count, "expected rebuild count to be 3")
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"a/": {content: "", fileType: typeDirectory},
+		"b/": {content: "", fileType: typeDirectory},
+		"c/": {content: "", fileType: typeDirectory},
+	})
+
+	writeFile(t, tmpDir, "a/b", "a/b v2")
+	writeFile(t, tmpDir, "b/c/d", "b/c/d v2")
+
+	version, count, err = c.Update(tc.Context(), 1, tmpDir)
+	require.NoError(t, err, "client.Update")
+	assert.Equal(t, int64(2), version, "expected update version to be 2")
+	assert.Equal(t, uint32(2), count, "expected update count to be 1")
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(1, nil, ""), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"a/b":   {content: "a/b v2"},
+		"b/c/d": {content: "b/c/d v2"},
+		"c/":    {content: ""},
+	})
 }
 
 func TestConcurrentUpdatesSetsCorrectMetadata(t *testing.T) {

@@ -3,6 +3,7 @@ package test
 import (
 	"fmt"
 	"io/fs"
+	"os"
 
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
@@ -130,7 +131,7 @@ func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []
 
 // Use debugProjects(tc) and debugObjects(tc) within a failing test to log the state of the DB
 
-//nolint:unused // leave these utilities around for debugging
+//lint:ignore U1000 debug utility
 func debugProjects(tc util.TestCtx) {
 	conn := tc.Connect()
 	rows, err := conn.Query(tc.Context(), `
@@ -154,7 +155,7 @@ func debugProjects(tc util.TestCtx) {
 	fmt.Println()
 }
 
-//nolint:unused // leave these utilities around for debugging
+//lint:ignore U1000 debug utility
 func debugObjects(tc util.TestCtx) {
 	conn := tc.Connect()
 	rows, err := conn.Query(tc.Context(), `
@@ -164,7 +165,7 @@ func debugObjects(tc util.TestCtx) {
 	require.NoError(tc.T(), err, "debug execute object list")
 
 	fmt.Println("\n[DEBUG] Objects")
-	fmt.Println("project,\tstart_version,\tstop_version,\tpath,\tmode,\tsize,\tpacked")
+	fmt.Println("project,\tstart_version,\tstop_version,\tpath,\tmode,\t\tsize,\tpacked")
 
 	for rows.Next() {
 		var project, start_version, mode, size int64
@@ -174,8 +175,19 @@ func debugObjects(tc util.TestCtx) {
 		err = rows.Scan(&project, &start_version, &stop_version, &path, &mode, &size, &packed)
 		require.NoError(tc.T(), err, "debug scan object")
 
-		fmt.Printf("%d,\t\t%d,\t\t%d,\t\t%s,\t%d,\t%d,\t%v\n", project, start_version, stop_version, path, mode, size, packed)
+		fmt.Printf("%d,\t\t%d,\t\t%s,\t\t%s,\t%s,\t%d,\t%v\n", project, start_version, formatPtr(stop_version), path, formatMode(mode), size, packed)
 	}
 
 	fmt.Println()
+}
+
+func formatMode(mode int64) string {
+	return fmt.Sprintf("%v", fs.FileMode(mode)&os.ModePerm)
+}
+
+func formatPtr(p *int64) string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprint(*p)
 }
