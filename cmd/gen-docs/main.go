@@ -16,7 +16,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	err := doc.GenMarkdownTree(cli.NewRootCommand(), *dir)
+	err := doc.GenMarkdownTree(cli.NewClientCommand(), *dir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = doc.GenMarkdownTree(cli.NewServerCommand(), *dir)
 	if err != nil {
 		log.Fatal(err)
 	}

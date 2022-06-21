@@ -115,11 +115,11 @@ setup-local: reset-db
 
 server: export DL_ENV=dev
 server:
-	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT)
+	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT)
 
 server-profile: export DL_ENV=dev
 server-profile:
-	go run cmd/server/main.go -dburi $(DB_URI) -port $(GRPC_PORT) -prof cpu.prof -log info
+	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT) --profile cpu.prof --log-level info
 
 client-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-update: export DL_SKIP_SSL_VERIFICATION=1
@@ -159,9 +159,11 @@ else
 	go run cmd/client/main.go rebuild --project 1 --server $(GRPC_SERVER) --to $(to_version) --prefix "$(prefix)" --dir $(dir)
 endif
 
+webui: export DL_ENV=dev
 webui: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+webui: export DL_SKIP_SSL_VERIFICATION=1
 webui:
-	go run cmd/webui/main.go -server $(GRPC_SERVER)
+	go run cmd/webui/main.go --server $(GRPC_SERVER)
 
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)

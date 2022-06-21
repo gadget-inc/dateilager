@@ -25,12 +25,12 @@ var (
 	span              trace.Span
 )
 
-func NewRootCommand() *cobra.Command {
+func NewClientCommand() *cobra.Command {
 	var (
 		level       *zapcore.Level
+		encoding    string
 		tracing     bool
 		otelContext string
-		encoding    string
 		server      string
 	)
 
@@ -86,13 +86,14 @@ func NewRootCommand() *cobra.Command {
 		},
 	}
 
-	level = zap.LevelFlag("log-level", zap.DebugLevel, "Log level")
-	cmd.PersistentFlags().AddGoFlag(flag.CommandLine.Lookup("log-level"))
+	flags := cmd.PersistentFlags()
 
-	cmd.PersistentFlags().StringVar(&encoding, "log-encoding", "console", "Log encoding (console | json)")
-	cmd.PersistentFlags().BoolVar(&tracing, "tracing", false, "Whether tracing is enabled")
-	cmd.PersistentFlags().StringVar(&otelContext, "otel-context", "", "Open Telemetry context")
-	cmd.PersistentFlags().StringVar(&server, "server", "", "Server GRPC address")
+	level = zap.LevelFlag("log-level", zap.DebugLevel, "Log level")
+	flags.AddGoFlag(flag.CommandLine.Lookup("log-level"))
+	flags.StringVar(&encoding, "log-encoding", "console", "Log encoding (console | json)")
+	flags.BoolVar(&tracing, "tracing", false, "Whether tracing is enabled")
+	flags.StringVar(&otelContext, "otel-context", "", "Open Telemetry context")
+	flags.StringVar(&server, "server", "", "Server GRPC address")
 
 	cmd.AddCommand(NewCmdGet())
 	cmd.AddCommand(NewCmdInspect())
@@ -105,15 +106,15 @@ func NewRootCommand() *cobra.Command {
 	return cmd
 }
 
-func Execute() {
+func ClientExecute() {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()
 
-	rootCmd := NewRootCommand()
+	cmd := NewClientCommand()
 
-	err := rootCmd.ExecuteContext(ctx)
+	err := cmd.ExecuteContext(ctx)
 
-	client := client.FromContext(rootCmd.Context())
+	client := client.FromContext(cmd.Context())
 	if client != nil {
 		client.Close()
 	}
