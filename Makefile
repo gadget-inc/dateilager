@@ -19,17 +19,11 @@ INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
-TOOLS_DIR := tools
-TOOLS_BIN_DIR := $(TOOLS_DIR)/bin
-GOLANGCI_LINT := $(TOOLS_BIN_DIR)/golangci-lint
-
 .PHONY: install migrate migrate-create build release test test-js lint-js typecheck-js
-.PHONY: reset-db setup-local server server-profile client-update client-get client-rebuild client-pack health
-.PHONY: k8s-clear k8s-build k8s-deploy k8s-client-update k8s-client-get k8s-client-rebuild k8s-client-pack k8s-health
-.PHONY: upload-container-image
-
-$(GOLANGCI_LINT): $(TOOLS_DIR)/go.mod
-	cd $(TOOLS_DIR) && go build -o bin/golangci-lint github.com/golangci/golangci-lint/cmd/golangci-lint
+.PHONY: reset-db setup-local server server-profile
+.PHONY: client-update client-large-update client-get client-rebuild client-pack
+.PHONY: webui health upload-container-image gen-docs
+.PHONY: load-test-new load-test-get load-test-update
 
 install:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.26
@@ -169,47 +163,6 @@ health:
 	grpc-health-probe -addr $(GRPC_SERVER)
 	grpc-health-probe -addr $(GRPC_SERVER) -service $(SERVICE)
 
-k8s-clear:
-	kubectl -n $(PROJECT) delete --all service
-	kubectl -n $(PROJECT) delete --all pod --grace-period 0 --force
-	kubectl -n $(PROJECT) delete --all configmap
-	kubectl delete ns $(PROJECT) || true
-
-k8s-build: build
-	docker build -f Dockerfile -t "localhost/$(PROJECT):server" .
-	docker save -o /tmp/$(PROJECT)_server.tar "localhost/$(PROJECT):server"
-	sudo ctr -n k8s.io images import /tmp/$(PROJECT)_server.tar
-
-k8s/server.properties:
-	scripts/generate_k8s_config.sh $(DB_URI)
-
-k8s-deploy: k8s/server.properties k8s-build
-	kubectl create -f k8s/namespace.yaml
-	kubectl -n $(PROJECT) create secret tls server-tls --cert=development/server.crt --key=development/server.key
-	kubectl -n $(PROJECT) create secret generic server-paseto --from-file=development/paseto.pub
-	kubectl -n $(PROJECT) create configmap server-config --from-env-file=k8s/server.properties
-	kubectl -n $(PROJECT) apply -f k8s/pod.yaml
-	kubectl -n $(PROJECT) apply -f k8s/service.yaml
-
-k8s: k8s-clear k8s-build k8s-deploy
-
-k8s-client-update: export DL_SKIP_SSL_VERIFICATION=1
-k8s-client-update: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
-k8s-client-update: client-update
-
-k8s-client-get: export DL_SKIP_SSL_VERIFICATION=1
-k8s-client-get: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
-k8s-client-get: client-get
-
-k8s-client-rebuild: DL_SKIP_SSL_VERIFICATION=1
-k8s-client-rebuild: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
-k8s-client-rebuild: client-rebuild
-
-k8s-health: GRPC_SERVER = $(shell kubectl -n $(PROJECT) get service server -o custom-columns=IP:.spec.clusterIP --no-headers):$(GRPC_PORT)
-k8s-health:
-	grpc_health_probe -addr $(GRPC_SERVER) -tls -tls-no-verify
-	grpc_health_probe -addr $(GRPC_SERVER) -tls -tls-no-verify -service $(SERVICE)
-
 upload-container-image: release
 ifndef version
 	$(error version variable must be set)
@@ -218,6 +171,9 @@ else
 	docker push gcr.io/gadget-core-production/dateilager:$(version)
 	docker push gcr.io/gadget-core-production/dateilager:latest
 endif
+
+gen-docs:
+	go run cmd/gen-docs/main.go
 
 define load-test
 	ghz --cert=development/server.crt --key=development/server.key \
@@ -236,9 +192,3 @@ load-test-get:
 
 load-test-update:
 	$(call load-test,Update,update_increment.json,10000,1)
-
-lint: $(GOLANGCI_LINT)
-	$(GOLANGCI_LINT) run ./... --fast
-
-gen-docs:
-	go run cmd/gen-docs/main.go

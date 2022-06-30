@@ -21,7 +21,7 @@ exporting `DB_HOST`.
 $ export DB_HOST=10.0.0.1
 ```
 
-### Install Go Tools
+### Install Toolchains
 
 Ensure that you have a working [Go development environment](https://golang.org/doc/install) and that you are running at least Go 1.18.
 
@@ -39,27 +39,12 @@ We recommend using VSCode for development, and there's an example settings file 
 cp .vscode/settings.example.json .vscode/settings.json
 ```
 
-#### Install `golangci-lint`
-
-```
-brew tap golangci/tap
-brew install golangci/tap/golangci-lint
-```
-
 ### Build
 
 This will build the server and client executables along with the `*.proto` files.
 
 ```bash
 $ make build
-```
-
-### Lint
-
-This will lint the whole project and report any problems:
-
-```bash
-$ make lint
 ```
 
 ## API Testing
@@ -171,31 +156,4 @@ We also need to build the server docker image and push it to Gadget's container 
 
 ```bash
 $ make upload-container-image version=0.0.x
-```
-
-## K8S
-
-The K8S tools assume a local K8S install using Containerd and Podman.
-
-### Requirements
-
-- docker
-- kubectl
-- ctr
-
-### Build
-
-This is meant for local development, it will reset the `dateilager` namespace.
-
-```bash
-$ make k8s
-```
-
-### Client
-
-Execute the client locally and have it connect to a server in K8S. All the same `client-*` make commands are supported,
-but they require a `k8s-` prefix.
-
-```bash
-$ make k8s-client-get
 ```
