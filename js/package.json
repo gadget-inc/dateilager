@@ -1,6 +1,6 @@
 {
   "name": "@gadgetinc/dateilager",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.0",
   "homepage": "https://github.com/gadget-inc/dateilager",
   "bugs": "https://github.com/gadget-inc/dateilager/issues",
   "repository": {
@@ -33,8 +33,8 @@
   "dependencies": {
     "@grpc/grpc-js": "^1.6.7",
     "@opentelemetry/api": "^1.1.0",
-    "@protobuf-ts/grpc-transport": "^2.6.0",
-    "@protobuf-ts/runtime-rpc": "^2.6.0",
+    "@protobuf-ts/grpc-transport": "^2.7.0",
+    "@protobuf-ts/runtime-rpc": "^2.7.0",
     "execa": "^5.1.1"
   },
   "devDependencies": {
