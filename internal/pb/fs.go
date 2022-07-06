@@ -70,18 +70,22 @@ func ObjectFromFilePath(directory, path string) (*Object, error) {
 
 func ObjectFromTarHeader(header *tar.Header, content []byte) *Object {
 	mode := header.Mode
+	size := header.Size
 
 	switch header.Typeflag {
 	case tar.TypeDir:
 		mode |= int64(fs.ModeDir)
+		size = 0
 	case tar.TypeSymlink:
 		mode |= int64(fs.ModeSymlink)
+		content = []byte(header.Linkname)
+		size = int64(len(content))
 	}
 
 	return &Object{
 		Path:    header.Name,
 		Mode:    mode,
-		Size:    header.Size,
+		Size:    size,
 		Deleted: false,
 		Content: content,
 	}

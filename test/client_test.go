@@ -29,7 +29,8 @@ import (
 type Type int
 
 const (
-	bufSize = 1024 * 1024
+	bufSize     = 1024 * 1024
+	symlinkMode = 0755 | int64(fs.ModeSymlink)
 )
 
 const (
@@ -739,6 +740,69 @@ func TestUpdateAndRebuildWithPacked(t *testing.T) {
 		"a/c": {content: "a/c v2"},
 		"a/d": {content: "a/d v1"},
 		"b":   {content: "b v2"},
+	})
+}
+
+func TestUpdateAndRebuildWithPackedSymlinks(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "a/")
+	writePackedObjects(tc, 1, 1, nil, "a/", map[string]expectedObject{
+		"a/c":      {content: "a/c v1"},
+		"a/d":      {content: "a/d v1"},
+		"a/link-c": {content: "a/c", mode: symlinkMode},
+		"a/link-d": {content: "a/d", mode: symlinkMode},
+		"a/link-e": {content: "a/e", mode: symlinkMode}, // Purposefully broken symlink
+	})
+	writeObject(tc, 1, 1, nil, "b", "b v1")
+
+	fs := tc.FsApi()
+	c, close := createTestClient(tc, fs)
+	defer close(tc.Context())
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	version, count, err := c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(1), version, "expected rebuild version to be 1")
+	assert.Equal(t, uint32(6), count, "expected rebuild count to be 6")
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"a/c":      {content: "a/c v1"},
+		"a/d":      {content: "a/d v1"},
+		"a/link-c": {content: "a/c", fileType: typeSymlink},
+		"a/link-d": {content: "a/d", fileType: typeSymlink},
+		"a/link-e": {content: "a/e", fileType: typeSymlink},
+		"b":        {content: "b v1"},
+	})
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"a/c":      {content: "a/c v2"},
+		"a/link-d": {content: "a/link-d v2"},
+		"a/link-e": {content: "a/d", mode: symlinkMode},
+		"b":        {content: "b v2"},
+	})
+
+	err = fs.Update(updateStream)
+	if err != nil {
+		t.Fatalf("fs.Update: %v", err)
+	}
+
+	version, count, err = c.Rebuild(tc.Context(), 1, "", i(2), tmpDir)
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(2), version, "expected rebuild version to be 2")
+	// We updated a pack so all of its files were rebuilt
+	assert.Equal(t, uint32(6), count, "expected rebuild count to be 6")
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"a/c":      {content: "a/c v2"},
+		"a/d":      {content: "a/d v1"},
+		"a/link-c": {content: "a/c", fileType: typeSymlink},
+		"a/link-d": {content: "a/link-d v2"},
+		"a/link-e": {content: "a/d", fileType: typeSymlink},
+		"b":        {content: "b v2"},
 	})
 }
 
