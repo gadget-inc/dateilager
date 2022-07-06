@@ -212,6 +212,20 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, ignores 
 	return objects, nil
 }
 
+func removePathIfSymlink(path string) error {
+	stat, err := os.Lstat(path)
+	if err != nil {
+		return nil
+	}
+
+	if stat.Mode()&os.ModeSymlink == os.ModeSymlink {
+		err = os.Remove(path)
+		return err
+	}
+
+	return nil
+}
+
 func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error {
 	path := filepath.Join(rootDir, header.Name)
 
@@ -220,6 +234,13 @@ func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error
 		err := os.MkdirAll(filepath.Dir(path), 0777)
 		if err != nil {
 			return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
+		}
+
+		// os.OpenFile returns an error if it's called on a symlink
+		// remove any potential symlinks before writing the regular file
+		err = removePathIfSymlink(path)
+		if err != nil {
+			return fmt.Errorf("remove path if symlink %v: %w", path, err)
 		}
 
 		file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
@@ -246,7 +267,7 @@ func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error
 		}
 
 		// Remove existing link
-		if _, err = os.Stat(path); err == nil {
+		if _, err = os.Lstat(path); err == nil {
 			err = os.Remove(path)
 			if err != nil {
 				return fmt.Errorf("rm %v before symlinking %v: %w", path, header.Linkname, err)

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"io/fs"
 	"testing"
 
 	"github.com/gadget-inc/dateilager/internal/auth"
@@ -59,9 +60,14 @@ func newMockUpdateServer(ctx context.Context, project int64, updates map[string]
 	var objects []*pb.Object
 
 	for path, object := range updates {
+		mode := object.mode
+		if mode == 0 {
+			mode = 0755
+		}
+
 		objects = append(objects, &pb.Object{
 			Path:    path,
-			Mode:    0755,
+			Mode:    mode,
 			Size:    int64(len(object.content)),
 			Deleted: object.deleted,
 			Content: []byte(object.content),
@@ -158,6 +164,9 @@ func verifyStreamResults(t *testing.T, results []*pb.Object, expected map[string
 		assert.True(t, ok, "did not expect %v in stream results", result.Path)
 		assert.Equal(t, object.content, string(result.Content), "mismatch content for %v", result.Path)
 		assert.Equal(t, object.deleted, result.Deleted, "mismatch deleted flag for %v", result.Path)
+		if object.mode != 0 {
+			assert.Equal(t, object.mode, result.Mode, "mismatch mode for %v", result.Path)
+		}
 	}
 }
 
@@ -185,6 +194,9 @@ func verifyTarResults(t *testing.T, results [][]byte, expected map[string]expect
 			require.NoError(t, err, "failed to copy content bytes from TAR")
 
 			assert.Equal(t, []byte(expectedMatch.content), buffer.Bytes(), "mismatch content for %v", header.Name)
+			if expectedMatch.mode != 0 {
+				assert.Equal(t, fs.FileMode(expectedMatch.mode).Perm(), header.Mode, "mismatch file mode for %v", header.Name)
+			}
 		}
 	}
 

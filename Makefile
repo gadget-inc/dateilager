@@ -19,7 +19,7 @@ INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
-.PHONY: install migrate migrate-create build release test test-js lint-js typecheck-js
+.PHONY: install migrate migrate-create build release test test-one test-js lint-js typecheck-js
 .PHONY: reset-db setup-local server server-profile
 .PHONY: client-update client-large-update client-get client-rebuild client-pack
 .PHONY: webui health upload-container-image gen-docs
@@ -91,6 +91,14 @@ release: release/assets.tar.gz release/migrations.tar.gz
 test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test: migrate
 	cd test && go test
+
+test-one: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
+test-one: migrate
+ifndef name
+	$(error name variable must be set)
+else
+	cd test && go test -run $(name)
+endif
 
 test-js:
 	cd js && npm run test

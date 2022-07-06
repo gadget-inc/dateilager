@@ -18,6 +18,7 @@ func i(i int64) *int64 {
 type expectedObject struct {
 	content string
 	deleted bool
+	mode    int64
 }
 
 func writeProject(tc util.TestCtx, id int32, latestVersion int64, packPatterns ...string) {
@@ -105,9 +106,14 @@ func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []
 	namesWriter := db.NewTarWriter()
 
 	for path, info := range objects {
+		mode := info.mode
+		if mode == 0 {
+			mode = 0755
+		}
+
 		object := &pb.Object{
 			Path:    path,
-			Mode:    0755,
+			Mode:    mode,
 			Size:    int64(len(info.content)),
 			Content: []byte(info.content),
 			Deleted: info.deleted,

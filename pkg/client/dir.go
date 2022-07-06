@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
 	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
@@ -38,7 +39,7 @@ func ReadVersionFile(dir string) (int64, error) {
 		return -1, fmt.Errorf("cannot read version file %v: %w", path, err)
 	}
 
-	version, err := strconv.ParseInt(string(bytes), 10, 64)
+	version, err := strconv.ParseInt(strings.TrimSpace(string(bytes)), 10, 64)
 	if err != nil {
 		return -1, fmt.Errorf("cannot convert version to int64 %v: %w", string(bytes), err)
 	}
