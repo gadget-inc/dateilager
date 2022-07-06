@@ -367,6 +367,12 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 						return nil
 					}
 
+					// FIXME: we need to delete files from a pack that are no longer relevant
+					//   1. add an is_packed to the tar response
+					//   2. special case rebuilding a pack
+					//   3. first walk the directory and build a map of every file
+					//   4. iterate over the tar, when a file is updated remove it from the map
+					//   5. any remaining files in the map can be deleted
 					tarReader := db.NewTarReader(tarBytes)
 
 					for {

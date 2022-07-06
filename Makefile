@@ -90,7 +90,15 @@ release: release/assets.tar.gz release/migrations.tar.gz
 
 test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test: migrate
-	cd test && go test
+	cd test && go test -v
+
+test-one: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
+test-one: migrate
+ifndef name
+	$(error name variable must be set)
+else
+	cd test && go test -run $(name)
+endif
 
 test-js:
 	cd js && npm run test

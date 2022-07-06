@@ -134,6 +134,8 @@ func PackObjects(objects ObjectStream) ([]byte, []byte, error) {
 	namesWriter := NewTarWriter()
 	empty := true
 
+	lastPath := ""
+
 	for {
 		object, err := objects()
 		if err == SKIP {
@@ -145,6 +147,11 @@ func PackObjects(objects ObjectStream) ([]byte, []byte, error) {
 		if err != nil {
 			return nil, nil, err
 		}
+
+		if object.Path < lastPath {
+			fmt.Printf("!!! Invalid pack order: %v < %v\n", object.Path, lastPath)
+		}
+		lastPath = object.Path
 
 		empty = false
 
@@ -183,6 +190,8 @@ func updateObjects(before []byte, updates []*pb.Object) ([]byte, []byte, error) 
 	reader := NewTarReader(before)
 	readerObjectsRemaining := true
 
+	// fmt.Println("-------------- updateObjects -----------------")
+
 	stream := func() (*pb.Object, error) {
 		// Yield unseen updates as new objects if we've finished walking the original pack
 		if !readerObjectsRemaining {
@@ -213,6 +222,7 @@ func updateObjects(before []byte, updates []*pb.Object) ([]byte, []byte, error) 
 
 		update := findUpdate(updates, header.Name)
 		if update != nil {
+			// fmt.Printf("update: %v, deleted: %v\n", update.Path, update.Deleted)
 			if update.Deleted {
 				return nil, SKIP
 			}
