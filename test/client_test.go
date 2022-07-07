@@ -29,8 +29,9 @@ import (
 type Type int
 
 const (
-	bufSize     = 1024 * 1024
-	symlinkMode = 0755 | int64(fs.ModeSymlink)
+	bufSize       = 1024 * 1024
+	symlinkMode   = 0755 | int64(fs.ModeSymlink)
+	directoryMode = 0755 | int64(fs.ModeDir)
 )
 
 const (
@@ -691,6 +692,54 @@ func TestUpdateAndRebuildWithIdenticalObjects(t *testing.T) {
 	assert.Equal(t, uint32(1), count, "expected rebuild version to be 1")
 }
 
+func TestUpdateAndRebuildWithChangingObjectTypes(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "a", "a v1")
+	writeEmptyDir(tc, 1, 1, nil, "b/")
+	writeSymlink(tc, 1, 1, nil, "c", "a")
+
+	fs := tc.FsApi()
+	c, close := createTestClient(tc, fs)
+	defer close(tc.Context())
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	version, count, err := c.Rebuild(tc.Context(), 1, "", nil, tmpDir)
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(1), version, "expected rebuild version to be 1")
+	assert.Equal(t, uint32(3), count, "expected rebuild count to be 3")
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"a":  {content: "a v1"},
+		"b/": {fileType: typeDirectory},
+		"c":  {content: "a", fileType: typeSymlink},
+	})
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"a/": {mode: directoryMode},
+		"b":  {content: "c", mode: symlinkMode},
+		"c":  {content: "c v2"},
+	})
+
+	err = fs.Update(updateStream)
+	require.NoError(t, err, "fs.Update")
+
+	version, _, err = c.Rebuild(tc.Context(), 1, "", i(2), tmpDir)
+	require.NoError(t, err, "client.Rebuild")
+	assert.Equal(t, int64(2), version, "expected rebuild version to be 2")
+	assert.Equal(t, uint32(3), count, "expected rebuild count to be 3")
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"a/": {fileType: typeDirectory},
+		"b":  {content: "c", fileType: typeSymlink},
+		"c":  {content: "c v2"},
+	})
+}
+
 func TestUpdateAndRebuildWithPacked(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
@@ -786,9 +835,7 @@ func TestUpdateAndRebuildWithPackedSymlinks(t *testing.T) {
 	})
 
 	err = fs.Update(updateStream)
-	if err != nil {
-		t.Fatalf("fs.Update: %v", err)
-	}
+	require.NoError(t, err, "fs.Update")
 
 	version, count, err = c.Rebuild(tc.Context(), 1, "", i(2), tmpDir)
 	require.NoError(t, err, "client.Rebuild")
