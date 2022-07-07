@@ -226,6 +226,20 @@ func removePathIfSymlink(path string) error {
 	return nil
 }
 
+func removePathIfNotDirectory(path string) error {
+	stat, err := os.Lstat(path)
+	if err != nil {
+		return nil
+	}
+
+	if stat.Mode()&os.ModeDir != os.ModeDir {
+		err = os.Remove(path)
+		return err
+	}
+
+	return nil
+}
+
 func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error {
 	path := filepath.Join(rootDir, header.Name)
 
@@ -255,13 +269,18 @@ func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error
 		}
 
 	case tar.TypeDir:
-		err := os.MkdirAll(path, os.FileMode(header.Mode))
+		err := removePathIfNotDirectory(path)
+		if err != nil {
+			return fmt.Errorf("remove path if not dir %v: %w", path, err)
+		}
+
+		err = os.MkdirAll(path, os.FileMode(header.Mode))
 		if err != nil {
 			return fmt.Errorf("mkdir -p %v: %w", path, err)
 		}
 
 	case tar.TypeSymlink:
-		err := os.MkdirAll(filepath.Dir(path), 0777)
+		err := os.MkdirAll(filepath.Dir(path), 0755)
 		if err != nil {
 			return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
 		}
