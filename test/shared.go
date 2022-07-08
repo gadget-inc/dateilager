@@ -1,14 +1,41 @@
 package test
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
+	"path/filepath"
+	"strings"
+	"testing"
 
+	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
+	"github.com/gadget-inc/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/pkg/client"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
+)
+
+type Type int
+
+const (
+	bufSize       = 1024 * 1024
+	symlinkMode   = 0755 | int64(fs.ModeSymlink)
+	directoryMode = 0755 | int64(fs.ModeDir)
+)
+
+const (
+	typeRegular Type = iota
+	typeDirectory
+	typeSymlink
 )
 
 func i(i int64) *int64 {
@@ -19,6 +46,28 @@ type expectedObject struct {
 	content string
 	deleted bool
 	mode    int64
+}
+
+type expectedFile struct {
+	content  string
+	fileType Type
+}
+
+type expectedResponse struct {
+	version int64
+	count   uint32
+}
+
+var (
+	emptyVersionRange = client.VersionRange{From: nil, To: nil}
+)
+
+func toVersion(to int64) client.VersionRange {
+	return client.VersionRange{From: nil, To: &to}
+}
+
+func fromVersion(from int64) client.VersionRange {
+	return client.VersionRange{From: &from, To: nil}
 }
 
 func writeProject(tc util.TestCtx, id int32, latestVersion int64, packPatterns ...string) {
@@ -133,6 +182,182 @@ func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []
 	require.NoError(tc.T(), err, "write names TAR to bytes")
 
 	return contentTar, namesTar
+}
+
+// verifyObjects asserts that the given objects contain all the expected paths and file contents
+func verifyObjects(t *testing.T, objects []*pb.Object, expected map[string]string) {
+	contents := make(map[string]string)
+
+	for _, object := range objects {
+		contents[object.Path] = string(object.Content)
+	}
+
+	// This gives in a much nicer diff in the error message over asserting each object separately.
+	assert.EqualValues(t, expected, contents, "unexpected contents for objects")
+}
+
+func writeFile(t *testing.T, dir string, path string, content string) {
+	fullPath := filepath.Join(dir, path)
+	err := os.MkdirAll(filepath.Dir(fullPath), 0755)
+	require.NoError(t, err, "mkdir %v", filepath.Dir(fullPath))
+	err = os.WriteFile(fullPath, []byte(content), 0755)
+	require.NoError(t, err, "write file %v", path)
+}
+
+func emptyTmpDir(t *testing.T) string {
+	dir, err := os.MkdirTemp("", "dateilager_tests_")
+	require.NoError(t, err, "create temp dir")
+
+	return dir
+}
+
+func writeTmpFiles(t *testing.T, version int64, files map[string]string) string {
+	dir, err := os.MkdirTemp("", "dateilager_tests_")
+	require.NoError(t, err, "create temp dir")
+
+	for name, content := range files {
+		writeFile(t, dir, name, content)
+	}
+
+	err = client.WriteVersionFile(dir, version)
+	require.NoError(t, err, "write version file")
+
+	_, err = client.DiffAndSummarize(dir)
+	require.NoError(t, err, "diff and summarize")
+
+	return dir
+}
+
+func verifyDir(t *testing.T, dir string, version int64, files map[string]expectedFile) {
+	dirEntries := make(map[string]fs.FileInfo)
+
+	// Only keep track of empty walked directories
+	var maybeEmptyDir *string
+	var maybeEmptyInfo *fs.FileInfo
+
+	err := filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if path == dir {
+			return nil
+		}
+
+		if strings.HasPrefix(path, filepath.Join(dir, ".dl")) {
+			return nil
+		}
+
+		if maybeEmptyDir != nil {
+			if !strings.HasPrefix(path, *maybeEmptyDir) {
+				dirEntries[fmt.Sprintf("%s/", *maybeEmptyDir)] = *maybeEmptyInfo
+			}
+			maybeEmptyDir = nil
+			maybeEmptyInfo = nil
+		}
+
+		if info.IsDir() {
+			maybeEmptyDir = &path
+			maybeEmptyInfo = &info
+			return nil
+		}
+
+		dirEntries[path] = info
+		return nil
+	})
+	require.NoError(t, err, "walk directory %v", dir)
+
+	if maybeEmptyDir != nil {
+		dirEntries[fmt.Sprintf("%s/", *maybeEmptyDir)] = *maybeEmptyInfo
+	}
+
+	fileVersion, err := client.ReadVersionFile(dir)
+	require.NoError(t, err, "read version file")
+
+	assert.Equal(t, version, fileVersion, "expected file version %v", version)
+	assert.Equal(t, len(files), len(dirEntries), "expected %v files in %v", len(files), dir)
+
+	for name, file := range files {
+		path := filepath.Join(dir, name)
+		if strings.HasSuffix(name, "/") {
+			// filepath.Join removes trailing slashes
+			path = fmt.Sprintf("%s/", path)
+		}
+		info := dirEntries[path]
+
+		switch file.fileType {
+		case typeDirectory:
+			assert.True(t, info.IsDir(), "%v is not a directory", name)
+
+		case typeSymlink:
+			assert.Equal(t, fs.ModeSymlink, info.Mode()&fs.ModeSymlink, "%v is not a symlink", name)
+
+			target, err := os.Readlink(path)
+			require.NoError(t, err, "read link %v", path)
+
+			assert.Equal(t, file.content, target, "symlink target mismatch in %v", name)
+
+		case typeRegular:
+			bytes, err := os.ReadFile(path)
+			require.NoError(t, err, "read file %v", path)
+
+			assert.Equal(t, file.content, string(bytes), "content mismatch in %v", name)
+		}
+	}
+}
+
+func createTestClient(tc util.TestCtx) (*client.Client, *api.Fs, func()) {
+	fs := tc.FsApi()
+	reqAuth := tc.Context().Value(auth.AuthCtxKey).(auth.Auth)
+
+	lis := bufconn.Listen(bufSize)
+	s := grpc.NewServer(
+		grpc.UnaryInterceptor(
+			grpc.UnaryServerInterceptor(func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+				return handler(context.WithValue(ctx, auth.AuthCtxKey, reqAuth), req)
+			}),
+		),
+		grpc.StreamInterceptor(
+			grpc.StreamServerInterceptor(func(srv interface{}, stream grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+				wrapped := grpc_middleware.WrapServerStream(stream)
+				wrapped.WrappedContext = context.WithValue(stream.Context(), auth.AuthCtxKey, reqAuth)
+				return handler(srv, wrapped)
+			}),
+		),
+	)
+
+	pb.RegisterFsServer(s, fs)
+	go func() {
+		err := s.Serve(lis)
+		require.NoError(tc.T(), err, "Server exited")
+	}()
+
+	dialer := func(context.Context, string) (net.Conn, error) {
+		return lis.Dial()
+	}
+
+	conn, err := grpc.DialContext(tc.Context(), "bufnet", grpc.WithContextDialer(dialer), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(tc.T(), err, "Failed to dial bufnet")
+
+	c := client.NewClientConn(conn)
+
+	return c, fs, func() { c.Close(); s.Stop() }
+}
+
+func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, expected expectedResponse) {
+	version, count, err := c.Rebuild(tc.Context(), project, "", toVersion, dir)
+	require.NoError(tc.T(), err, "client.Rebuild")
+
+	assert.Equal(tc.T(), expected.version, version, "mismatch rebuild version")
+	assert.Equal(tc.T(), expected.count, count, "mismatch rebuild count")
+}
+
+func update(tc util.TestCtx, c *client.Client, project int64, dir string, expected expectedResponse) {
+	version, count, err := c.Update(tc.Context(), project, dir)
+	require.NoError(tc.T(), err, "client.Update")
+
+	assert.Equal(tc.T(), expected.version, version, "mismatch update version")
+	assert.Equal(tc.T(), expected.count, count, "mismatch update count")
 }
 
 // Use debugProjects(tc) and debugObjects(tc) within a failing test to log the state of the DB
