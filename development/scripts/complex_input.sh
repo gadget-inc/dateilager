@@ -12,45 +12,39 @@ realpath() {
     echo "$(cd ${path}; pwd -P)"
 }
 
-readonly ROOT_DIR="$(realpath "$(dirname "$0")/..")"
-readonly INPUT_DIR="${ROOT_DIR}/input/simple"
+readonly ROOT_DIR="$(realpath "$(dirname "$0")/../..")"
+readonly INPUT_DIR="${ROOT_DIR}/input/complex"
+
+build_node_modules() {
+    local package_json="${1}"
+    local output="${2}"
+
+    mkdir -p "${output}/node_modules"
+
+    cp "${package_json}" "${output}/package.json"
+    (
+        cd "${output}"
+        npm install &> /dev/null
+    )
+}
 
 v1() {
     local dir="${1}"
-
     rm -rf "${dir:?}"
     mkdir -p "${dir}"
-
-    echo "a" > "${dir}/a"
-    echo "b" > "${dir}/b"
-
-    mkdir -p "${dir}/n1/n2"
-    echo "g" > "${dir}/n1/g"
-
+    build_node_modules "${ROOT_DIR}/development/scripts/package-v1.json" "${dir}"
     log "wrote v1 to ${dir}"
 }
 
 v2() {
     local dir="${1}"
-
-    echo "c" > "${dir}/c"
-    ln -s a "${dir}/e"
-    mkdir -p "${dir}/f"
-
-    (
-        cd "${dir}/n1/n2"
-        ln -s "../g" h
-    )
-
+    build_node_modules "${ROOT_DIR}/development/scripts/package-v2.json" "${dir}"
     log "wrote v2 to ${dir}"
 }
 
 v3() {
     local dir="${1}"
-
-    echo "d" > "${dir}"/a
-    rm "${dir}/b"
-
+    build_node_modules "${ROOT_DIR}/development/scripts/package-v3.json" "${dir}"
     log "wrote v3 to ${dir}"
 }
 
@@ -60,7 +54,7 @@ main() {
         exit 1
     fi
 
-    log "writing simple inputs to ${INPUT_DIR}"
+    log "writing complex inputs to ${INPUT_DIR}"
 
     case "$1" in
         "1") v1 "${INPUT_DIR}" ;;
@@ -69,7 +63,7 @@ main() {
         *) log "invalid version argument"; exit 1 ;;
     esac
 
-    log "wrote files"
+    log "wrote files and diffs"
 }
 
 main "$@"

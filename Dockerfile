@@ -23,6 +23,6 @@ VOLUME /home/main/secrets/paseto
 
 COPY release/server_linux_amd64 server
 COPY migrations migrations
-COPY scripts/entrypoint.sh entrypoint.sh
+COPY entrypoint.sh entrypoint.sh
 
 ENTRYPOINT ["./entrypoint.sh"]

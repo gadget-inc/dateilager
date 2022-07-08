@@ -126,21 +126,21 @@ server-profile:
 client-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-update: export DL_SKIP_SSL_VERIFICATION=1
 client-update:
-	scripts/simple_input.sh 1
+	development/scripts/simple_input.sh 1
 	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/simple
-	scripts/simple_input.sh 2
+	development/scripts/simple_input.sh 2
 	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/simple
-	scripts/simple_input.sh 3
+	development/scripts/simple_input.sh 3
 	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/simple
 
 client-large-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-large-update: export DL_SKIP_SSL_VERIFICATION=1
 client-large-update:
-	scripts/complex_input.sh 1
+	development/scripts/complex_input.sh 1
 	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/complex
-	scripts/complex_input.sh 2
+	development/scripts/complex_input.sh 2
 	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/complex
-	scripts/complex_input.sh 3
+	development/scripts/complex_input.sh 3
 	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/complex
 
 client-get: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
@@ -187,7 +187,7 @@ define load-test
 	ghz --cert=development/server.crt --key=development/server.key \
 		--proto internal/pb/fs.proto --call "pb.Fs.$(1)" \
 		--total $(3) --concurrency $(4) --rps $(if $5,$5,0) \
-		--data-file "scripts/load-tests/$(2)" \
+		--data-file "development/scripts/load-tests/$(2)" \
 		--metadata '{"authorization": "Bearer $(DEV_TOKEN_ADMIN)"}' \
 		localhost:$(GRPC_PORT)
 endef
