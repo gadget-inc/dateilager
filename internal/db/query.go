@@ -292,7 +292,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 	}, nil
 }
 
-type tarStream func() ([]byte, error)
+type tarStream func() ([]byte, *string, error)
 
 func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
 	sql, args := buildQuery(project, vrange, objectQuery)
@@ -304,13 +304,14 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange,
 	tarWriter := NewTarWriter()
 	contentDecoder := NewContentDecoder()
 
-	return func() ([]byte, error) {
+	return func() ([]byte, *string, error) {
 		if !rows.Next() {
 			if tarWriter.Size() > 0 {
-				return tarWriter.BytesAndReset()
+				bytes, err := tarWriter.BytesAndReset()
+				return bytes, nil, err
 			}
 
-			return nil, io.EOF
+			return nil, nil, io.EOF
 		}
 
 		var path string
@@ -321,16 +322,16 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange,
 
 		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted)
 		if err != nil {
-			return nil, fmt.Errorf("getTars scan, project %v vrange %v: %w", project, vrange, err)
+			return nil, nil, fmt.Errorf("getTars scan, project %v vrange %v: %w", project, vrange, err)
 		}
 
 		if packed {
-			return encoded, nil
+			return encoded, &path, nil
 		}
 
 		content, err := contentDecoder.Decoder(encoded)
 		if err != nil {
-			return nil, fmt.Errorf("getTars decode content %v: %w", path, err)
+			return nil, nil, fmt.Errorf("getTars decode content %v: %w", path, err)
 		}
 
 		object := pb.Object{
@@ -343,14 +344,15 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange,
 
 		err = tarWriter.WriteObject(&object, true)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		if tarWriter.Size() > TargetTarSize {
-			return tarWriter.BytesAndReset()
+			bytes, err := tarWriter.BytesAndReset()
+			return bytes, nil, err
 		}
 
-		return nil, SKIP
+		return nil, nil, SKIP
 	}, nil
 }
 

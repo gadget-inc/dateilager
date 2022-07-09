@@ -342,7 +342,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			}
 
 			for {
-				tar, err := tars()
+				tar, packPath, err := tars()
 				if err == io.EOF {
 					break
 				}
@@ -354,9 +354,10 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 				}
 
 				err = stream.Send(&pb.GetCompressResponse{
-					Version: vrange.To,
-					Format:  pb.GetCompressResponse_S2_TAR,
-					Bytes:   tar,
+					Version:  vrange.To,
+					Format:   pb.GetCompressResponse_S2_TAR,
+					Bytes:    tar,
+					PackPath: packPath,
 				})
 				if err != nil {
 					return status.Errorf(codes.Internal, "FS send GetCompressResponse: %v", err)

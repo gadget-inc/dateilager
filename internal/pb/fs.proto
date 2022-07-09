@@ -92,6 +92,7 @@ message GetCompressResponse {
     int64 version = 1;
     Format format = 2;
     bytes bytes = 3;
+    optional string pack_path = 4;
 }
 
 message UpdateRequest {

@@ -212,6 +212,7 @@ func TestCombinedWithPacked(t *testing.T) {
 	writePackedObjects(tc, 1, 1, nil, "a/", map[string]expectedObject{
 		"a/c": {content: "a/c v1"},
 		"a/d": {content: "a/d v1"},
+		"a/e": {content: "a/e v1"},
 	})
 	writeObject(tc, 1, 1, nil, "b", "b v1")
 
@@ -223,17 +224,19 @@ func TestCombinedWithPacked(t *testing.T) {
 
 	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
 		version: 1,
-		count:   3,
+		count:   4,
 	})
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a/c": {content: "a/c v1"},
 		"a/d": {content: "a/d v1"},
+		"a/e": {content: "a/e v1"},
 		"b":   {content: "b v1"},
 	})
 
 	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
 		"a/c": {content: "a/c v2"},
+		"a/e": {deleted: true},
 		"b":   {content: "b v2"},
 	})
 
@@ -244,7 +247,7 @@ func TestCombinedWithPacked(t *testing.T) {
 
 	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
 		version: 2,
-		count:   3, // We updated one file in a pack so all of them were rebuilt
+		count:   3, // We updated a pack so all of them were rebuilt
 	})
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
