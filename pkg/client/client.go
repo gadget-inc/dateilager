@@ -1,16 +1,12 @@
 package client
 
 import (
-	"archive/tar"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -18,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
@@ -212,108 +209,6 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, ignores 
 	return objects, nil
 }
 
-func removePathIfSymlink(path string) error {
-	stat, err := os.Lstat(path)
-	if err != nil {
-		return nil
-	}
-
-	if stat.Mode()&os.ModeSymlink == os.ModeSymlink {
-		err = os.Remove(path)
-		return err
-	}
-
-	return nil
-}
-
-func removePathIfNotDirectory(path string) error {
-	stat, err := os.Lstat(path)
-	if err != nil {
-		return nil
-	}
-
-	if stat.Mode()&os.ModeDir != os.ModeDir {
-		err = os.Remove(path)
-		return err
-	}
-
-	return nil
-}
-
-func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error {
-	path := filepath.Join(rootDir, header.Name)
-
-	switch header.Typeflag {
-	case tar.TypeReg:
-		err := os.MkdirAll(filepath.Dir(path), 0777)
-		if err != nil {
-			return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
-		}
-
-		// os.OpenFile returns an error if it's called on a symlink
-		// remove any potential symlinks before writing the regular file
-		err = removePathIfSymlink(path)
-		if err != nil {
-			return fmt.Errorf("remove path if symlink %v: %w", path, err)
-		}
-
-		file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
-		if err != nil {
-			return fmt.Errorf("open file %v: %w", path, err)
-		}
-
-		err = reader.CopyContent(file)
-		file.Close()
-		if err != nil {
-			return fmt.Errorf("write %v to disk: %w", path, err)
-		}
-
-	case tar.TypeDir:
-		err := removePathIfNotDirectory(path)
-		if err != nil {
-			return fmt.Errorf("remove path if not dir %v: %w", path, err)
-		}
-
-		err = os.MkdirAll(path, os.FileMode(header.Mode))
-		if err != nil {
-			return fmt.Errorf("mkdir -p %v: %w", path, err)
-		}
-
-	case tar.TypeSymlink:
-		err := os.MkdirAll(filepath.Dir(path), 0755)
-		if err != nil {
-			return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
-		}
-
-		// Remove existing link
-		if _, err = os.Lstat(path); err == nil {
-			err = os.Remove(path)
-			if err != nil {
-				return fmt.Errorf("rm %v before symlinking %v: %w", path, header.Linkname, err)
-			}
-		}
-
-		err = os.Symlink(header.Linkname, path)
-		if err != nil {
-			return fmt.Errorf("ln -s %v %v: %w", header.Linkname, path, err)
-		}
-
-	case 'D':
-		err := os.Remove(path)
-		if errors.Is(err, fs.ErrNotExist) {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("remove %v from disk: %w", path, err)
-		}
-
-	default:
-		return fmt.Errorf("unhandle TAR type: %v", header.Typeflag)
-	}
-
-	return nil
-}
-
 func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string) (int64, uint32, error) {
 	ctx, span := telemetry.Start(ctx, "client.rebuild", trace.WithAttributes(
 		key.Project.Attribute(project),
@@ -361,13 +256,13 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		return fromVersion, diffCount, fmt.Errorf("receive fs.GetCompress: %w", err)
 	}
 
-	tarBytesChan := make(chan []byte, 16)
+	tarChan := make(chan *pb.GetCompressResponse, 16)
 	group, ctx := errgroup.WithContext(ctx)
 
 	group.Go(func() error {
 		ctx, span := telemetry.Start(ctx, "object-receiver")
 		defer span.End()
-		defer close(tarBytesChan)
+		defer close(tarChan)
 
 		for {
 			if toVersion != nil && *toVersion != response.Version {
@@ -378,7 +273,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case tarBytesChan <- response.Bytes:
+			case tarChan <- response:
 				response, err = stream.Recv()
 				if err == io.EOF {
 					return nil
@@ -402,28 +297,19 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
-				case tarBytes, ok := <-tarBytesChan:
+				case response, ok := <-tarChan:
 					if !ok {
 						return nil
 					}
 
-					tarReader := db.NewTarReader(tarBytes)
+					tarReader := db.NewTarReader(response.Bytes)
 
-					for {
-						header, err := tarReader.Next()
-						if err == io.EOF {
-							break
-						}
-						if err != nil {
-							return fmt.Errorf("next TAR header: %w", err)
-						}
-
-						atomic.AddUint32(&diffCount, 1)
-						err = writeObject(dir, tarReader, header)
-						if err != nil {
-							return err
-						}
+					count, err := files.WriteTar(dir, tarReader, response.PackPath)
+					if err != nil {
+						return err
 					}
+
+					atomic.AddUint32(&diffCount, count)
 				}
 			}
 		})
