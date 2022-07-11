@@ -161,7 +161,7 @@ func (c *Client) DeleteProject(ctx context.Context, project int64) error {
 
 	_, err := c.fs.DeleteProject(ctx, request)
 	if err != nil {
-		return fmt.Errorf("delete project: %w", err)
+		return fmt.Errorf("delete project %v: %w", project, err)
 	}
 
 	return nil
@@ -555,6 +555,64 @@ func (c *Client) Reset(ctx context.Context, state string) error {
 	}
 
 	return nil
+}
+
+func (c *Client) GcProject(ctx context.Context, project int64, keep int64, from *int64) (int64, error) {
+	ctx, span := telemetry.Start(ctx, "client.gc-project", trace.WithAttributes(
+		key.Project.Attribute(project),
+	))
+	defer span.End()
+
+	request := &pb.GcProjectRequest{
+		Project:      project,
+		KeepVersions: keep,
+		FromVersion:  from,
+	}
+
+	response, err := c.fs.GcProject(ctx, request)
+	if err != nil {
+		return 0, fmt.Errorf("gc project %v: %w", project, err)
+	}
+
+	return response.Count, nil
+}
+
+func (c *Client) GcRandomProjects(ctx context.Context, sample float32, keep int64, from *int64) (int64, error) {
+	ctx, span := telemetry.Start(ctx, "client.gc-random-project", trace.WithAttributes(
+		key.SampleRate.Attribute(sample),
+	))
+	defer span.End()
+
+	request := &pb.GcRandomProjectsRequest{
+		Sample:       sample,
+		KeepVersions: keep,
+		FromVersion:  from,
+	}
+
+	response, err := c.fs.GcRandomProjects(ctx, request)
+	if err != nil {
+		return 0, fmt.Errorf("gc random projects %v: %w", sample, err)
+	}
+
+	return response.Count, nil
+}
+
+func (c *Client) GcContents(ctx context.Context, sample float32) (int64, error) {
+	ctx, span := telemetry.Start(ctx, "client.gc-contents", trace.WithAttributes(
+		key.SampleRate.Attribute(sample),
+	))
+	defer span.End()
+
+	request := &pb.GcContentsRequest{
+		Sample: sample,
+	}
+
+	response, err := c.fs.GcContents(ctx, request)
+	if err != nil {
+		return 0, fmt.Errorf("gc contents %v: %w", sample, err)
+	}
+
+	return response.Count, nil
 }
 
 func parallelWorkerCount() int {

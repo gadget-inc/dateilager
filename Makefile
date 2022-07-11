@@ -15,6 +15,8 @@ DEV_TOKEN_PROJECT_1 ?= v2.public.eyJzdWIiOiIxIiwiaWF0IjoiMjAyMS0xMC0xNVQxMToyMDo
 
 PKG_GO_FILES := $(shell find pkg/ -type f -name '*.go')
 INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
+PROTO_FILES := $(shell find internal/pb/ -type f -name '*.proto')
+PROTO_TS_FILES := $(shell find js/src/pb -type f -name '*.ts')
 
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
@@ -22,6 +24,7 @@ SERVICE := $(PROJECT).server
 .PHONY: install migrate migrate-create build release test test-one test-js lint-js typecheck-js
 .PHONY: reset-db setup-local server server-profile
 .PHONY: client-update client-large-update client-get client-rebuild client-pack
+.PHONY: client-gc-contents client-gc-project client-gc-random-projects
 .PHONY: webui health upload-container-image gen-docs
 .PHONY: load-test-new load-test-get load-test-update
 
@@ -54,10 +57,10 @@ internal/pb/%_grpc.pb.go: internal/pb/%.proto
 bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 go build $(BUILD_FLAGS) -o $@ $<
 
-js/src/pb: internal/pb/*.proto
+js/src/pb: $(PROTO_FILES)
 	cd js && mkdir -p ./src/pb && npx protoc --experimental_allow_proto3_optional --ts_out ./src/pb --ts_opt long_type_bigint,ts_nocheck,eslint_disable,add_pb_suffix --proto_path ../internal/pb/ ../$^
 
-js/dist: js/src/pb
+js/dist: $(PROTO_TS_FILES)
 	cd js && npm run build
 
 development/server.key:
@@ -65,7 +68,7 @@ development/server.key:
 
 development/server.crt: development/server.key
 
-build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui js/dist development/server.crt
+build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui js/src/pb js/dist development/server.crt
 
 release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o $@ $<
@@ -116,50 +119,65 @@ setup-local: reset-db
 	psql $(DB_URI) -c "insert into dl.projects (id, latest_version, pack_patterns) values (1, 0, '{\"node_modules/.*/\"}');"
 
 server: export DL_ENV=dev
-server:
+server: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT)
 
 server-profile: export DL_ENV=dev
-server-profile:
+server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT) --profile cpu.prof --log-level info
 
-client-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
 client-update: export DL_SKIP_SSL_VERIFICATION=1
 client-update:
 	development/scripts/simple_input.sh 1
-	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/simple
+	go run cmd/client/main.go update --server $(GRPC_SERVER) --project 1 --dir input/simple
 	development/scripts/simple_input.sh 2
-	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/simple
+	go run cmd/client/main.go update --server $(GRPC_SERVER) --project 1 --dir input/simple
 	development/scripts/simple_input.sh 3
-	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/simple
+	go run cmd/client/main.go update --server $(GRPC_SERVER) --project 1 --dir input/simple
 
-client-large-update: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-large-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
 client-large-update: export DL_SKIP_SSL_VERIFICATION=1
 client-large-update:
 	development/scripts/complex_input.sh 1
-	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/complex
+	go run cmd/client/main.go update --server $(GRPC_SERVER) --project 1  --dir input/complex
 	development/scripts/complex_input.sh 2
-	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/complex
+	go run cmd/client/main.go update --server $(GRPC_SERVER) --project 1 --dir input/complex
 	development/scripts/complex_input.sh 3
-	go run cmd/client/main.go update --project 1 --server $(GRPC_SERVER) --dir input/complex
+	go run cmd/client/main.go update --server $(GRPC_SERVER) --project 1 --dir input/complex
 
-client-get: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-get: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
 client-get: export DL_SKIP_SSL_VERIFICATION=1
 client-get:
 ifndef to_version
-	go run cmd/client/main.go get --project 1 --server $(GRPC_SERVER) --prefix "$(prefix)"
+	go run cmd/client/main.go get --server $(GRPC_SERVER) --project 1 --prefix "$(prefix)"
 else
-	go run cmd/client/main.go get --project 1 --server $(GRPC_SERVER) --to $(to_version) --prefix "$(prefix)"
+	go run cmd/client/main.go get --server $(GRPC_SERVER) --project 1 --to $(to_version) --prefix "$(prefix)"
 endif
 
 client-rebuild: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-rebuild: export DL_SKIP_SSL_VERIFICATION=1
 client-rebuild:
 ifndef to_version
-	go run cmd/client/main.go rebuild --project 1 --server $(GRPC_SERVER) --prefix "$(prefix)" --dir $(dir)
+	go run cmd/client/main.go rebuild --server $(GRPC_SERVER) --project 1 --prefix "$(prefix)" --dir $(dir)
 else
-	go run cmd/client/main.go rebuild --project 1 --server $(GRPC_SERVER) --to $(to_version) --prefix "$(prefix)" --dir $(dir)
+	go run cmd/client/main.go rebuild --server $(GRPC_SERVER) --project 1 --to $(to_version) --prefix "$(prefix)" --dir $(dir)
 endif
+
+client-gc-contents: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-gc-contents: export DL_SKIP_SSL_VERIFICATION=1
+client-gc-contents:
+	go run cmd/client/main.go gc --server $(GRPC_SERVER) --mode contents --sample 25
+
+client-gc-project: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-gc-project: export DL_SKIP_SSL_VERIFICATION=1
+client-gc-project:
+	go run cmd/client/main.go gc --server $(GRPC_SERVER) --mode project --project 1 --keep 1
+
+client-gc-random-projects: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-gc-random-projects: export DL_SKIP_SSL_VERIFICATION=1
+client-gc-random-projects:
+	go run cmd/client/main.go gc --server $(GRPC_SERVER) --mode random-projects --sample 25 --keep 1
 
 webui: export DL_ENV=dev
 webui: export DL_TOKEN=$(DEV_TOKEN_ADMIN)

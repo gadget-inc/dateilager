@@ -19,6 +19,7 @@ import (
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
@@ -37,7 +38,8 @@ const (
 )
 
 type DbPoolConnector struct {
-	pool *pgxpool.Pool
+	pool       *pgxpool.Pool
+	extraTypes []*pgtype.Type
 }
 
 func NewDbPoolConnector(ctx context.Context, uri string) (*DbPoolConnector, error) {
@@ -55,8 +57,26 @@ func NewDbPoolConnector(ctx context.Context, uri string) (*DbPoolConnector, erro
 		return nil, err
 	}
 
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Release()
+
+	var extraTypes []*pgtype.Type
+	for _, typeName := range []string{"hash", "hash[]"} {
+		extraType, err := conn.Conn().LoadType(ctx, typeName)
+		if err != nil {
+			return nil, fmt.Errorf("could not load type %s: %w", typeName, err)
+		}
+
+		conn.Conn().TypeMap().RegisterType(extraType)
+		extraTypes = append(extraTypes, extraType)
+	}
+
 	return &DbPoolConnector{
-		pool: pool,
+		pool:       pool,
+		extraTypes: extraTypes,
 	}, nil
 }
 
@@ -72,6 +92,10 @@ func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 	conn, err := d.pool.Acquire(ctx)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	for _, extraType := range d.extraTypes {
+		conn.Conn().TypeMap().RegisterType(extraType)
 	}
 
 	tx, err := conn.Begin(ctx)

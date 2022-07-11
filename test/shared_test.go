@@ -1,8 +1,11 @@
 package test
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -17,6 +20,7 @@ import (
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/klauspost/compress/s2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -79,16 +83,42 @@ func writeProject(tc util.TestCtx, id int64, latestVersion int64, packPatterns .
 	require.NoError(tc.T(), err, "insert project")
 }
 
+func countObjects(tc util.TestCtx) int {
+	conn := tc.Connect()
+
+	var count int
+	err := conn.QueryRow(tc.Context(), `
+		SELECT count(*)
+		FROM dl.objects
+	`).Scan(&count)
+	require.NoError(tc.T(), err, "count objects")
+
+	return count
+}
+
+func countContents(tc util.TestCtx) int {
+	conn := tc.Connect()
+
+	var count int
+	err := conn.QueryRow(tc.Context(), `
+		SELECT count(*)
+		FROM dl.contents
+	`).Scan(&count)
+	require.NoError(tc.T(), err, "count contents")
+
+	return count
+}
+
 func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, path, content string, mode fs.FileMode) {
 	conn := tc.Connect()
 
 	contentBytes := []byte(content)
-	h1, h2 := db.HashContent(contentBytes)
+	hash := db.HashContent(contentBytes)
 
 	_, err := conn.Exec(tc.Context(), `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
-	`, project, start, stop, path, h1, h2, mode, len(contentBytes), false)
+	`, project, start, stop, path, hash.H1, hash.H2, mode, len(contentBytes), false)
 	require.NoError(tc.T(), err, "insert object")
 
 	contentEncoder := db.NewContentEncoder()
@@ -100,7 +130,7 @@ func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, p
 		VALUES (($1, $2), $3)
 		ON CONFLICT
 		   DO NOTHING
-	`, h1, h2, encoded)
+	`, hash.H1, hash.H2, encoded)
 	require.NoError(tc.T(), err, "insert contents")
 }
 
@@ -113,6 +143,19 @@ func writeObject(tc util.TestCtx, project int64, start int64, stop *int64, path 
 	}
 
 	writeObjectFull(tc, project, start, stop, path, content, 0755)
+}
+
+func deleteObject(tc util.TestCtx, project int64, start int64, path string) {
+	conn := tc.Connect()
+
+	_, err := conn.Exec(tc.Context(), `
+		DELETE
+		FROM dl.objects
+		WHERE project = $1
+		  AND start_version = $2
+		  AND path = $3
+	`, project, start, path)
+	require.NoError(tc.T(), err, "delete object")
 }
 
 func writeEmptyDir(tc util.TestCtx, project int64, start int64, stop *int64, path string) {
@@ -133,12 +176,12 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 	conn := tc.Connect()
 
 	contentsTar, namesTar := packObjects(tc, objects)
-	h1, h2 := db.HashContent(contentsTar)
+	hash := db.HashContent(contentsTar)
 
 	_, err := conn.Exec(tc.Context(), `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
-	`, project, start, stop, path, h1, h2, 0755, len(contentsTar), true)
+	`, project, start, stop, path, hash.H1, hash.H2, 0755, len(contentsTar), true)
 	require.NoError(tc.T(), err, "insert object")
 
 	_, err = conn.Exec(tc.Context(), `
@@ -146,7 +189,7 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 		VALUES (($1, $2), $3, $4)
 		ON CONFLICT
 		DO NOTHING
-	`, h1, h2, contentsTar, namesTar)
+	`, hash.H1, hash.H2, contentsTar, namesTar)
 	require.NoError(tc.T(), err, "insert contents")
 }
 
@@ -358,6 +401,192 @@ func update(tc util.TestCtx, c *client.Client, project int64, dir string, expect
 
 	assert.Equal(tc.T(), expected.version, version, "mismatch update version")
 	assert.Equal(tc.T(), expected.count, count, "mismatch update count")
+}
+
+type mockGetServer struct {
+	grpc.ServerStream
+	ctx     context.Context
+	results []*pb.Object
+}
+
+func (m *mockGetServer) Context() context.Context {
+	return m.ctx
+}
+
+func (m *mockGetServer) Send(resp *pb.GetResponse) error {
+	m.results = append(m.results, resp.Object)
+	return nil
+}
+
+type mockGetCompressServer struct {
+	grpc.ServerStream
+	ctx     context.Context
+	results [][]byte
+}
+
+func (m *mockGetCompressServer) Context() context.Context {
+	return m.ctx
+}
+
+func (m *mockGetCompressServer) Send(resp *pb.GetCompressResponse) error {
+	m.results = append(m.results, resp.Bytes)
+	return nil
+}
+
+type mockUpdateServer struct {
+	grpc.ServerStream
+	ctx      context.Context
+	project  int64
+	updates  []*pb.Object
+	idx      int
+	response *pb.UpdateResponse
+}
+
+func newMockUpdateServer(ctx context.Context, project int64, updates map[string]expectedObject) *mockUpdateServer {
+	var objects []*pb.Object
+
+	for path, object := range updates {
+		mode := object.mode
+		if mode == 0 {
+			mode = 0755
+		}
+
+		objects = append(objects, &pb.Object{
+			Path:    path,
+			Mode:    mode,
+			Size:    int64(len(object.content)),
+			Deleted: object.deleted,
+			Content: []byte(object.content),
+		})
+	}
+
+	return &mockUpdateServer{
+		ctx:     ctx,
+		project: project,
+		updates: objects,
+		idx:     0,
+	}
+}
+
+func (m *mockUpdateServer) Context() context.Context {
+	return m.ctx
+}
+
+func (m *mockUpdateServer) SendAndClose(res *pb.UpdateResponse) error {
+	m.response = res
+	return nil
+}
+
+func (m *mockUpdateServer) Recv() (*pb.UpdateRequest, error) {
+	if m.idx >= len(m.updates) {
+		return nil, io.EOF
+	}
+
+	object := m.updates[m.idx]
+	m.idx += 1
+	return &pb.UpdateRequest{
+		Project: m.project,
+		Object:  object,
+	}, nil
+}
+
+func buildRequest(project int64, fromVersion, toVersion *int64, prefix, content bool, paths ...string) *pb.GetRequest {
+	path, ignores := paths[0], paths[1:]
+
+	query := &pb.ObjectQuery{
+		Path:        path,
+		IsPrefix:    prefix,
+		WithContent: content,
+		Ignores:     ignores,
+	}
+
+	return &pb.GetRequest{
+		Project:     project,
+		FromVersion: fromVersion,
+		ToVersion:   toVersion,
+		Queries:     []*pb.ObjectQuery{query},
+	}
+}
+
+func exactQuery(project int64, version *int64, paths ...string) *pb.GetRequest {
+	return buildRequest(project, nil, version, false, true, paths...)
+}
+
+func prefixQuery(project int64, version *int64, paths ...string) *pb.GetRequest {
+	return buildRequest(project, nil, version, true, true, paths...)
+}
+
+func noContentQuery(project int64, version *int64, paths ...string) *pb.GetRequest {
+	return buildRequest(project, nil, version, true, false, paths...)
+}
+
+func rangeQuery(project int64, fromVersion, toVersion *int64, paths ...string) *pb.GetRequest {
+	return buildRequest(project, fromVersion, toVersion, true, true, paths...)
+}
+
+func buildCompressRequest(project int64, fromVersion, toVersion *int64, paths ...string) *pb.GetCompressRequest {
+	path, ignores := paths[0], paths[1:]
+
+	query := &pb.ObjectQuery{
+		Path:        path,
+		IsPrefix:    true,
+		WithContent: true,
+		Ignores:     ignores,
+	}
+
+	return &pb.GetCompressRequest{
+		Project:     project,
+		FromVersion: fromVersion,
+		ToVersion:   toVersion,
+		Queries:     []*pb.ObjectQuery{query},
+	}
+}
+
+func verifyStreamResults(t *testing.T, results []*pb.Object, expected map[string]expectedObject) {
+	assert.Equal(t, len(expected), len(results), "expected %v objects", len(expected))
+
+	for _, result := range results {
+		object, ok := expected[result.Path]
+		assert.True(t, ok, "did not expect %v in stream results", result.Path)
+		assert.Equal(t, object.content, string(result.Content), "mismatch content for %v", result.Path)
+		assert.Equal(t, object.deleted, result.Deleted, "mismatch deleted flag for %v", result.Path)
+		if object.mode != 0 {
+			assert.Equal(t, object.mode, result.Mode, "mismatch mode for %v", result.Path)
+		}
+	}
+}
+
+func verifyTarResults(t *testing.T, results [][]byte, expected map[string]expectedObject) {
+	count := 0
+
+	for _, result := range results {
+		s2Reader := s2.NewReader(bytes.NewBuffer(result))
+		tarReader := tar.NewReader(s2Reader)
+
+		for {
+			header, err := tarReader.Next()
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err, "failed to read next TAR file")
+
+			expectedMatch, ok := expected[header.Name]
+			assert.True(t, ok, "missing %v in TAR", header.Name)
+
+			count += 1
+
+			var buffer bytes.Buffer
+			_, err = io.Copy(&buffer, tarReader)
+			require.NoError(t, err, "failed to copy content bytes from TAR")
+
+			assert.Equal(t, []byte(expectedMatch.content), buffer.Bytes(), "mismatch content for %v", header.Name)
+			if expectedMatch.mode != 0 {
+				assert.Equal(t, fs.FileMode(expectedMatch.mode).Perm(), header.Mode, "mismatch file mode for %v", header.Name)
+			}
+		}
+	}
+
+	assert.Equal(t, len(expected), count, "expected %v objects", len(expected))
 }
 
 // Use debugProjects(tc) and debugObjects(tc) within a failing test to log the state of the DB

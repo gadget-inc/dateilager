@@ -2,15 +2,26 @@ package db
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"io"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/klauspost/compress/s2"
 	"github.com/minio/sha256-simd"
 )
 
-func HashContent(data []byte) ([]byte, []byte) {
+type Hash struct {
+	H1 []byte
+	H2 []byte
+}
+
+func HashContent(data []byte) Hash {
 	sha := sha256.Sum256(data)
-	return sha[0:16], sha[16:]
+	return Hash{
+		H1: sha[0:16],
+		H2: sha[16:32],
+	}
 }
 
 type ContentEncoder struct {
@@ -71,4 +82,29 @@ func (c *ContentDecoder) Decoder(encoded []byte) ([]byte, error) {
 	}
 
 	return output, nil
+}
+
+func RandomContents(ctx context.Context, tx pgx.Tx, sample float32) ([]Hash, error) {
+	rows, err := tx.Query(ctx, fmt.Sprintf(`
+		SELECT (hash).h1, (hash).h2
+		FROM dl.contents
+		TABLESAMPLE SYSTEM(%f)
+	`, sample))
+	if err != nil {
+		return nil, fmt.Errorf("random contents: %w", err)
+	}
+
+	var hashes []Hash
+
+	for rows.Next() {
+		var h1, h2 []byte
+		err = rows.Scan(&h1, &h2)
+		if err != nil {
+			return nil, fmt.Errorf("random contents scan: %w", err)
+		}
+
+		hashes = append(hashes, Hash{H1: h1, H2: h2})
+	}
+
+	return hashes, nil
 }

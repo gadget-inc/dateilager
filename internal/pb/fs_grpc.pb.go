@@ -31,6 +31,9 @@ type FsClient interface {
 	Inspect(ctx context.Context, in *InspectRequest, opts ...grpc.CallOption) (*InspectResponse, error)
 	Snapshot(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*SnapshotResponse, error)
 	Reset(ctx context.Context, in *ResetRequest, opts ...grpc.CallOption) (*ResetResponse, error)
+	GcProject(ctx context.Context, in *GcProjectRequest, opts ...grpc.CallOption) (*GcProjectResponse, error)
+	GcRandomProjects(ctx context.Context, in *GcRandomProjectsRequest, opts ...grpc.CallOption) (*GcRandomProjectsResponse, error)
+	GcContents(ctx context.Context, in *GcContentsRequest, opts ...grpc.CallOption) (*GcContentsResponse, error)
 }
 
 type fsClient struct {
@@ -193,6 +196,33 @@ func (c *fsClient) Reset(ctx context.Context, in *ResetRequest, opts ...grpc.Cal
 	return out, nil
 }
 
+func (c *fsClient) GcProject(ctx context.Context, in *GcProjectRequest, opts ...grpc.CallOption) (*GcProjectResponse, error) {
+	out := new(GcProjectResponse)
+	err := c.cc.Invoke(ctx, "/pb.Fs/GcProject", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fsClient) GcRandomProjects(ctx context.Context, in *GcRandomProjectsRequest, opts ...grpc.CallOption) (*GcRandomProjectsResponse, error) {
+	out := new(GcRandomProjectsResponse)
+	err := c.cc.Invoke(ctx, "/pb.Fs/GcRandomProjects", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fsClient) GcContents(ctx context.Context, in *GcContentsRequest, opts ...grpc.CallOption) (*GcContentsResponse, error) {
+	out := new(GcContentsResponse)
+	err := c.cc.Invoke(ctx, "/pb.Fs/GcContents", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FsServer is the server API for Fs service.
 // All implementations must embed UnimplementedFsServer
 // for forward compatibility
@@ -206,6 +236,9 @@ type FsServer interface {
 	Inspect(context.Context, *InspectRequest) (*InspectResponse, error)
 	Snapshot(context.Context, *SnapshotRequest) (*SnapshotResponse, error)
 	Reset(context.Context, *ResetRequest) (*ResetResponse, error)
+	GcProject(context.Context, *GcProjectRequest) (*GcProjectResponse, error)
+	GcRandomProjects(context.Context, *GcRandomProjectsRequest) (*GcRandomProjectsResponse, error)
+	GcContents(context.Context, *GcContentsRequest) (*GcContentsResponse, error)
 	mustEmbedUnimplementedFsServer()
 }
 
@@ -239,6 +272,15 @@ func (UnimplementedFsServer) Snapshot(context.Context, *SnapshotRequest) (*Snaps
 }
 func (UnimplementedFsServer) Reset(context.Context, *ResetRequest) (*ResetResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Reset not implemented")
+}
+func (UnimplementedFsServer) GcProject(context.Context, *GcProjectRequest) (*GcProjectResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GcProject not implemented")
+}
+func (UnimplementedFsServer) GcRandomProjects(context.Context, *GcRandomProjectsRequest) (*GcRandomProjectsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GcRandomProjects not implemented")
+}
+func (UnimplementedFsServer) GcContents(context.Context, *GcContentsRequest) (*GcContentsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GcContents not implemented")
 }
 func (UnimplementedFsServer) mustEmbedUnimplementedFsServer() {}
 
@@ -429,6 +471,60 @@ func _Fs_Reset_Handler(srv interface{}, ctx context.Context, dec func(interface{
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Fs_GcProject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GcProjectRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FsServer).GcProject(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pb.Fs/GcProject",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FsServer).GcProject(ctx, req.(*GcProjectRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Fs_GcRandomProjects_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GcRandomProjectsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FsServer).GcRandomProjects(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pb.Fs/GcRandomProjects",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FsServer).GcRandomProjects(ctx, req.(*GcRandomProjectsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Fs_GcContents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GcContentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FsServer).GcContents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pb.Fs/GcContents",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FsServer).GcContents(ctx, req.(*GcContentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Fs_ServiceDesc is the grpc.ServiceDesc for Fs service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -459,6 +555,18 @@ var Fs_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Reset",
 			Handler:    _Fs_Reset_Handler,
+		},
+		{
+			MethodName: "GcProject",
+			Handler:    _Fs_GcProject_Handler,
+		},
+		{
+			MethodName: "GcRandomProjects",
+			Handler:    _Fs_GcRandomProjects_Handler,
+		},
+		{
+			MethodName: "GcContents",
+			Handler:    _Fs_GcContents_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
