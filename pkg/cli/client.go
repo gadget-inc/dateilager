@@ -102,6 +102,7 @@ func NewClientCommand() *cobra.Command {
 	cmd.AddCommand(NewCmdReset())
 	cmd.AddCommand(NewCmdSnapshot())
 	cmd.AddCommand(NewCmdUpdate())
+	cmd.AddCommand(NewCmdGc())
 
 	return cmd
 }

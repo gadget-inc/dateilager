@@ -8,9 +8,12 @@ import (
 	"github.com/minio/sha256-simd"
 )
 
-func HashContent(data []byte) ([]byte, []byte) {
+func HashContent(data []byte) Hash {
 	sha := sha256.Sum256(data)
-	return sha[0:16], sha[16:]
+	return Hash{
+		H1: sha[0:16],
+		H2: sha[16:],
+	}
 }
 
 type ContentEncoder struct {
