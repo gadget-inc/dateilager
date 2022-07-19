@@ -14,7 +14,7 @@
 
 buildGoModule rec {
   pname = "dateilager";
-  version = "0.2.1";
+  version = "0.2.2";
   src = ./.;
   proxyVendor = true; # Fixes: cannot query module due to -mod=vendor running make install
   vendorSha256 = "sha256-/XPMmhoqvpF4k9hONJJYLZ7saP0Mn7bopEiOdQv1PXE=";
@@ -38,7 +38,8 @@ buildGoModule rec {
   '';
 
   ldflags = [
-    "-X" "github.com/gadget-inc/dateilager/pkg/version.Version=v${version}"
+    "-X"
+    "github.com/gadget-inc/dateilager/pkg/version.Version=v${version}"
   ];
 
   # Postgres fails to start in Nix sandbox with:
