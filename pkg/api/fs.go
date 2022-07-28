@@ -689,3 +689,50 @@ func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse
 
 	return &pb.ResetResponse{}, nil
 }
+
+func (f *Fs) GcProject(ctx context.Context, req *pb.GcProjectRequest) (*pb.GcProjectResponse, error) {
+	ctx, span := telemetry.Start(ctx, "fs.gc-project")
+	defer span.End()
+
+	err := requireAdminAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
+	}
+	defer close(ctx)
+
+	if req.KeepVersions <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "Invalid GC KeepVersions: cannot keep 0 versions")
+	}
+
+	logger.Debug(ctx, "FS.GcProject[Init]", key.Project.Field(req.Project))
+
+	fromVersion := int64(0)
+	if req.FromVersion != nil {
+		fromVersion = *req.FromVersion
+	}
+
+	hashes, err := db.GcProjectObjects(ctx, tx, req.Project, req.KeepVersions, fromVersion)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS gc project objects %v: %v", req.Project, err)
+	}
+
+	count, err := db.GcContentHashes(ctx, tx, hashes)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS gc content hashes %v: %v", req.Project, err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS gc project commit tx: %v", err)
+	}
+	logger.Debug(ctx, "FS.GcProject[Commit]")
+
+	return &pb.GcProjectResponse{
+		Result: &pb.GcResult{Project: req.Project, Count: count},
+	}, nil
+}

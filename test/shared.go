@@ -83,12 +83,12 @@ func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, p
 	conn := tc.Connect()
 
 	contentBytes := []byte(content)
-	h1, h2 := db.HashContent(contentBytes)
+	hash := db.HashContent(contentBytes)
 
 	_, err := conn.Exec(tc.Context(), `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
-	`, project, start, stop, path, h1, h2, mode, len(contentBytes), false)
+	`, project, start, stop, path, hash.H1, hash.H2, mode, len(contentBytes), false)
 	require.NoError(tc.T(), err, "insert object")
 
 	contentEncoder := db.NewContentEncoder()
@@ -100,7 +100,7 @@ func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, p
 		VALUES (($1, $2), $3)
 		ON CONFLICT
 		   DO NOTHING
-	`, h1, h2, encoded)
+	`, hash.H1, hash.H2, encoded)
 	require.NoError(tc.T(), err, "insert contents")
 }
 
@@ -133,12 +133,12 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 	conn := tc.Connect()
 
 	contentsTar, namesTar := packObjects(tc, objects)
-	h1, h2 := db.HashContent(contentsTar)
+	hash := db.HashContent(contentsTar)
 
 	_, err := conn.Exec(tc.Context(), `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
-	`, project, start, stop, path, h1, h2, 0755, len(contentsTar), true)
+	`, project, start, stop, path, hash.H1, hash.H2, 0755, len(contentsTar), true)
 	require.NoError(tc.T(), err, "insert object")
 
 	_, err = conn.Exec(tc.Context(), `
@@ -146,7 +146,7 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 		VALUES (($1, $2), $3, $4)
 		ON CONFLICT
 		DO NOTHING
-	`, h1, h2, contentsTar, namesTar)
+	`, hash.H1, hash.H2, contentsTar, namesTar)
 	require.NoError(tc.T(), err, "insert contents")
 }
 

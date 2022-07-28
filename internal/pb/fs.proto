@@ -22,6 +22,10 @@ service Fs {
     rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
 
     rpc Reset(ResetRequest) returns (ResetResponse);
+
+    rpc GcProject(GcProjectRequest) returns (GcProjectResponse);
+
+    rpc GcRandom(GcRandomRequest) returns (GcRandomResponse);
 }
 
 message NewProjectRequest {
@@ -126,3 +130,28 @@ message ResetRequest {
 }
 
 message ResetResponse {};
+
+message GcResult {
+    int64 project = 1;
+    int64 count = 2;
+}
+ 
+message GcProjectRequest {
+    int64 project = 1;
+    int64 keep_versions = 2;
+    optional int64 from_version = 3;
+}
+
+message GcProjectResponse {
+    GcResult result = 1;
+}
+
+message GcRandomRequest {
+    float sample = 1;
+    int64 keep_versions = 2;
+    optional int64 from_version = 3;
+}
+
+message GcRandomResponse {
+    repeated GcResult results = 1;
+}

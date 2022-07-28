@@ -18,6 +18,7 @@ import (
 	"github.com/gadget-inc/dateilager/pkg/api"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"go.uber.org/zap"
@@ -44,9 +45,16 @@ func NewDbPoolConnector(ctx context.Context, uri string) (*DbPoolConnector, erro
 		return nil, err
 	}
 
-	return &DbPoolConnector{
+	d := DbPoolConnector{
 		pool: pool,
-	}, nil
+	}
+
+	err = d.registerCompositeTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &d, nil
 }
 
 func (d *DbPoolConnector) Ping(ctx context.Context) error {
@@ -69,6 +77,53 @@ func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 	}
 
 	return tx, func(ctx context.Context) { _ = tx.Rollback(ctx); conn.Release() }, nil
+}
+
+func (d *DbPoolConnector) registerCompositeTypes(ctx context.Context) error {
+	tx, close, err := d.Connect(ctx)
+	if err != nil {
+		return fmt.Errorf("register composite types: %w", err)
+	}
+	defer close(ctx)
+
+	connInfo := tx.Conn().ConnInfo()
+
+	var hashOid, hashArrayOid uint32
+	err = tx.QueryRow(ctx, `
+		SELECT 'hash'::regtype::oid, 'hash[]'::regtype::oid
+	`).Scan(&hashOid, &hashArrayOid)
+	if err != nil {
+		return fmt.Errorf("query hash type oid: %w", err)
+	}
+
+	ct, err := pgtype.NewCompositeType("hash", []pgtype.CompositeTypeField{
+		{Name: "H1", OID: pgtype.ByteaOID},
+		{Name: "H2", OID: pgtype.ByteaOID},
+	}, connInfo)
+	if err != nil {
+		return fmt.Errorf("register hash composite type: %w", err)
+	}
+	connInfo.RegisterDataType(pgtype.DataType{Value: ct, Name: ct.TypeName(), OID: hashOid})
+
+	fmt.Printf("==> registered type for hash: %v\n", hashOid)
+
+	connInfo.RegisterDataType(pgtype.DataType{
+		Value: pgtype.NewArrayType("_hash", hashOid, func() pgtype.ValueTranscoder { return ct }),
+		Name:  "_hash",
+		OID:   hashArrayOid,
+	})
+
+	fmt.Printf("==> registered type for hash[]: %v\n", hashArrayOid)
+
+	connInfo.RegisterDefaultPgType(db.Hash{}, "hash")
+	connInfo.RegisterDefaultPgType([]db.Hash{}, "_hash")
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("commit register composite types: %w", err)
+	}
+
+	return nil
 }
 
 type Server struct {

@@ -7,6 +7,7 @@ import (
 )
 
 const (
+	Count             = Int64Key("dl.count")
 	DiffCount         = Uint32Key("dl.diff_count")
 	Directory         = StringKey("dl.directory")
 	Environment       = StringKey("dl.environment")
