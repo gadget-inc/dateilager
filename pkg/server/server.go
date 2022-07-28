@@ -86,24 +86,37 @@ func (d *DbPoolConnector) registerCompositeTypes(ctx context.Context) error {
 	}
 	defer close(ctx)
 
-	var oid uint32
+	connInfo := tx.Conn().ConnInfo()
+
+	var hashOid, hashArrayOid uint32
 	err = tx.QueryRow(ctx, `
-		SELECT 'hash'::regtype::oid
-	`).Scan(&oid)
+		SELECT 'hash'::regtype::oid, 'hash[]'::regtype::oid
+	`).Scan(&hashOid, &hashArrayOid)
 	if err != nil {
 		return fmt.Errorf("query hash type oid: %w", err)
 	}
 
 	ct, err := pgtype.NewCompositeType("hash", []pgtype.CompositeTypeField{
-		{Name: "h1", OID: pgtype.ByteaOID},
-		{Name: "h2", OID: pgtype.ByteaOID},
-	}, tx.Conn().ConnInfo())
+		{Name: "H1", OID: pgtype.ByteaOID},
+		{Name: "H2", OID: pgtype.ByteaOID},
+	}, connInfo)
 	if err != nil {
 		return fmt.Errorf("register hash composite type: %w", err)
 	}
-	tx.Conn().ConnInfo().RegisterDataType(pgtype.DataType{Value: ct, Name: ct.TypeName(), OID: oid})
+	connInfo.RegisterDataType(pgtype.DataType{Value: ct, Name: ct.TypeName(), OID: hashOid})
 
-	fmt.Printf("==> registering type for %v\n", oid)
+	fmt.Printf("==> registered type for hash: %v\n", hashOid)
+
+	connInfo.RegisterDataType(pgtype.DataType{
+		Value: pgtype.NewArrayType("_hash", hashOid, func() pgtype.ValueTranscoder { return ct }),
+		Name:  "_hash",
+		OID:   hashArrayOid,
+	})
+
+	fmt.Printf("==> registered type for hash[]: %v\n", hashArrayOid)
+
+	connInfo.RegisterDefaultPgType(db.Hash{}, "hash")
+	connInfo.RegisterDefaultPgType([]db.Hash{}, "_hash")
 
 	err = tx.Commit(ctx)
 	if err != nil {

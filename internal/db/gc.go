@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
@@ -44,6 +45,22 @@ func GcProjectObjects(ctx context.Context, tx pgx.Tx, project int64, keep int64,
 func GcContentHashes(ctx context.Context, tx pgx.Tx, hashes []Hash) (int64, error) {
 	count := int64(0)
 
+	connInfo := tx.Conn().ConnInfo()
+	dtype, ok := connInfo.DataTypeForValue(hashes)
+	if ok {
+		fmt.Printf("name: %v, oid: %v\n", dtype.Name, dtype.OID)
+		fmt.Printf("encodeHashes(hashes)[0]: %v\n\n", encodeHashes(hashes)[0])
+
+		err := dtype.Value.Set(encodeHashes(hashes))
+		if err != nil {
+			log.Fatal("cannot set _hash dtype: ", err)
+		}
+		fmt.Println("did I make it here?")
+	} else {
+		fmt.Println("invalid dtype for hashes")
+	}
+
+	// pgx.QuerySimpleProtocol(true),
 	tag, err := tx.Exec(ctx, `
 		WITH missing AS (
 			SELECT hash
@@ -54,7 +71,7 @@ func GcContentHashes(ctx context.Context, tx pgx.Tx, hashes []Hash) (int64, erro
 		)
 		DELETE FROM dl.contents
 		WHERE hash IN (SELECT hash from missing)
-	`, pgx.QuerySimpleProtocol(true), hashes)
+	`, encodeHashes(hashes))
 	if err != nil {
 		return count, fmt.Errorf("GcContentHashes query, hash count %v: %w", len(hashes), err)
 	}
@@ -63,11 +80,17 @@ func GcContentHashes(ctx context.Context, tx pgx.Tx, hashes []Hash) (int64, erro
 }
 
 func encodeHashes(hashes []Hash) []pgtype.CompositeFields {
+	fmt.Printf("len(hashes): %v\n", len(hashes))
 	fields := make([]pgtype.CompositeFields, len(hashes))
 
-	for _, hash := range hashes {
-		fields = append(fields, pgtype.CompositeFields{hash.H1, hash.H2})
+	for idx, hash := range hashes {
+		entry := pgtype.CompositeFields{hash.H1, hash.H2}
+		fmt.Printf("entry: %v\n", entry)
+		fmt.Printf("entry[0]: %v, entry[1]: %v\n", entry[0], entry[1])
+		fields = append(fields, entry)
+		fmt.Printf("fields[%v]: %v\n", idx, fields[idx])
 	}
 
+	fmt.Printf("fields[0]: %v\n", fields[0])
 	return fields
 }
