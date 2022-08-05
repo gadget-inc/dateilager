@@ -17,7 +17,7 @@ buildGoModule rec {
   version = "0.2.2";
   src = ./.;
   proxyVendor = true; # Fixes: cannot query module due to -mod=vendor running make install
-  vendorSha256 = "sha256-/XPMmhoqvpF4k9hONJJYLZ7saP0Mn7bopEiOdQv1PXE=";
+  vendorSha256 = "sha256-VWhG9TCjKmKNqfd0z6lESr5hLKq40egelwnSlbmNtJU=";
 
   outputs = [ "out" "client" "server" "webui" "assets" "migrations" ];
 
