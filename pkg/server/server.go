@@ -31,7 +31,8 @@ import (
 )
 
 const (
-	MB = 1000 * 1000
+	MB               = 1000 * 1000
+	MAX_MESSAGE_SIZE = 300 * MB
 )
 
 type DbPoolConnector struct {
@@ -98,8 +99,8 @@ func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certifica
 				validateTokenStream(validator),
 			),
 		),
-		grpc.MaxRecvMsgSize(100*MB),
-		grpc.MaxSendMsgSize(100*MB),
+		grpc.MaxRecvMsgSize(MAX_MESSAGE_SIZE),
+		grpc.MaxSendMsgSize(MAX_MESSAGE_SIZE),
 		grpc.Creds(creds),
 	)
 

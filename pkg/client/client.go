@@ -29,7 +29,8 @@ import (
 )
 
 const (
-	MB = 1000 * 1000
+	MB               = 1000 * 1000
+	MAX_MESSAGE_SIZE = 300 * MB
 )
 
 type VersionRange struct {
@@ -92,7 +93,10 @@ func NewClient(ctx context.Context, server string, opts ...func(*options)) (*Cli
 	conn, err := grpc.DialContext(connectCtx, server,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(auth),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(100*MB), grpc.MaxCallSendMsgSize(100*MB)),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(MAX_MESSAGE_SIZE),
+			grpc.MaxCallSendMsgSize(MAX_MESSAGE_SIZE),
+		),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
 	)
@@ -258,6 +262,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 	tarChan := make(chan *pb.GetCompressResponse, 16)
 	group, ctx := errgroup.WithContext(ctx)
+	ctx, cancel := context.WithCancel(ctx)
 
 	group.Go(func() error {
 		ctx, span := telemetry.Start(ctx, "object-receiver")
@@ -272,13 +277,14 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return nil
 			case tarChan <- response:
 				response, err = stream.Recv()
 				if err == io.EOF {
 					return nil
 				}
 				if err != nil {
+					cancel()
 					return fmt.Errorf("receive fs.GetCompress: %w", err)
 				}
 			}
@@ -306,6 +312,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 					count, err := files.WriteTar(dir, tarReader, response.PackPath)
 					if err != nil {
+						cancel()
 						return err
 					}
 
@@ -360,6 +367,7 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 	objectChan := make(chan *pb.Object, 16)
 
 	group, ctx := errgroup.WithContext(rootCtx)
+	ctx, cancel := context.WithCancel(ctx)
 
 	for i := 0; i < parallelWorkerCount(); i++ {
 		// create the attribute here when `i` is different
@@ -372,23 +380,32 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 			for {
 				select {
 				case <-ctx.Done():
-					return ctx.Err()
+					return nil
 				case update, ok := <-updateChan:
 					if !ok {
 						return nil
 					}
 
+					var object *pb.Object
+
 					if update.Action == fsdiff_pb.Update_REMOVE {
-						objectChan <- &pb.Object{
+						object = &pb.Object{
 							Path:    update.Path,
 							Deleted: true,
 						}
 					} else {
-						object, err := pb.ObjectFromFilePath(dir, update.Path)
+						object, err = pb.ObjectFromFilePath(dir, update.Path)
 						if err != nil {
+							cancel()
 							return fmt.Errorf("read file object: %w", err)
 						}
-						objectChan <- object
+					}
+
+					select {
+					case <-ctx.Done():
+						return nil
+					case objectChan <- object:
+						continue
 					}
 				}
 			}
@@ -401,6 +418,7 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 
 		stream, err := c.fs.Update(ctx)
 		if err != nil {
+			cancel()
 			return fmt.Errorf("connect fs.Update: %w", err)
 		}
 
@@ -413,11 +431,12 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return nil
 			case object, ok := <-objectChan:
 				if !ok {
 					response, err := stream.CloseAndRecv()
 					if err != nil {
+						cancel()
 						return fmt.Errorf("close and receive fs.Update: %w", err)
 					}
 					toVersion = response.Version
@@ -431,6 +450,7 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 					Object:  object,
 				})
 				if err != nil {
+					cancel()
 					return fmt.Errorf("send fs.Update, path %v, size %v, mode %v, deleted %v: %w", object.Path, object.Size, object.Mode, object.Deleted, err)
 				}
 			}

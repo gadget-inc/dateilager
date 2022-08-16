@@ -4,10 +4,13 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
+	"github.com/gadget-inc/dateilager/pkg/server"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -128,4 +131,27 @@ func TestConcurrentUpdatesSetsCorrectMetadata(t *testing.T) {
 		"c": {content: "c v2"},
 		"d": {content: "d v3"},
 	})
+}
+
+func TestUpdateFailsWithTooLargeObject(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := writeTmpFiles(t, 1, map[string]string{})
+	defer os.RemoveAll(tmpDir)
+
+	var sb strings.Builder
+	for sb.Len() < server.MAX_MESSAGE_SIZE {
+		sb.WriteString(" building a very long string ")
+	}
+
+	writeFile(t, tmpDir, "a", sb.String())
+	_, _, err := c.Update(tc.Context(), 1, tmpDir)
+
+	assert.Error(tc.T(), err)
 }
