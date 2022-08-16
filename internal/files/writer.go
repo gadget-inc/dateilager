@@ -155,10 +155,14 @@ func WriteTar(finalDir string, reader *db.TarReader, packPath *string) (uint32, 
 			return count, fmt.Errorf("cannot remove existing packed path %v: %w", path, err)
 		}
 
-		err = os.Rename(filepath.Join(dir, *packPath), path)
-		if err != nil {
-			return count, fmt.Errorf("cannot rename packed path %v to %v: %w", filepath.Join(dir, *packPath), path, err)
+		if fileExists(filepath.Join(dir, *packPath)) {
+			err = os.Rename(filepath.Join(dir, *packPath), path)
+			if err != nil {
+				return count, fmt.Errorf("cannot rename packed path %v to %v: %w", filepath.Join(dir, *packPath), path, err)
+			}
 		}
+
+		os.RemoveAll(dir)
 	}
 
 	return count, nil

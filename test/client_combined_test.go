@@ -316,6 +316,58 @@ func TestCombinedWithPackedSymlinks(t *testing.T) {
 	})
 }
 
+func TestCombinedWithPackAsASymlink(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "[b|e]/")
+	writeObject(tc, 1, 1, nil, "a/c", "a/c v1")
+	writeObject(tc, 1, 1, nil, "a/d", "a/d v1")
+	writePackedObjects(tc, 1, 1, nil, "b/", map[string]expectedObject{
+		"b/": {content: "a/", mode: symlinkMode},
+	})
+
+	c, fs, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+		version: 1,
+		count:   3,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"a/c": {content: "a/c v1"},
+		"a/d": {content: "a/d v1"},
+		"b":   {content: "a/", fileType: typeSymlink},
+	})
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"a/c": {content: "a/c v2"},
+		"b/":  {content: "f/", mode: symlinkMode},
+		"e/":  {content: "a/", mode: symlinkMode},
+		"f/g": {content: "f/g v2"},
+	})
+
+	err := fs.Update(updateStream)
+	require.NoError(t, err, "fs.Update")
+
+	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+		version: 2,
+		count:   4,
+	})
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"a/c": {content: "a/c v2"},
+		"a/d": {content: "a/d v1"},
+		"b":   {content: "f/", fileType: typeSymlink},
+		"e":   {content: "a/", fileType: typeSymlink},
+		"f/g": {content: "f/g v2"},
+	})
+}
+
 func TestCombinedWithIdenticalPackedObjects(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
