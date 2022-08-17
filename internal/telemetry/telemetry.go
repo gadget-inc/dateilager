@@ -52,7 +52,6 @@ func Init(ctx context.Context, t Type) (shutdown func(), err error) {
 	}
 
 	resourceOptions := []resource.Option{
-		resource.WithSchemaURL(semconv.SchemaURL),
 		resource.WithContainer(),
 		resource.WithFromEnv(),
 		resource.WithHost(),
