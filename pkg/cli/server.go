@@ -85,10 +85,7 @@ func NewServerCommand() *cobra.Command {
 			}
 
 			if tracing {
-				shutdownTelemetry, err = telemetry.Init(ctx, telemetry.Server)
-				if err != nil {
-					return fmt.Errorf("could not initialize telemetry: %w", err)
-				}
+				shutdownTelemetry = telemetry.Init(ctx, telemetry.Server)
 			}
 
 			listen, err := net.Listen("tcp", fmt.Sprintf(":%d", port))

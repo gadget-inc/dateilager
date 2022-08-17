@@ -55,10 +55,7 @@ func NewClientCommand() *cobra.Command {
 			ctx := cmd.Context()
 
 			if tracing {
-				shutdownTelemetry, err = telemetry.Init(ctx, telemetry.Client)
-				if err != nil {
-					return fmt.Errorf("could not initialize telemetry: %w", err)
-				}
+				shutdownTelemetry = telemetry.Init(ctx, telemetry.Client)
 			}
 
 			if otelContext != "" {

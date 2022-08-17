@@ -45,10 +45,11 @@ func (t Type) String() string {
 	}
 }
 
-func Init(ctx context.Context, t Type) (shutdown func(), err error) {
+func Init(ctx context.Context, t Type) func() {
 	traceExporter, err := otlptrace.New(ctx, otlptracehttp.NewClient())
 	if err != nil {
-		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
+		logger.Error(ctx, "failed to initialize telemetry", zap.Error(err))
+		return func() {}
 	}
 
 	resourceOptions := []resource.Option{
@@ -76,7 +77,8 @@ func Init(ctx context.Context, t Type) (shutdown func(), err error) {
 
 	res, err := resource.New(ctx, resourceOptions...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
+		logger.Error(ctx, "failed to initialize telemetry", zap.Error(err))
+		return func() {}
 	}
 
 	traceProvider := sdktrace.NewTracerProvider(
@@ -153,7 +155,7 @@ func Init(ctx context.Context, t Type) (shutdown func(), err error) {
 		defer cancel()
 
 		_ = traceProvider.Shutdown(ctx)
-	}, nil
+	}
 }
 
 func Start(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
