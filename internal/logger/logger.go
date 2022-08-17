@@ -12,7 +12,7 @@ type contextKey struct{}
 var key = &contextKey{}
 
 func Init(config zap.Config, opts ...zap.Option) error {
-	log, err := config.Build(append(opts, zap.AddCallerSkip(1))...)
+	log, err := config.Build(append(opts, zap.AddCallerSkip(2))...)
 	if err != nil {
 		return err
 	}
