@@ -181,7 +181,7 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 		)
 		SELECT path, mode, size, bytes, packed, deleted
 		FROM updated_files
-		%s;
+		%s
 	`
 
 	query := fmt.Sprintf(sqlTemplate, bytesSelector, joinClause, pathPredicate, fetchDeleted)
