@@ -143,6 +143,13 @@ console.log("[updateObject] version: " + version);
 
 ## Release
 
+When you're ready to release a new version, perform the following steps:
+
+1. Update the version in `default.nix`
+2. Update the version in `js/package.json`
+3. Update the version in `js/package-lock.json` (run `npm install`)
+4. Commit the changes (e.g. `git commit -am "Bump version to 0.0.x"`)
+
 New versions are released and hosted on Github. (https://github.com/gadget-inc/dateilager/releases)
 
 Create a new tag and push it to GitHub, GoReleaser will handle building it.
