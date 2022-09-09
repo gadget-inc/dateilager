@@ -18,8 +18,8 @@ import (
 	"github.com/gadget-inc/dateilager/pkg/api"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -40,7 +40,7 @@ type DbPoolConnector struct {
 }
 
 func NewDbPoolConnector(ctx context.Context, uri string) (*DbPoolConnector, error) {
-	pool, err := pgxpool.Connect(ctx, uri)
+	pool, err := pgxpool.New(ctx, uri)
 	if err != nil {
 		return nil, err
 	}

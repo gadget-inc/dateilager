@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 )
 
 func UpdateLatestVersion(ctx context.Context, tx pgx.Tx, project int64, version int64) error {

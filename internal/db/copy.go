@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 )
 
 func CopyAllObjects(ctx context.Context, tx pgx.Tx, source int64, target int64) error {

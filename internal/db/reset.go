@@ -4,8 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 )
 
 func ResetAll(ctx context.Context, tx pgx.Tx) error {
@@ -60,13 +59,10 @@ func ResetProject(ctx context.Context, tx pgx.Tx, project, version int64) error 
 }
 
 func DropOtherProjects(ctx context.Context, tx pgx.Tx, projects []int64) error {
-	projectsArray := &pgtype.Int8Array{}
-	_ = projectsArray.Set(projects)
-
 	_, err := tx.Exec(ctx, `
 		DELETE FROM dl.projects
 		WHERE id != ALL($1::bigint[])
-	`, projectsArray)
+	`, projects)
 	if err != nil {
 		return fmt.Errorf("drop other projects: %w", err)
 	}
@@ -74,7 +70,7 @@ func DropOtherProjects(ctx context.Context, tx pgx.Tx, projects []int64) error {
 	_, err = tx.Exec(ctx, `
 		DELETE FROM dl.objects
 		WHERE project != ALL($1::bigint[])
-	`, projectsArray)
+	`, projects)
 	if err != nil {
 		return fmt.Errorf("drop objects from other projects: %w", err)
 	}
