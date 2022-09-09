@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 )
 
 func TotalObjectsCount(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {

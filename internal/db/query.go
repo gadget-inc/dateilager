@@ -9,8 +9,7 @@ import (
 	"strings"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -138,9 +137,6 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 		ignorePatterns = append(ignorePatterns, fmt.Sprintf("%s%%", ignore))
 	}
 
-	ignoreArray := &pgtype.TextArray{}
-	_ = ignoreArray.Set(ignorePatterns)
-
 	fetchDeleted := `
 		UNION
 		SELECT path, mode, size, bytes, packed, deleted
@@ -187,7 +183,7 @@ func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery)
 	query := fmt.Sprintf(sqlTemplate, bytesSelector, joinClause, pathPredicate, fetchDeleted)
 
 	return query, []interface{}{
-		project, vrange.From, vrange.To, path, ignoreArray,
+		project, vrange.From, vrange.To, path, ignorePatterns,
 	}
 }
 
