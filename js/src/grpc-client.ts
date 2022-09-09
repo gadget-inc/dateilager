@@ -72,7 +72,7 @@ export class DateiLagerGrpcClient {
    * The library used to interact with GRPC creates connections lazily, this constructor will not
    * raise an error even if there is no service running at {@link DateiLagerGrpcClientOptions.server server}.
    *
-   * @param  options Grpc client options.
+   * @param options Grpc client options.
    */
   public constructor(options: DateiLagerGrpcClientOptions) {
     const tokenFn = typeof options.token === "string" ? () => Promise.resolve(options.token as string) : options.token;
@@ -109,9 +109,9 @@ export class DateiLagerGrpcClient {
   /**
    * Create a new project.
    *
-   * @param  project      The id of the project.
-   * @param  packPatterns The paths to pack.
-   * @param  template     The id of the project to start from.
+   * @param project      The id of the project.
+   * @param packPatterns The paths to pack.
+   * @param template     The id of the project to start from.
    */
   public async newProject(project: bigint, packPatterns: string[], template?: bigint): Promise<void> {
     await trace(
@@ -130,7 +130,7 @@ export class DateiLagerGrpcClient {
   /**
    * Delete a project.
    *
-   * @param  project The id of the project.
+   * @param project The id of the project.
    */
   public async deleteProject(project: bigint): Promise<void> {
     await trace(
@@ -147,12 +147,12 @@ export class DateiLagerGrpcClient {
   /**
    * List objects.
    *
-   * @param    project The id of the project.
-   * @param    path    The path to list objects under.
-   * @param    ignores The paths under {@link path} to ignore.
-   * @param    from    The project version to start from.
-   * @param    to      The project version to end at.
-   * @returns          A stream of objects.
+   * @param project The id of the project.
+   * @param path    The path to list objects under.
+   * @param ignores The paths under {@link path} to ignore.
+   * @param from    The project version to start from.
+   * @param to      The project version to end at.
+   * @returns         A stream of objects.
    * @yields           An object from the stream.
    * @example
    * for await (const object of client.listObjects(1n, "")) {
@@ -217,9 +217,9 @@ export class DateiLagerGrpcClient {
   /**
    * Get an object.
    *
-   * @param    project The id of the project.
-   * @param    path    The path of the object.
-   * @returns          The object at the given path or undefined if it does not exist.
+   * @param project The id of the project.
+   * @param path    The path of the object.
+   * @returns         The object at the given path or undefined if it does not exist.
    */
   public async getObject(project: bigint, path: string): Promise<Objekt | undefined> {
     return await trace(
@@ -261,8 +261,8 @@ export class DateiLagerGrpcClient {
   /**
    * Update objects.
    *
-   * @param    project The id of the project.
-   * @returns          An {@link UpdateInputStream} to send objects to update.
+   * @param project The id of the project.
+   * @returns         An {@link UpdateInputStream} to send objects to update.
    */
   public updateObjects(project: bigint): UpdateInputStream {
     const parentContext = contextAPI.active();
@@ -284,9 +284,9 @@ export class DateiLagerGrpcClient {
   /**
    * Update an object.
    *
-   * @param    project The id of the project.
-   * @param    obj     The object to update.
-   * @returns          The latest project version or `null` if something went wrong.
+   * @param project The id of the project.
+   * @param obj     The object to update.
+   * @returns         The latest project version or `null` if something went wrong.
    */
   public async updateObject(project: bigint, obj: Objekt): Promise<bigint | null> {
     const stream = this.updateObjects(project);
@@ -297,7 +297,7 @@ export class DateiLagerGrpcClient {
   /**
    * Snapshot the current state of the dateilager server.
    *
-   * @returns  All the projects on the dateilager server.
+   * @returns All the projects on the dateilager server.
    * @throws If the dateilager server's DL_ENV environment variable is PROD.
    * @see DateiLagerGrpcClient.resetToSnapshotInDevOrTests
    */
@@ -310,7 +310,7 @@ export class DateiLagerGrpcClient {
    * Reset the given projects to their respective versions and delete any remaining projects.
    * If no projects are provided, delete all projects.
    *
-   * @param  projects The projects to reset.
+   * @param projects The projects to reset.
    * @throws If the dateilager server's DL_ENV environment variable is PROD.
    * @see DateiLagerGrpcClient.snapshotInDevOrTests
    */
@@ -343,7 +343,7 @@ class UpdateInputStream {
   /**
    * Send an object to update.
    *
-   * @param  obj The object to update.
+   * @param obj The object to update.
    */
   public async send(obj: Objekt): Promise<void> {
     try {
@@ -360,7 +360,7 @@ class UpdateInputStream {
   /**
    * Complete the update request.
    *
-   * @returns  The latest project version or `null` if something went wrong.
+   * @returns The latest project version or `null` if something went wrong.
    */
   public async complete(): Promise<bigint | null> {
     try {
@@ -378,8 +378,8 @@ const encoder = new TextEncoder();
 /**
  * Encode string object contents as an array of bytes.
  *
- * @param    content The string to encode.
- * @returns          The encoded content as an array of bytes.
+ * @param content The string to encode.
+ * @returns         The encoded content as an array of bytes.
  */
 export function encodeContent(content: string): Uint8Array {
   return encoder.encode(content);
@@ -390,8 +390,8 @@ const decoder = new TextDecoder();
 /**
  * Decode an array of bytes as an object's string contents.
  *
- * @param    bytes The array of bytes to decode.
- * @returns        The bytes decoded into a string.
+ * @param bytes The array of bytes to decode.
+ * @returns       The bytes decoded into a string.
  */
 export function decodeContent(bytes: Uint8Array | undefined): string {
   return decoder.decode(bytes);
