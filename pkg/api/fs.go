@@ -54,12 +54,11 @@ type Fs struct {
 }
 
 func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.NewProjectResponse, error) {
-	ctx, span := telemetry.Start(ctx, "fs.new-project", trace.WithAttributes(
+	trace.SpanFromContext(ctx).SetAttributes(
 		key.Project.Attribute(req.Id),
 		key.Template.Attribute(req.Template),
 		key.PackPatterns.Attribute(req.PackPatterns),
-	))
-	defer span.End()
+	)
 
 	err := requireAdminAuth(ctx)
 	if err != nil {
@@ -103,10 +102,9 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 }
 
 func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*pb.DeleteProjectResponse, error) {
-	ctx, span := telemetry.Start(ctx, "fs.delete-project", trace.WithAttributes(
+	trace.SpanFromContext(ctx).SetAttributes(
 		key.Project.Attribute(req.Project),
-	))
-	defer span.End()
+	)
 
 	err := requireAdminAuth(ctx)
 	if err != nil {
@@ -135,9 +133,6 @@ func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*
 }
 
 func (f *Fs) ListProjects(ctx context.Context, req *pb.ListProjectsRequest) (*pb.ListProjectsResponse, error) {
-	ctx, span := telemetry.Start(ctx, "fs.list-project")
-	defer span.End()
-
 	err := requireAdminAuth(ctx)
 	if err != nil {
 		return nil, err
@@ -176,12 +171,12 @@ func validateObjectQuery(query *pb.ObjectQuery) error {
 }
 
 func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
-	ctx, span := telemetry.Start(stream.Context(), "fs.get", trace.WithAttributes(
+	ctx := stream.Context()
+	trace.SpanFromContext(ctx).SetAttributes(
 		key.Project.Attribute(req.Project),
 		key.FromVersion.Attribute(req.FromVersion),
 		key.ToVersion.Attribute(req.ToVersion),
-	))
-	defer span.End()
+	)
 
 	project, err := requireProjectAuth(ctx)
 	if err != nil {
@@ -218,57 +213,42 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 	}
 
 	for _, query := range req.Queries {
-		err = telemetry.Wrap(ctx, "query", func(ctx context.Context, span trace.Span) error {
-			span.SetAttributes(
-				key.QueryPath.Attribute(query.Path),
-				key.QueryIsPrefix.Attribute(query.IsPrefix),
-				key.QueryWithContent.Attribute(query.WithContent),
-				key.QueryIgnores.Attribute(query.Ignores),
-			)
-
-			err = validateObjectQuery(query)
-			if err != nil {
-				return err
-			}
-
-			logger.Debug(ctx, "FS.Get[Query]",
-				key.Project.Field(req.Project),
-				key.FromVersion.Field(&vrange.From),
-				key.ToVersion.Field(&vrange.To),
-				key.QueryPath.Field(query.Path),
-				key.QueryIsPrefix.Field(query.IsPrefix),
-				key.QueryWithContent.Field(query.WithContent),
-				key.QueryIgnores.Field(query.Ignores),
-			)
-
-			objects, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
-			if err != nil {
-				return status.Errorf(codes.Internal, "FS get objects: %v", err)
-			}
-
-			for {
-				object, err := objects()
-				if err == db.SKIP {
-					continue
-				}
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					return status.Errorf(codes.Internal, "FS get next object: %v", err)
-				}
-
-				err = stream.Send(&pb.GetResponse{Version: vrange.To, Object: object})
-				if err != nil {
-					return status.Errorf(codes.Internal, "FS send GetResponse: %v", err)
-				}
-			}
-
-			return nil
-		})
-
+		err = validateObjectQuery(query)
 		if err != nil {
 			return err
+		}
+
+		logger.Debug(ctx, "FS.Get[Query]",
+			key.Project.Field(req.Project),
+			key.FromVersion.Field(&vrange.From),
+			key.ToVersion.Field(&vrange.To),
+			key.QueryPath.Field(query.Path),
+			key.QueryIsPrefix.Field(query.IsPrefix),
+			key.QueryWithContent.Field(query.WithContent),
+			key.QueryIgnores.Field(query.Ignores),
+		)
+
+		objects, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
+		if err != nil {
+			return status.Errorf(codes.Internal, "FS get objects: %v", err)
+		}
+
+		for {
+			object, err := objects()
+			if err == db.SKIP {
+				continue
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return status.Errorf(codes.Internal, "FS get next object: %v", err)
+			}
+
+			err = stream.Send(&pb.GetResponse{Version: vrange.To, Object: object})
+			if err != nil {
+				return status.Errorf(codes.Internal, "FS send GetResponse: %v", err)
+			}
 		}
 	}
 
@@ -276,12 +256,12 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 }
 
 func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressServer) error {
-	ctx, span := telemetry.Start(stream.Context(), "fs.get-compress", trace.WithAttributes(
+	ctx := stream.Context()
+	trace.SpanFromContext(ctx).SetAttributes(
 		key.Project.Attribute(req.Project),
 		key.FromVersion.Attribute(req.FromVersion),
 		key.ToVersion.Attribute(req.ToVersion),
-	))
-	defer span.End()
+	)
 
 	project, err := requireProjectAuth(ctx)
 	if err != nil {
@@ -313,62 +293,47 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	)
 
 	for _, query := range req.Queries {
-		err = telemetry.Wrap(ctx, "query", func(ctx context.Context, span trace.Span) error {
-			span.SetAttributes(
-				key.QueryPath.Attribute(query.Path),
-				key.QueryIsPrefix.Attribute(query.IsPrefix),
-				key.QueryWithContent.Attribute(query.WithContent),
-				key.QueryIgnores.Attribute(query.Ignores),
-			)
-
-			err = validateObjectQuery(query)
-			if err != nil {
-				return err
-			}
-
-			logger.Debug(ctx, "FS.GetCompress[Query]",
-				key.Project.Field(req.Project),
-				key.FromVersion.Field(&vrange.From),
-				key.ToVersion.Field(&vrange.To),
-				key.QueryPath.Field(query.Path),
-				key.QueryIsPrefix.Field(query.IsPrefix),
-				key.QueryWithContent.Field(query.WithContent),
-				key.QueryIgnores.Field(query.Ignores),
-			)
-
-			tars, err := db.GetTars(ctx, tx, req.Project, vrange, query)
-			if err != nil {
-				return status.Errorf(codes.Internal, "FS get tars: %v", err)
-			}
-
-			for {
-				tar, packPath, err := tars()
-				if err == io.EOF {
-					break
-				}
-				if err == db.SKIP {
-					continue
-				}
-				if err != nil {
-					return status.Errorf(codes.Internal, "FS get next tar: %v", err)
-				}
-
-				err = stream.Send(&pb.GetCompressResponse{
-					Version:  vrange.To,
-					Format:   pb.GetCompressResponse_S2_TAR,
-					Bytes:    tar,
-					PackPath: packPath,
-				})
-				if err != nil {
-					return status.Errorf(codes.Internal, "FS send GetCompressResponse: %v", err)
-				}
-			}
-
-			return nil
-		})
-
+		err = validateObjectQuery(query)
 		if err != nil {
 			return err
+		}
+
+		logger.Debug(ctx, "FS.GetCompress[Query]",
+			key.Project.Field(req.Project),
+			key.FromVersion.Field(&vrange.From),
+			key.ToVersion.Field(&vrange.To),
+			key.QueryPath.Field(query.Path),
+			key.QueryIsPrefix.Field(query.IsPrefix),
+			key.QueryWithContent.Field(query.WithContent),
+			key.QueryIgnores.Field(query.Ignores),
+		)
+
+		tars, err := db.GetTars(ctx, tx, req.Project, vrange, query)
+		if err != nil {
+			return status.Errorf(codes.Internal, "FS get tars: %v", err)
+		}
+
+		for {
+			tar, packPath, err := tars()
+			if err == io.EOF {
+				break
+			}
+			if err == db.SKIP {
+				continue
+			}
+			if err != nil {
+				return status.Errorf(codes.Internal, "FS get next tar: %v", err)
+			}
+
+			err = stream.Send(&pb.GetCompressResponse{
+				Version:  vrange.To,
+				Format:   pb.GetCompressResponse_S2_TAR,
+				Bytes:    tar,
+				PackPath: packPath,
+			})
+			if err != nil {
+				return status.Errorf(codes.Internal, "FS send GetCompressResponse: %v", err)
+			}
 		}
 	}
 
@@ -376,9 +341,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 }
 
 func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
-	ctx, span := telemetry.Start(stream.Context(), "fs.update")
-	defer span.End()
-
+	ctx := stream.Context()
 	shouldUpdateVersion := false
 	latestVersion := int64(-1)
 	nextVersion := int64(-1)
@@ -398,7 +361,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	var packManager *db.PackManager
 	buffer := make(map[string][]*pb.Object)
 
-	err = telemetry.Wrap(ctx, "update-objects", func(ctx context.Context, span trace.Span) error {
+	err = telemetry.Trace(ctx, "update-objects", func(ctx context.Context, span trace.Span) error {
 		for {
 			req, err := stream.Recv()
 			if err == io.EOF {
@@ -487,7 +450,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return stream.SendAndClose(&pb.UpdateResponse{Version: -1})
 	}
 
-	err = telemetry.Wrap(ctx, "update-packed-objects", func(ctx context.Context, span trace.Span) error {
+	err = telemetry.Trace(ctx, "update-packed-objects", func(ctx context.Context, span trace.Span) error {
 		for parent, objects := range buffer {
 			logger.Debug(ctx, "FS.Update[PackedObject]",
 				key.Project.Field(project),
@@ -534,10 +497,9 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 }
 
 func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectResponse, error) {
-	ctx, span := telemetry.Start(ctx, "fs.inspect", trace.WithAttributes(
+	trace.SpanFromContext(ctx).SetAttributes(
 		key.Project.Attribute(req.Project),
-	))
-	defer span.End()
+	)
 
 	err := requireAdminAuth(ctx)
 	if err != nil {
@@ -605,9 +567,6 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 }
 
 func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.SnapshotResponse, error) {
-	ctx, span := telemetry.Start(ctx, "fs.snapshot")
-	defer span.End()
-
 	if f.Env != environment.Dev && f.Env != environment.Test {
 		return nil, status.Errorf(codes.Unimplemented, "FS snapshot only implemented in dev and test environments")
 	}
@@ -636,9 +595,6 @@ func (f *Fs) Snapshot(ctx context.Context, req *pb.SnapshotRequest) (*pb.Snapsho
 }
 
 func (f *Fs) Reset(ctx context.Context, req *pb.ResetRequest) (*pb.ResetResponse, error) {
-	ctx, span := telemetry.Start(ctx, "fs.reset")
-	defer span.End()
-
 	if f.Env != environment.Dev && f.Env != environment.Test {
 		return nil, status.Errorf(codes.Unimplemented, "FS reset only implemented in dev and test environments")
 	}
