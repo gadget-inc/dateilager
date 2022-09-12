@@ -332,7 +332,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		return -1, diffCount, err
 	}
 
-	_, err = DiffAndSummarize(dir)
+	_, err = DiffAndSummarize(ctx, dir)
 	if err != nil {
 		return -1, diffCount, err
 	}
@@ -352,7 +352,7 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 		return -1, 0, err
 	}
 
-	diff, err := DiffAndSummarize(dir)
+	diff, err := DiffAndSummarize(rootCtx, dir)
 	if err != nil {
 		return -1, 0, err
 	}

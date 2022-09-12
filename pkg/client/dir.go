@@ -1,14 +1,18 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/gadget-inc/dateilager/internal/key"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	fsdiff "github.com/gadget-inc/fsdiff/pkg/diff"
 	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const metadataDir = ".dl"
@@ -60,7 +64,10 @@ func WriteVersionFile(dir string, version int64) error {
 	return nil
 }
 
-func DiffAndSummarize(dir string) (*fsdiff_pb.Diff, error) {
+func DiffAndSummarize(ctx context.Context, dir string) (*fsdiff_pb.Diff, error) {
+	_, span := telemetry.Start(ctx, "diff-and-summarize", trace.WithAttributes(key.Directory.Attribute(dir)))
+	defer span.End()
+
 	err := ensureMetadataDir(dir)
 	if err != nil {
 		return nil, err
