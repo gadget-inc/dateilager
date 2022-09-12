@@ -9,17 +9,17 @@ import (
 	"strings"
 	"time"
 
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -40,7 +40,14 @@ type DbPoolConnector struct {
 }
 
 func NewDbPoolConnector(ctx context.Context, uri string) (*DbPoolConnector, error) {
-	pool, err := pgxpool.New(ctx, uri)
+	config, err := pgxpool.ParseConfig(uri)
+	if err != nil {
+		return nil, err
+	}
+
+	config.ConnConfig.Tracer = telemetry.NewQueryTracer()
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, err
 	}
