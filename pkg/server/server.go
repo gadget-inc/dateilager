@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -45,7 +46,9 @@ func NewDbPoolConnector(ctx context.Context, uri string) (*DbPoolConnector, erro
 		return nil, err
 	}
 
-	config.ConnConfig.Tracer = telemetry.NewQueryTracer()
+	if os.Getenv("DL_PGX_TRACING") == "1" {
+		config.ConnConfig.Tracer = telemetry.NewQueryTracer()
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
