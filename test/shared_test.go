@@ -222,7 +222,7 @@ func writeTmpFiles(t *testing.T, version int64, files map[string]string) string 
 	err = client.WriteVersionFile(dir, version)
 	require.NoError(t, err, "write version file")
 
-	_, err = client.DiffAndSummarize(dir)
+	_, err = client.DiffAndSummarize(context.Background(), dir)
 	require.NoError(t, err, "diff and summarize")
 
 	return dir

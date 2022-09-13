@@ -162,7 +162,7 @@ func Start(ctx context.Context, spanName string, opts ...trace.SpanStartOption) 
 	return tracer.Start(ctx, spanName, opts...)
 }
 
-func Wrap(ctx context.Context, spanName string, fn func(context.Context, trace.Span) error) error {
+func Trace(ctx context.Context, spanName string, fn func(context.Context, trace.Span) error) error {
 	ctx, span := Start(ctx, spanName)
 	defer span.End()
 
