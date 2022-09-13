@@ -107,86 +107,6 @@ func NewVersionRange(ctx context.Context, tx pgx.Tx, project int64, from *int64,
 	return vrange, nil
 }
 
-func buildQuery(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (string, []interface{}) {
-	bytesSelector := "c.bytes"
-	joinClause := `
-		JOIN dl.contents c
-		  ON o.hash = c.hash
-	`
-
-	if !objectQuery.WithContent {
-		bytesSelector = "c.names_tar as bytes"
-		joinClause = `
-			LEFT JOIN dl.contents c
-			       ON o.hash = c.hash
-				  AND o.packed IS true
-		`
-	}
-
-	path := objectQuery.Path
-	pathPredicate := "o.path = $4"
-	if objectQuery.IsPrefix {
-		path = fmt.Sprintf("%s%%", objectQuery.Path)
-		pathPredicate = "o.path LIKE $4"
-	}
-
-	// If the array is empty Postgres will ignore every result
-	// Ignoring the empty pattern is safe as object paths cannot be empty
-	ignorePatterns := []string{""}
-	for _, ignore := range objectQuery.Ignores {
-		ignorePatterns = append(ignorePatterns, fmt.Sprintf("%s%%", ignore))
-	}
-
-	fetchDeleted := `
-		UNION
-		SELECT path, mode, size, bytes, packed, deleted
-		FROM removed_files
-	`
-	if vrange.From == 0 {
-		fetchDeleted = ""
-	}
-
-	sqlTemplate := `
-		WITH updated_files AS (
-			SELECT o.path, o.mode, o.size, %s, o.packed, false AS deleted
-			FROM dl.objects o
-			%s
-			WHERE o.project = $1
-				AND o.start_version > $2
-				AND o.start_version <= $3
-				AND (o.stop_version IS NULL OR o.stop_version > $3)
-				AND %s
-				AND o.path NOT LIKE ALL($5::text[])
-			ORDER BY o.path
-		), removed_files AS (
-			SELECT o.path, o.mode, 0 AS size, ''::bytea as bytes, o.packed, true AS deleted
-			FROM dl.objects o
-			WHERE o.project = $1
-				AND o.start_version <= $3
-				AND o.stop_version > $2
-				AND o.stop_version <= $3
-				AND o.path NOT LIKE ALL($5::text[])
-				AND (
-					-- Skip removing files if they are in the updated_files list
-					(RIGHT(o.path, 1) != '/' AND o.path NOT IN (SELECT path FROM updated_files))
-					OR
-					-- Skip removing empty directories if any updated_files are within that directory
-					(RIGHT(o.path, 1) = '/' AND NOT EXISTS (SELECT true FROM updated_files WHERE STARTS_WITH(path, o.path)))
-				)
-			ORDER BY o.path
-		)
-		SELECT path, mode, size, bytes, packed, deleted
-		FROM updated_files
-		%s
-	`
-
-	query := fmt.Sprintf(sqlTemplate, bytesSelector, joinClause, pathPredicate, fetchDeleted)
-
-	return query, []interface{}{
-		project, vrange.From, vrange.To, path, ignorePatterns,
-	}
-}
-
 func unpackObjects(content []byte) ([]*pb.Object, error) {
 	var objects []*pb.Object
 	tarReader := NewTarReader(content)
@@ -231,7 +151,8 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 		objectQuery.Path = *packParent
 	}
 
-	sql, args := buildQuery(project, vrange, objectQuery)
+	builder := newQueryBuilder(project, vrange, objectQuery)
+	sql, args := builder.build()
 	rows, err := tx.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("getObjects query, project %v vrange %v: %w", project, vrange, err)
@@ -291,7 +212,8 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 type tarStream func() ([]byte, *string, error)
 
 func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
-	sql, args := buildQuery(project, vrange, objectQuery)
+	builder := newQueryBuilder(project, vrange, objectQuery)
+	sql, args := builder.build()
 	rows, err := tx.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("getObjects query, project %v vrange %v: %w", project, vrange, err)
