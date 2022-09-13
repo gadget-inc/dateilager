@@ -36,7 +36,7 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 
 		code := status.Code(err)
 
-		Write(ctx, grpc_zap.DefaultCodeToLevel(code), "finished unary call",
+		Log(ctx, grpc_zap.DefaultCodeToLevel(code), "finished unary call",
 			zap.Stringer("grpc.code", code),
 			zap.Duration("grpc.duration", duration),
 			zap.Error(err),
@@ -73,7 +73,7 @@ func StreamServerInterceptor() grpc.StreamServerInterceptor {
 
 		code := status.Code(err)
 
-		Write(ctx, grpc_zap.DefaultCodeToLevel(code), "finished streaming call",
+		Log(ctx, grpc_zap.DefaultCodeToLevel(code), "finished streaming call",
 			zap.Stringer("grpc.code", code),
 			zap.Duration("grpc.duration", duration),
 			zap.Error(err),

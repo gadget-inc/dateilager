@@ -33,7 +33,7 @@ func Middleware(next http.Handler) http.Handler {
 			lvl = zap.WarnLevel
 		}
 
-		Write(ctx, lvl, "finished request",
+		Log(ctx, lvl, "finished request",
 			zap.String("http.status", http.StatusText(ww.Status())),
 			zap.Int("http.code", ww.Status()),
 			zap.Duration("http.duration", duration),
