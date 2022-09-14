@@ -23,7 +23,12 @@ func NewCmdNew() *cobra.Command {
 
 			client := client.FromContext(ctx)
 
-			err := client.NewProject(ctx, id, &template, patterns)
+			var templatePtr *int64
+			if template != -1 {
+				templatePtr = &template
+			}
+
+			err := client.NewProject(ctx, id, templatePtr, patterns)
 			if err != nil {
 				return fmt.Errorf("could not create new project: %w", err)
 			}
