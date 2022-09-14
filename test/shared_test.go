@@ -70,7 +70,7 @@ func fromVersion(from int64) client.VersionRange {
 	return client.VersionRange{From: &from, To: nil}
 }
 
-func writeProject(tc util.TestCtx, id int32, latestVersion int64, packPatterns ...string) {
+func writeProject(tc util.TestCtx, id int64, latestVersion int64, packPatterns ...string) {
 	conn := tc.Connect()
 	_, err := conn.Exec(tc.Context(), `
 		INSERT INTO dl.projects (id, latest_version, pack_patterns)
@@ -390,23 +390,24 @@ func debugProjects(tc util.TestCtx) {
 func debugObjects(tc util.TestCtx) {
 	conn := tc.Connect()
 	rows, err := conn.Query(tc.Context(), `
-		SELECT project, start_version, stop_version, path, mode, size, packed
+		SELECT project, start_version, stop_version, path, mode, size, packed, (hash).h1, (hash).h2
 		FROM dl.objects
 	`)
 	require.NoError(tc.T(), err, "debug execute object list")
 
 	fmt.Println("\n[DEBUG] Objects")
-	fmt.Println("project,\tstart_version,\tstop_version,\tpath,\tmode,\t\tsize,\tpacked")
+	fmt.Println("project,\tstart_version,\tstop_version,\tpath,\tmode,\t\tsize,\tpacked,\thash")
 
 	for rows.Next() {
 		var project, start_version, mode, size int64
 		var stop_version *int64
 		var path string
 		var packed bool
-		err = rows.Scan(&project, &start_version, &stop_version, &path, &mode, &size, &packed)
+		var h1, h2 []byte
+		err = rows.Scan(&project, &start_version, &stop_version, &path, &mode, &size, &packed, &h1, &h2)
 		require.NoError(tc.T(), err, "debug scan object")
 
-		fmt.Printf("%d,\t\t%d,\t\t%s,\t\t%s,\t%s,\t%d,\t%v\n", project, start_version, formatPtr(stop_version), path, formatMode(mode), size, packed)
+		fmt.Printf("%d,\t\t%d,\t\t%s,\t\t%s,\t%s,\t%d,\t%v,\t(%x, %x)\n", project, start_version, formatPtr(stop_version), path, formatMode(mode), size, packed, h1, h2)
 	}
 
 	fmt.Println()

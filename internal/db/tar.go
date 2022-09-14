@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/klauspost/compress/s2"
@@ -182,6 +183,8 @@ func updateObjects(before []byte, updates []*pb.Object) ([]byte, []byte, error) 
 
 	reader := NewTarReader(before)
 	readerObjectsRemaining := true
+
+	sort.Slice(updates, func(i, j int) bool { return updates[i].Path < updates[j].Path })
 
 	stream := func() (*pb.Object, error) {
 		// Yield unseen updates as new objects if we've finished walking the original pack

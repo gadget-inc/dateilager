@@ -1,6 +1,7 @@
 package test
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
 	"os"
@@ -51,6 +52,74 @@ func TestUpdateObjects(t *testing.T) {
 		"c": "c v2",
 		"d": "d v2",
 	})
+}
+
+func TestUpdatePackedObjectsConsistentHashing(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 0, "a/")
+
+	c, _, close := createTestClient(tc)
+
+	tmpDir := writeTmpFiles(t, 0, map[string]string{})
+
+	writeFile(t, tmpDir, "a/d", "a/d v1")
+	writeFile(t, tmpDir, "a/b", "a/b v1")
+	writeFile(t, tmpDir, "a/c", "a/c v1")
+
+	update(tc, c, 1, tmpDir, expectedResponse{
+		version: 1,
+		count:   3,
+	})
+
+	var baseH1, baseH2 []byte
+
+	conn := tc.Connect()
+	err := conn.QueryRow(tc.Context(), `
+		SELECT (hash).h1, (hash).h2
+		FROM dl.objects
+	`).Scan(&baseH1, &baseH2)
+	require.NoError(tc.T(), err, "fetch object hash")
+
+	os.RemoveAll(tmpDir)
+	close()
+	tc.Close()
+
+	for idx := 2; idx < 20; idx++ {
+		tc := util.NewTestCtx(t, auth.Project, int64(idx))
+
+		writeProject(tc, int64(idx), 0, "a/")
+
+		c, _, close := createTestClient(tc)
+
+		tmpDir := writeTmpFiles(t, 0, map[string]string{})
+
+		writeFile(t, tmpDir, "a/c", "a/c v1")
+		writeFile(t, tmpDir, "a/d", "a/d v1")
+		writeFile(t, tmpDir, "a/b", "a/b v1")
+
+		update(tc, c, int64(idx), tmpDir, expectedResponse{
+			version: 1,
+			count:   3,
+		})
+
+		var newH1, newH2 []byte
+
+		conn := tc.Connect()
+		err := conn.QueryRow(tc.Context(), `
+			SELECT (hash).h1, (hash).h2
+			FROM dl.objects
+		`).Scan(&newH1, &newH2)
+		require.NoError(tc.T(), err, "fetch object hash")
+
+		assert.True(t, bytes.Equal(baseH1, newH1), "H1 bytes do not match")
+		assert.True(t, bytes.Equal(baseH2, newH2), "H2 bytes do not match")
+
+		os.RemoveAll(tmpDir)
+		close()
+		tc.Close()
+	}
 }
 
 func TestUpdateWithManyObjects(t *testing.T) {
