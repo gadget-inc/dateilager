@@ -1,4 +1,4 @@
-FROM registry.fedoraproject.org/fedora-minimal:33
+FROM --platform=linux/amd64 registry.fedoraproject.org/fedora-minimal:33
 
 RUN microdnf install -y curl findutils iputils postgresql procps tar time which \
     && microdnf clean all
