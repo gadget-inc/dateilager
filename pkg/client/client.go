@@ -232,6 +232,8 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		return *toVersion, diffCount, nil
 	}
 
+	span.SetAttributes(key.FromVersion.Attribute(&fromVersion))
+
 	query := &pb.ObjectQuery{
 		Path:        prefix,
 		IsPrefix:    true,
