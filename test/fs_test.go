@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"testing"
 
+	"github.com/gadget-inc/dateilager/internal/db"
+
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
@@ -43,6 +45,21 @@ func (m *mockGetCompressServer) Context() context.Context {
 }
 
 func (m *mockGetCompressServer) Send(resp *pb.GetCompressResponse) error {
+	m.results = append(m.results, resp.Bytes)
+	return nil
+}
+
+type mockGetCacheServer struct {
+	grpc.ServerStream
+	ctx     context.Context
+	results [][]byte
+}
+
+func (m *mockGetCacheServer) Context() context.Context {
+	return m.ctx
+}
+
+func (m *mockGetCacheServer) Send(resp *pb.GetCacheResponse) error {
 	m.results = append(m.results, resp.Bytes)
 	return nil
 }
@@ -1031,4 +1048,44 @@ func TestResetAll(t *testing.T) {
 	require.NoError(t, err, "fs.Reset")
 
 	writeProject(tc, 1, 1)
+}
+
+func TestBuildCache(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2, "node_modules/")
+	writePackedObjects(tc, 1, 1, nil, "node_modules/", map[string]expectedObject{
+		"node_modules/a/a": {content: "node_modules/a/a v1"},
+		"node_modules/a/b": {content: "node_modules/a/b v1"},
+	})
+
+	writeProject(tc, 2, 2, "node_modules/")
+	writePackedObjects(tc, 2, 1, nil, "node_modules/", map[string]expectedObject{
+		"node_modules/b/a": {content: "node_modules/b/a v1"},
+		"node_modules/b/b": {content: "node_modules/b/b v1"},
+	})
+
+	writePackedObjects(tc, 2, 1, nil, "private/", map[string]expectedObject{
+		"private/a": {content: "private/a v1"},
+		"private/b": {content: "private/b v1"},
+	})
+
+	err := db.CreateNodeModulesCache(tc.Context(), tc.Connect())
+
+	require.NoError(t, err, "db.CreateNodeModulesCache")
+
+	fs := tc.FsApi()
+
+	stream := &mockGetCacheServer{ctx: tc.Context()}
+	err = fs.GetCache(&pb.GetCacheRequest{}, stream)
+	require.NoError(t, err, "fs.GetCache")
+
+	assert.Equal(t, 2, len(stream.results), "expected 2 TAR files")
+	verifyTarResults(t, stream.results, map[string]expectedObject{
+		"node_modules/a/a": {content: "node_modules/a/a v1"},
+		"node_modules/a/b": {content: "node_modules/a/b v1"},
+		"node_modules/b/a": {content: "node_modules/b/a v1"},
+		"node_modules/b/b": {content: "node_modules/b/b v1"},
+	})
 }

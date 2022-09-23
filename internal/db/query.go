@@ -274,6 +274,52 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange,
 	}, nil
 }
 
+func latestCacheTars() string {
+	return `
+		WITH latest_cache_version AS (
+			SELECT version, hashes FROM dl.cache_versions ORDER BY version DESC LIMIT 1
+		),
+		version_hash AS (
+			SELECT version, unnest(hashes) AS hash FROM latest_cache_version
+		)
+		SELECT version, version_hash.hash, bytes FROM version_hash JOIN dl.contents ON version_hash.hash = dl.contents.hash
+	`
+}
+
+type cacheTarStream func() (int64, []byte, *string, error)
+
+func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, error) {
+	rows, err := tx.Query(ctx, latestCacheTars())
+	if err != nil {
+		return nil, fmt.Errorf("GetCachedTars query: %w", err)
+	}
+
+	var version int64
+
+	stream := func() (int64, []byte, *string, error) {
+		if !rows.Next() {
+			return 0, nil, nil, io.EOF
+		}
+		var rowVersion int64
+		var hash string
+		var encoded []byte
+
+		err := rows.Scan(&rowVersion, &hash, &encoded)
+		if err != nil {
+			return 0, nil, nil, fmt.Errorf("GetCacheTars scan: %w", err)
+		}
+		if version != 0 && rowVersion != version {
+			return 0, nil, nil, fmt.Errorf("GetCacheTars rowVersion mismatch: %d vs %d", version, rowVersion)
+		}
+
+		version = rowVersion
+
+		return rowVersion, encoded, &hash, nil
+	}
+
+	return stream, nil
+}
+
 type PackManager struct {
 	matchers []*regexp.Regexp
 }
@@ -311,6 +357,30 @@ func (p *PackManager) IsPathPacked(path string) *string {
 				return &currentPath
 			}
 		}
+	}
+
+	return nil
+}
+
+func CreateNodeModulesCache(ctx context.Context, tx pgx.Tx) error {
+	sql := `
+		WITH impactful_node_modules AS (
+			SELECT hash, count(*) as count
+			FROM dl.objects
+			WHERE path LIKE 'node_modules/%'
+			  AND packed = true
+			  AND stop_version IS NULL
+			GROUP BY hash
+			ORDER BY count DESC
+			LIMIT 100
+		)
+		INSERT INTO dl.cache_versions (hashes)
+		SELECT array_agg(hash) as hashes from impactful_node_modules
+`
+
+	_, err := tx.Exec(ctx, sql)
+	if err != nil {
+		return fmt.Errorf("CreateNodeModulesCache query, %w", err)
 	}
 
 	return nil

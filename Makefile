@@ -110,7 +110,7 @@ typecheck-js:
 	cd js && npm run typecheck
 
 reset-db: migrate
-	psql $(DB_URI) -c "truncate dl.objects; truncate dl.contents; truncate dl.projects;"
+	psql $(DB_URI) -c "truncate dl.objects; truncate dl.contents; truncate dl.projects; truncate dl.cache_versions;"
 
 setup-local: reset-db
 	psql $(DB_URI) -c "insert into dl.projects (id, latest_version, pack_patterns) values (1, 0, '{\"node_modules/.*/\"}');"

@@ -22,6 +22,8 @@ service Fs {
     rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
 
     rpc Reset(ResetRequest) returns (ResetResponse);
+
+    rpc GetCache(GetCacheRequest) returns (stream GetCacheResponse);
 }
 
 message NewProjectRequest {
@@ -126,3 +128,16 @@ message ResetRequest {
 }
 
 message ResetResponse {};
+
+message GetCacheRequest {};
+
+message GetCacheResponse {
+    enum Format {
+        S2_TAR = 0;
+    }
+
+    int64 version = 1;
+    Format format = 2;
+    bytes bytes = 3;
+    string pack_path = 4;
+}
