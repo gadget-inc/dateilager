@@ -3,6 +3,8 @@ package test
 import (
 	"testing"
 
+	"github.com/gadget-inc/dateilager/internal/db"
+
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
@@ -986,5 +988,45 @@ func TestCloneToMultipleFromVersionToVersion(t *testing.T) {
 	verifyStreamResults(t, stream.results, map[string]expectedObject{
 		"/a/f": {content: "a/f v1"},
 		"/a/d": {content: "a/d v1"},
+	})
+}
+
+func TestBuildCache(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2, "node_modules/")
+	writePackedObjects(tc, 1, 1, nil, "node_modules/", map[string]expectedObject{
+		"node_modules/a/a": {content: "node_modules/a/a v1"},
+		"node_modules/a/b": {content: "node_modules/a/b v1"},
+	})
+
+	writeProject(tc, 2, 2, "node_modules/")
+	writePackedObjects(tc, 2, 1, nil, "node_modules/", map[string]expectedObject{
+		"node_modules/b/a": {content: "node_modules/b/a v1"},
+		"node_modules/b/b": {content: "node_modules/b/b v1"},
+	})
+
+	writePackedObjects(tc, 2, 1, nil, "private/", map[string]expectedObject{
+		"private/a": {content: "private/a v1"},
+		"private/b": {content: "private/b v1"},
+	})
+
+	err := db.CreateNodeModulesCache(tc.Context(), tc.Connect())
+
+	require.NoError(t, err, "db.CreateNodeModulesCache")
+
+	fs := tc.FsApi()
+
+	stream := &mockGetCacheServer{ctx: tc.Context()}
+	err = fs.GetCache(&pb.GetCacheRequest{}, stream)
+	require.NoError(t, err, "fs.GetCache")
+
+	assert.Equal(t, 2, len(stream.results), "expected 2 TAR files")
+	verifyTarResults(t, stream.results, map[string]expectedObject{
+		"node_modules/a/a": {content: "node_modules/a/a v1"},
+		"node_modules/a/b": {content: "node_modules/a/b v1"},
+		"node_modules/b/a": {content: "node_modules/b/a v1"},
+		"node_modules/b/b": {content: "node_modules/b/b v1"},
 	})
 }

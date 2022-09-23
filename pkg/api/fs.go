@@ -862,3 +862,46 @@ func (f *Fs) GcContents(ctx context.Context, req *pb.GcContentsRequest) (*pb.GcC
 		Count: count,
 	}, nil
 }
+
+func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) error {
+	ctx := stream.Context()
+	trace.SpanFromContext(ctx)
+
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
+	}
+	defer close(ctx)
+
+	logger.Debug(ctx, "FS.GetCache[Init]")
+
+	tars, err := db.GetCacheTars(ctx, tx)
+	if err != nil {
+		return status.Errorf(codes.Internal, "FS get cached tars: %v", err)
+	}
+
+	for {
+		version, tar, packPath, err := tars()
+		if err == io.EOF {
+			break
+		}
+		// if err == db.SKIP {
+		//	continue
+		//}
+		if err != nil {
+			return status.Errorf(codes.Internal, "FS get next tar: %v", err)
+		}
+
+		err = stream.Send(&pb.GetCacheResponse{
+			Version:  version,
+			Format:   pb.GetCacheResponse_S2_TAR,
+			Bytes:    tar,
+			PackPath: *packPath,
+		})
+		if err != nil {
+			return status.Errorf(codes.Internal, "FS send GetCompressResponse: %v", err)
+		}
+	}
+
+	return nil
+}

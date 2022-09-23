@@ -35,6 +35,7 @@ type FsClient interface {
 	GcRandomProjects(ctx context.Context, in *GcRandomProjectsRequest, opts ...grpc.CallOption) (*GcRandomProjectsResponse, error)
 	GcContents(ctx context.Context, in *GcContentsRequest, opts ...grpc.CallOption) (*GcContentsResponse, error)
 	CloneToProject(ctx context.Context, in *CloneToProjectRequest, opts ...grpc.CallOption) (*CloneToProjectResponse, error)
+	GetCache(ctx context.Context, in *GetCacheRequest, opts ...grpc.CallOption) (Fs_GetCacheClient, error)
 }
 
 type fsClient struct {
@@ -233,6 +234,38 @@ func (c *fsClient) CloneToProject(ctx context.Context, in *CloneToProjectRequest
 	return out, nil
 }
 
+func (c *fsClient) GetCache(ctx context.Context, in *GetCacheRequest, opts ...grpc.CallOption) (Fs_GetCacheClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Fs_ServiceDesc.Streams[3], "/pb.Fs/GetCache", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &fsGetCacheClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Fs_GetCacheClient interface {
+	Recv() (*GetCacheResponse, error)
+	grpc.ClientStream
+}
+
+type fsGetCacheClient struct {
+	grpc.ClientStream
+}
+
+func (x *fsGetCacheClient) Recv() (*GetCacheResponse, error) {
+	m := new(GetCacheResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // FsServer is the server API for Fs service.
 // All implementations must embed UnimplementedFsServer
 // for forward compatibility
@@ -250,6 +283,7 @@ type FsServer interface {
 	GcRandomProjects(context.Context, *GcRandomProjectsRequest) (*GcRandomProjectsResponse, error)
 	GcContents(context.Context, *GcContentsRequest) (*GcContentsResponse, error)
 	CloneToProject(context.Context, *CloneToProjectRequest) (*CloneToProjectResponse, error)
+	GetCache(*GetCacheRequest, Fs_GetCacheServer) error
 	mustEmbedUnimplementedFsServer()
 }
 
@@ -295,6 +329,9 @@ func (UnimplementedFsServer) GcContents(context.Context, *GcContentsRequest) (*G
 }
 func (UnimplementedFsServer) CloneToProject(context.Context, *CloneToProjectRequest) (*CloneToProjectResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CloneToProject not implemented")
+}
+func (UnimplementedFsServer) GetCache(*GetCacheRequest, Fs_GetCacheServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetCache not implemented")
 }
 func (UnimplementedFsServer) mustEmbedUnimplementedFsServer() {}
 
@@ -557,6 +594,27 @@ func _Fs_CloneToProject_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Fs_GetCache_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GetCacheRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(FsServer).GetCache(m, &fsGetCacheServer{stream})
+}
+
+type Fs_GetCacheServer interface {
+	Send(*GetCacheResponse) error
+	grpc.ServerStream
+}
+
+type fsGetCacheServer struct {
+	grpc.ServerStream
+}
+
+func (x *fsGetCacheServer) Send(m *GetCacheResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // Fs_ServiceDesc is the grpc.ServiceDesc for Fs service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -620,6 +678,11 @@ var Fs_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "Update",
 			Handler:       _Fs_Update_Handler,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "GetCache",
+			Handler:       _Fs_GetCache_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "internal/pb/fs.proto",

@@ -491,6 +491,21 @@ func (m *mockUpdateServer) Recv() (*pb.UpdateRequest, error) {
 	}, nil
 }
 
+type mockGetCacheServer struct {
+	grpc.ServerStream
+	ctx     context.Context
+	results [][]byte
+}
+
+func (m *mockGetCacheServer) Context() context.Context {
+	return m.ctx
+}
+
+func (m *mockGetCacheServer) Send(resp *pb.GetCacheResponse) error {
+	m.results = append(m.results, resp.Bytes)
+	return nil
+}
+
 func buildRequest(project int64, fromVersion, toVersion *int64, prefix, content bool, paths ...string) *pb.GetRequest {
 	path, ignores := paths[0], paths[1:]
 
