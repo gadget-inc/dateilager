@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -379,26 +380,31 @@ func (p *PackManager) IsPathPacked(path string) *string {
 	return nil
 }
 
-func CreateNodeModulesCache(ctx context.Context, tx pgx.Tx) error {
+func CreateCache(ctx context.Context, tx pgx.Tx, prefix string) (int64, error) {
+	prefix = filepath.Join(prefix, "%")
 	sql := `
-		WITH impactful_node_modules AS (
+		WITH impactful_packed_objects AS (
 			SELECT hash, count(*) as count
 			FROM dl.objects
-			WHERE path LIKE 'node_modules/%'
-			  AND packed = true
-			  AND stop_version IS NULL
+			WHERE path LIKE $1
+				AND packed = true
+				AND stop_version IS NULL
 			GROUP BY hash
 			ORDER BY count DESC
 			LIMIT 100
 		)
 		INSERT INTO dl.cache_versions (hashes)
-		SELECT array_agg(hash) as hashes from impactful_node_modules
+		SELECT array_agg(hash) as hashes from impactful_packed_objects
+		RETURNING version
 `
 
-	_, err := tx.Exec(ctx, sql)
+	row := tx.QueryRow(ctx, sql, prefix)
+	var version int64
+
+	err := row.Scan(&version)
 	if err != nil {
-		return fmt.Errorf("CreateNodeModulesCache query, %w", err)
+		return 0, fmt.Errorf("CreateCache query, %w", err)
 	}
 
-	return nil
+	return version, nil
 }
