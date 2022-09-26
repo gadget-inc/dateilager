@@ -45,6 +45,20 @@ func ListProjects(ctx context.Context, tx pgx.Tx) ([]*pb.Project, error) {
 	return projects, nil
 }
 
+func HasSamePackPattern(ctx context.Context, tx pgx.Tx, project_1 int64, project_2 int64) (bool, error) {
+	var samePackPatterns bool
+	err := tx.QueryRow(ctx, `
+		SELECT COALESCE((SELECT pack_patterns FROM dl.projects WHERE id = $1), '{}') =
+		       COALESCE((SELECT pack_patterns FROM dl.projects WHERE id = $2), '{}');
+	`, project_1, project_2).Scan(&samePackPatterns)
+
+	if err != nil {
+		return false, fmt.Errorf("check matching pack patterns, source %v, target %v: %w", project_1, project_2, err)
+	}
+
+	return samePackPatterns, nil
+}
+
 func getLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
 	var latestVersion int64
 
@@ -154,6 +168,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 	builder := newQueryBuilder(project, vrange, objectQuery)
 	sql, args := builder.build()
 	rows, err := tx.Query(ctx, sql, args...)
+
 	if err != nil {
 		return nil, fmt.Errorf("getObjects query, project %v vrange %v: %w", project, vrange, err)
 	}
@@ -177,8 +192,9 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 		var encoded []byte
 		var packed bool
 		var deleted bool
+		var hash *string
 
-		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted)
+		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted, &hash)
 		if err != nil {
 			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: %w", project, vrange, err)
 		}
@@ -237,8 +253,9 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange,
 		var encoded []byte
 		var packed bool
 		var deleted bool
+		var hash *string
 
-		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted)
+		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted, &hash)
 		if err != nil {
 			return nil, nil, fmt.Errorf("getTars scan, project %v vrange %v: %w", project, vrange, err)
 		}

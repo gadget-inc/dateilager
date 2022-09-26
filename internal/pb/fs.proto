@@ -28,6 +28,8 @@ service Fs {
     rpc GcRandomProjects(GcRandomProjectsRequest) returns (GcRandomProjectsResponse);
 
     rpc GcContents(GcContentsRequest) returns (GcContentsResponse);
+    
+    rpc CloneToProject(CloneToProjectRequest) returns (CloneToProjectResponse);
 }
 
 message NewProjectRequest {
@@ -70,6 +72,7 @@ message ObjectQuery {
     bool is_prefix = 2;
     bool with_content = 3;
     repeated string ignores = 4;
+    bool with_hash = 5;
 }
 
 message GetRequest {
@@ -161,4 +164,15 @@ message GcContentsRequest {
 
 message GcContentsResponse {
     int64 count = 1;
+}
+
+message CloneToProjectRequest {
+    int64 from_project = 1;
+    int64 from_version = 2;
+    int64 to_version = 3;
+    int64 to_project = 4;
+}
+
+message CloneToProjectResponse {
+    int64 latest_version = 1;
 }

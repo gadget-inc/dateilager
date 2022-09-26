@@ -101,6 +101,63 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 	return &pb.NewProjectResponse{}, nil
 }
 
+func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) (*pb.CloneToProjectResponse, error) {
+	trace.SpanFromContext(ctx).SetAttributes(
+		key.Project.Attribute(req.FromProject),
+		key.FromVersion.Attribute(&req.FromVersion),
+		key.ToVersion.Attribute(&req.ToVersion),
+		key.CloneToProject.Attribute(req.ToProject),
+	)
+
+	err := requireAdminAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
+	}
+	defer close(ctx)
+
+	logger.Debug(ctx, "FS.CloneToProject[Init]", key.Project.Field(req.FromProject))
+
+	samePackPatterns, err := db.HasSamePackPattern(ctx, tx, req.FromProject, req.ToProject)
+
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS verifying pack patterns: %v", err)
+	}
+
+	if !samePackPatterns {
+		return nil, status.Errorf(codes.InvalidArgument, "FS projects have different pack patterns: %v", err)
+	}
+
+	vrange, err := db.NewVersionRange(ctx, tx, req.FromProject, &req.FromVersion, &req.ToVersion)
+
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, status.Errorf(codes.NotFound, "FS get missing latest version: %v", err)
+	}
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS get latest version: %v", err)
+	}
+
+	newVersion, err := db.CopyToProject(ctx, tx, req.FromProject, req.ToProject, vrange)
+
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS copy to project from source (%d) to target (%d) with range {%d,%d}: %v", req.FromProject, req.ToProject, vrange.From, vrange.To, err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS clone commit tx: %v", err)
+	}
+	logger.Debug(ctx, "FS.CloneToProject[Commit]")
+
+	return &pb.CloneToProjectResponse{
+		LatestVersion: *newVersion,
+	}, nil
+}
+
 func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*pb.DeleteProjectResponse, error) {
 	trace.SpanFromContext(ctx).SetAttributes(
 		key.Project.Attribute(req.Project),

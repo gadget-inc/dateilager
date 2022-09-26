@@ -46,7 +46,7 @@ func (qb *queryBuilder) possibleObjectsCTE() string {
 
 func (qb *queryBuilder) updatedObjectsCTE() string {
 	template := `
-		SELECT o.path, o.mode, o.size, %s, o.packed, false AS deleted
+		SELECT o.path, o.mode, o.size, %s, o.packed, false AS deleted, %s
 		FROM possible_objects o
 		LEFT JOIN dl.contents c
 		  ON o.hash = c.hash
@@ -81,25 +81,24 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 		ignoresPredicate = "AND o.path NOT LIKE ALL(__ignores__::text[])"
 	}
 
-	return fmt.Sprintf(template, bytesSelector, contentsPredicate, pathPredicate, ignoresPredicate)
+	hashSelector := "null::hash as hash"
+	if qb.objectQuery.WithHash {
+		hashSelector = "o.hash"
+	}
+
+	return fmt.Sprintf(template, bytesSelector, hashSelector, contentsPredicate, pathPredicate, ignoresPredicate)
 }
 
-func (qb *queryBuilder) removedObjectsCTE() string {
+func (qb *queryBuilder) removedObjectsCTE(skipChanged bool) string {
 	template := `
-		SELECT o.path, o.mode, 0 AS size, ''::bytea as bytes, o.packed, true AS deleted
+		SELECT o.path, o.mode, 0 AS size, ''::bytea as bytes, o.packed, true AS deleted, null::hash as hash
 		FROM possible_objects o
 		WHERE o.project = __project__
 			AND o.start_version <= __stop_version__
 			AND o.stop_version > __start_version__
 			AND o.stop_version <= __stop_version__
 			%s
-			AND (
-				-- Skip removing files if they are in the updated_objects list
-				(RIGHT(o.path, 1) != '/' AND o.path NOT IN (SELECT path FROM updated_objects))
-				OR
-				-- Skip removing empty directories if any updated_objects are within that directory
-				(RIGHT(o.path, 1) = '/' AND NOT EXISTS (SELECT true FROM updated_objects WHERE STARTS_WITH(path, o.path)))
-			)
+			%s
 		ORDER BY o.path
 	`
 
@@ -108,7 +107,18 @@ func (qb *queryBuilder) removedObjectsCTE() string {
 		ignoresPredicate = "AND o.path NOT LIKE ALL(__ignores__::text[])"
 	}
 
-	return fmt.Sprintf(template, ignoresPredicate)
+	changedPredicate := ""
+	if skipChanged {
+		changedPredicate = `AND (
+			-- Skip removing files if they are in the updated_objects list
+			(RIGHT(o.path, 1) != '/' AND o.path NOT IN (SELECT path FROM updated_objects))
+			OR
+			-- Skip removing empty directories if any updated_objects are within that directory
+			(RIGHT(o.path, 1) = '/' AND NOT EXISTS (SELECT true FROM updated_objects WHERE STARTS_WITH(path, o.path)))
+		)`
+	}
+
+	return fmt.Sprintf(template, ignoresPredicate, changedPredicate)
 }
 
 func (qb *queryBuilder) queryWithoutRemovals() string {
@@ -119,7 +129,7 @@ func (qb *queryBuilder) queryWithoutRemovals() string {
 	%s
 	)
 
-	SELECT path, mode, size, bytes, packed, deleted
+	SELECT path, mode, size, bytes, packed, deleted, hash
 	FROM updated_objects
 	`
 
@@ -136,25 +146,38 @@ func (qb *queryBuilder) queryWithRemovals() string {
 	%s
 	)
 
-	SELECT path, mode, size, bytes, packed, deleted
+	SELECT path, mode, size, bytes, packed, deleted, hash
 	FROM updated_objects
-	UNION
-	SELECT path, mode, size, bytes, packed, deleted
+	UNION ALL
+	SELECT path, mode, size, bytes, packed, deleted, hash
 	FROM removed_objects
 	`
 
-	return fmt.Sprintf(template, qb.possibleObjectsCTE(), qb.updatedObjectsCTE(), qb.removedObjectsCTE())
+	return fmt.Sprintf(template, qb.possibleObjectsCTE(), qb.updatedObjectsCTE(), qb.removedObjectsCTE(true))
 }
 
-func (qb *queryBuilder) build() (string, []any) {
-	var query string
+func (qb *queryBuilder) buildRemoved() (string, []any) {
+	template := `
+	WITH possible_objects AS (
+	%s
+	)
+	%s
+	`
 
-	if qb.vrange.From == 0 {
-		query = qb.queryWithoutRemovals()
-	} else {
-		query = qb.queryWithRemovals()
-	}
+	query := fmt.Sprintf(template, qb.possibleObjectsCTE(), qb.removedObjectsCTE(false))
+	query, args := qb.replaceQueryArgs(query)
 
+	return query, args
+}
+
+func (qb *queryBuilder) buildChanged() (string, []any) {
+	query := qb.queryWithoutRemovals()
+	query, args := qb.replaceQueryArgs(query)
+
+	return query, args
+}
+
+func (qb *queryBuilder) replaceQueryArgs(query string) (string, []any) {
 	argNames := []string{"__project__", "__start_version__", "__stop_version__"}
 	args := []any{qb.project, qb.vrange.From, qb.vrange.To}
 
@@ -184,4 +207,28 @@ func (qb *queryBuilder) build() (string, []any) {
 	}
 
 	return query, args
+}
+
+func (qb *queryBuilder) build() (string, []any) {
+	var query string
+
+	if qb.vrange.From == 0 {
+		query = qb.queryWithoutRemovals()
+	} else {
+		query = qb.queryWithRemovals()
+	}
+
+	query, args := qb.replaceQueryArgs(query)
+
+	return query, args
+}
+
+func AsCte(query string, alias string) string {
+	template := `
+	WITH %s as (
+		%s
+	)
+	`
+
+	return fmt.Sprintf(template, alias, query)
 }
