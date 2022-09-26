@@ -278,12 +278,18 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange,
 func latestCacheTars() string {
 	return `
 		WITH latest_cache_version AS (
-			SELECT version, hashes FROM dl.cache_versions ORDER BY version DESC LIMIT 1
+			SELECT version, hashes
+			FROM dl.cache_versions
+			ORDER BY version DESC LIMIT 1
 		),
 		version_hash AS (
-			SELECT version, unnest(hashes) AS hash FROM latest_cache_version
+			SELECT version, unnest(hashes) AS hash
+			FROM latest_cache_version
 		)
-		SELECT version, version_hash.hash, bytes FROM version_hash JOIN dl.contents ON version_hash.hash = dl.contents.hash
+		SELECT version, version_hash.hash, bytes
+		FROM version_hash
+		JOIN dl.contents
+		ON version_hash.hash = dl.contents.hash
 	`
 }
 
