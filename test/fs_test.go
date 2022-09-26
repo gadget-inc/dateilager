@@ -1089,3 +1089,17 @@ func TestBuildCache(t *testing.T) {
 		"node_modules/b/b": {content: "node_modules/b/b v1"},
 	})
 }
+
+func TestBuildCacheWithoutAvailableCacheVersion(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	fs := tc.FsApi()
+
+	stream := &mockGetCacheServer{ctx: tc.Context()}
+	err := fs.GetCache(&pb.GetCacheRequest{}, stream)
+	require.NoError(t, err, "fs.GetCache")
+
+	assert.Equal(t, 0, len(stream.results), "expected 2 TAR files")
+	verifyTarResults(t, stream.results, map[string]expectedObject{})
+}
