@@ -611,6 +611,21 @@ func TestGetCompressWithIgnorePattern(t *testing.T) {
 	})
 }
 
+func TestGetCompressWithCacheVersions(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2, "node_modules/")
+	writePackedFiles(tc, 1, 1, nil, "node_modules/a")
+
+	writeProject(tc, 2, 2, "node_modules/")
+	writePackedFiles(tc, 2, 1, nil, "node_modules/b")
+
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(latestCacheVersionHashes(t, tc)))
+}
+
 func TestGetPackedObjects(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
@@ -1050,7 +1065,7 @@ func TestResetAll(t *testing.T) {
 	writeProject(tc, 1, 1)
 }
 
-func TestBuildCache(t *testing.T) {
+func TestGetCache(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Admin)
 	defer tc.Close()
 
@@ -1071,9 +1086,9 @@ func TestBuildCache(t *testing.T) {
 		"private/b": {content: "private/b v1"},
 	})
 
-	err := db.CreateNodeModulesCache(tc.Context(), tc.Connect())
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
 
-	require.NoError(t, err, "db.CreateNodeModulesCache")
+	require.NoError(t, err, "db.CreateCache")
 
 	fs := tc.FsApi()
 
@@ -1090,7 +1105,7 @@ func TestBuildCache(t *testing.T) {
 	})
 }
 
-func TestBuildCacheWithoutAvailableCacheVersion(t *testing.T) {
+func TestGetCacheWithoutAvailableCacheVersion(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Admin)
 	defer tc.Close()
 
@@ -1100,6 +1115,6 @@ func TestBuildCacheWithoutAvailableCacheVersion(t *testing.T) {
 	err := fs.GetCache(&pb.GetCacheRequest{}, stream)
 	require.NoError(t, err, "fs.GetCache")
 
-	assert.Equal(t, 0, len(stream.results), "expected 2 TAR files")
+	assert.Equal(t, 0, len(stream.results), "expected 0 TAR files")
 	verifyTarResults(t, stream.results, map[string]expectedObject{})
 }

@@ -1,7 +1,6 @@
 package test
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/gadget-inc/dateilager/internal/auth"
@@ -21,29 +20,35 @@ func latestCacheVersionHashes(t *testing.T, tc util.TestCtx) []string {
 	return hashes
 }
 
-func writePackedFiles(tc util.TestCtx, project int64, start int64, stop *int64, path string) {
-	writePackedObjects(tc, project, start, stop, path, map[string]expectedObject{
-		filepath.Join(path, "a"): {content: filepath.Join(path, "a") + "v1"},
-		filepath.Join(path, "b"): {content: filepath.Join(path, "b") + "v1"},
-	})
-}
-
-func TestCreateNodeModulesCache(t *testing.T) {
+func TestCreateCache(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Admin)
 	defer tc.Close()
 
 	writeProject(tc, 1, 2, "node_modules/")
 	writePackedFiles(tc, 1, 1, nil, "node_modules/a")
 
-	writeProject(tc, 2, 2, "node_modules/")
-	writePackedFiles(tc, 2, 1, nil, "node_modules/b")
-
-	err := db.CreateNodeModulesCache(tc.Context(), tc.Connect())
+	firstVersion, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
+	firstVersionHashes := latestCacheVersionHashes(t, tc)
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(latestCacheVersionHashes(t, tc)))
+	assert.Equal(t, 1, len(firstVersionHashes))
+
+	conn := tc.Connect()
+	_, err = conn.Exec(tc.Context(), "UPDATE dl.objects SET stop_version = 2 WHERE project = 1 AND PATH = 'node_modules/a'")
+	assert.NoError(t, err)
+
+	writePackedFiles(tc, 1, 2, nil, "node_modules/b")
+
+	var newVersion int64
+	newVersion, err = db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
+	assert.NoError(t, err)
+
+	newVersionHashes := latestCacheVersionHashes(t, tc)
+	assert.Equal(t, firstVersion+1, newVersion)
+	assert.Equal(t, 1, len(latestCacheVersionHashes(t, tc)))
+	assert.NotEqual(t, firstVersionHashes, newVersionHashes)
 }
 
-func TestCreateNodeModulesCacheOnlyUsesNodeModules(t *testing.T) {
+func TestCreateCacheOnlyUsesPacksWithThePrefix(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Admin)
 	defer tc.Close()
 
@@ -55,13 +60,13 @@ func TestCreateNodeModulesCacheOnlyUsesNodeModules(t *testing.T) {
 
 	writePackedFiles(tc, 2, 1, nil, "private/")
 
-	err := db.CreateNodeModulesCache(tc.Context(), tc.Connect())
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
 
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(latestCacheVersionHashes(t, tc)))
 }
 
-func TestCreateNodeModulesCacheIgnoresModulesNoLongerUsed(t *testing.T) {
+func TestCreateCacheIgnoresModulesNoLongerUsed(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Admin)
 	defer tc.Close()
 
@@ -69,7 +74,7 @@ func TestCreateNodeModulesCacheIgnoresModulesNoLongerUsed(t *testing.T) {
 	writePackedFiles(tc, 1, 1, i(2), "node_modules/a")
 	writePackedFiles(tc, 2, 2, nil, "node_modules/b")
 
-	err := db.CreateNodeModulesCache(tc.Context(), tc.Connect())
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(latestCacheVersionHashes(t, tc)))
 }

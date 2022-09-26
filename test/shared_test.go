@@ -150,6 +150,13 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 	require.NoError(tc.T(), err, "insert contents")
 }
 
+func writePackedFiles(tc util.TestCtx, project int64, start int64, stop *int64, path string) {
+	writePackedObjects(tc, project, start, stop, path, map[string]expectedObject{
+		filepath.Join(path, "a"): {content: filepath.Join(path, "a") + "v1"},
+		filepath.Join(path, "b"): {content: filepath.Join(path, "b") + "v1"},
+	})
+}
+
 func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []byte) {
 	contentWriter := db.NewTarWriter()
 	namesWriter := db.NewTarWriter()
