@@ -853,10 +853,10 @@ func TestCloneTo(t *testing.T) {
 	fs := tc.FsApi()
 
 	response, err := fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
-		FromProject: 1,
+		Source:      1,
 		FromVersion: 0,
 		ToVersion:   1,
-		ToProject:   2,
+		Target:      2,
 	})
 
 	require.NoError(t, err, "fs.CloneToProject")
@@ -883,10 +883,10 @@ func TestCloneTo(t *testing.T) {
 	writeObject(tc, 1, 2, nil, "/a/b", "a/b v1")
 
 	response, err = fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
-		FromProject: 1,
+		Source:      1,
 		FromVersion: 1,
 		ToVersion:   2,
-		ToProject:   2,
+		Target:      2,
 	})
 
 	require.NoError(t, err, "fs.CloneToProject")

@@ -41,7 +41,7 @@ func CopyAllObjects(ctx context.Context, tx pgx.Tx, source int64, target int64) 
 	return nil
 }
 
-func CopyToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, vrange VersionRange) (*int64, error) {
+func CloneToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, vrange VersionRange) (*int64, error) {
 	objectQuery := &pb.ObjectQuery{
 		Path:        "",
 		IsPrefix:    true,
@@ -71,9 +71,9 @@ func CopyToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, v
 	AND "objects".stop_version IS NULL
 	`, AsCte(removedSql, "removed_objects"), removedArgsLength+1, removedArgsLength+2)
 
-	updatedRemovedArgs := append(removedArgs, newTargetVersion, target)
+	removedArgs = append(removedArgs, newTargetVersion, target)
 
-	_, err = tx.Exec(ctx, sql, updatedRemovedArgs...)
+	_, err = tx.Exec(ctx, sql, removedArgs...)
 
 	if err != nil {
 		return nil, fmt.Errorf("copy to project could not update removed files to version (%d): %w", latestVersion, err)
@@ -92,9 +92,9 @@ func CopyToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, v
 	   DO NOTHING
 	`, AsCte(changedSql, "changed_objects"), changedArgsLength+1, changedArgsLength+2)
 
-	insertArgs := append(changedArgs, target, newTargetVersion)
+	changedArgs = append(changedArgs, target, newTargetVersion)
 
-	_, err = tx.Exec(ctx, sql, insertArgs...)
+	_, err = tx.Exec(ctx, sql, changedArgs...)
 
 	if err != nil {
 		return nil, fmt.Errorf("copy to project could not insert updated files: %w", err)

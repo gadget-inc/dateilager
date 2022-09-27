@@ -103,10 +103,10 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 
 func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) (*pb.CloneToProjectResponse, error) {
 	trace.SpanFromContext(ctx).SetAttributes(
-		key.Project.Attribute(req.FromProject),
+		key.Project.Attribute(req.Source),
 		key.FromVersion.Attribute(&req.FromVersion),
 		key.ToVersion.Attribute(&req.ToVersion),
-		key.CloneToProject.Attribute(req.ToProject),
+		key.CloneToProject.Attribute(req.Target),
 	)
 
 	err := requireAdminAuth(ctx)
@@ -120,9 +120,9 @@ func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) 
 	}
 	defer close(ctx)
 
-	logger.Debug(ctx, "FS.CloneToProject[Init]", key.Project.Field(req.FromProject))
+	logger.Debug(ctx, "FS.CloneToProject[Init]", key.Project.Field(req.Source))
 
-	samePackPatterns, err := db.HasSamePackPattern(ctx, tx, req.FromProject, req.ToProject)
+	samePackPatterns, err := db.HasSamePackPattern(ctx, tx, req.Source, req.Target)
 
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS verifying pack patterns: %v", err)
@@ -132,7 +132,7 @@ func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) 
 		return nil, status.Errorf(codes.InvalidArgument, "FS projects have different pack patterns: %v", err)
 	}
 
-	vrange, err := db.NewVersionRange(ctx, tx, req.FromProject, &req.FromVersion, &req.ToVersion)
+	vrange, err := db.NewVersionRange(ctx, tx, req.Source, &req.FromVersion, &req.ToVersion)
 
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "FS get missing latest version: %v", err)
@@ -141,10 +141,10 @@ func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) 
 		return nil, status.Errorf(codes.Internal, "FS get latest version: %v", err)
 	}
 
-	newVersion, err := db.CopyToProject(ctx, tx, req.FromProject, req.ToProject, vrange)
+	newVersion, err := db.CloneToProject(ctx, tx, req.Source, req.Target, vrange)
 
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS copy to project from source (%d) to target (%d) with range {%d,%d}: %v", req.FromProject, req.ToProject, vrange.From, vrange.To, err)
+		return nil, status.Errorf(codes.Internal, "FS copy to project from source (%d) to target (%d) with range {%d,%d}: %v", req.Source, req.Target, vrange.From, vrange.To, err)
 	}
 
 	err = tx.Commit(ctx)
