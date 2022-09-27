@@ -17,32 +17,20 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-func removePathIfSymlink(path string) error {
-	stat, err := os.Lstat(path)
+type retryableFileOperation[R any] func() (R, error)
+
+// if we encounter an error making a directory, symlink, or opening a file, we try to recover by just removing whatever is currently at the path, and trying again
+func retryFileErrors[R any](path string, fn retryableFileOperation[R]) (R, error) {
+	result, err := fn()
+
 	if err != nil {
-		return nil
+		err = os.RemoveAll(path)
+		if err != nil {
+			return result, fmt.Errorf("removing existing path error %v: %w", path, err)
+		}
+		return fn()
 	}
-
-	if stat.Mode()&os.ModeSymlink == os.ModeSymlink {
-		err = os.Remove(path)
-		return err
-	}
-
-	return nil
-}
-
-func removePathIfNotDirectory(path string) error {
-	stat, err := os.Lstat(path)
-	if err != nil {
-		return nil
-	}
-
-	if stat.Mode()&os.ModeDir != os.ModeDir {
-		err = os.Remove(path)
-		return err
-	}
-
-	return nil
+	return result, err
 }
 
 func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error {
@@ -50,19 +38,17 @@ func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error
 
 	switch header.Typeflag {
 	case tar.TypeReg:
-		err := os.MkdirAll(filepath.Dir(path), 0777)
+		dir := filepath.Dir(path)
+		_, err := retryFileErrors(dir, func() (interface{}, error) {
+			return nil, os.MkdirAll(dir, 0777)
+		})
 		if err != nil {
-			return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
+			return fmt.Errorf("mkdir -p %v: %w", dir, err)
 		}
 
-		// os.OpenFile returns an error if it's called on a symlink
-		// remove any potential symlinks before writing the regular file
-		err = removePathIfSymlink(path)
-		if err != nil {
-			return fmt.Errorf("remove path if symlink %v: %w", path, err)
-		}
-
-		file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
+		file, err := retryFileErrors(path, func() (*os.File, error) {
+			return os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
+		})
 		if err != nil {
 			return fmt.Errorf("open file %v: %w", path, err)
 		}
@@ -72,33 +58,32 @@ func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error
 		if err != nil {
 			return fmt.Errorf("write %v to disk: %w", path, err)
 		}
-
-	case tar.TypeDir:
-		err := removePathIfNotDirectory(path)
+		err = os.Chmod(path, os.FileMode(header.Mode))
 		if err != nil {
-			return fmt.Errorf("remove path if not dir %v: %w", path, err)
+			return fmt.Errorf("chmod %v on disk: %w", path, err)
 		}
 
-		err = os.MkdirAll(path, os.FileMode(header.Mode))
+	case tar.TypeDir:
+		_, err := retryFileErrors(path, func() (interface{}, error) {
+			return nil, os.MkdirAll(path, 0777)
+		})
+
 		if err != nil {
 			return fmt.Errorf("mkdir -p %v: %w", path, err)
 		}
 
 	case tar.TypeSymlink:
-		err := os.MkdirAll(filepath.Dir(path), 0755)
+		dir := filepath.Dir(path)
+		_, err := retryFileErrors(dir, func() (interface{}, error) {
+			return nil, os.MkdirAll(dir, 0777)
+		})
 		if err != nil {
-			return fmt.Errorf("mkdir -p %v: %w", filepath.Dir(path), err)
+			return fmt.Errorf("mkdir -p %v: %w", dir, err)
 		}
 
-		// Remove existing link
-		if _, err = os.Lstat(path); err == nil {
-			err = os.Remove(path)
-			if err != nil {
-				return fmt.Errorf("rm %v before symlinking %v: %w", path, header.Linkname, err)
-			}
-		}
-
-		err = os.Symlink(header.Linkname, path)
+		_, err = retryFileErrors(path, func() (interface{}, error) {
+			return nil, os.Symlink(header.Linkname, path)
+		})
 		if err != nil {
 			return fmt.Errorf("ln -s %v %v: %w", header.Linkname, path, err)
 		}
