@@ -67,6 +67,7 @@ message Objekt {
     int64 size = 3;
     bool deleted = 4;
     optional bytes content = 5;
+    bool cached = 6;
 }
 
 message ObjectQuery {
@@ -93,6 +94,7 @@ message GetCompressRequest {
     optional int64 from_version = 2;
     optional int64 to_version = 3;
     repeated ObjectQuery queries = 5;
+    repeated int64 available_cache_versions = 6;
 }
 
 message GetCompressResponse {
@@ -188,5 +190,5 @@ message GetCacheResponse {
     int64 version = 1;
     Format format = 2;
     bytes bytes = 3;
-    string pack_path = 4;
+    bytes hash = 4;
 }

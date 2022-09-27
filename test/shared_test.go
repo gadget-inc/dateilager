@@ -172,7 +172,7 @@ func writeSymlink(tc util.TestCtx, project int64, start int64, stop *int64, path
 	writeObjectFull(tc, project, start, stop, path, target, mode)
 }
 
-func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64, path string, objects map[string]expectedObject) {
+func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64, path string, objects map[string]expectedObject) db.Hash {
 	conn := tc.Connect()
 
 	contentsTar, namesTar := packObjects(tc, objects)
@@ -191,12 +191,14 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 		DO NOTHING
 	`, hash.H1, hash.H2, contentsTar, namesTar)
 	require.NoError(tc.T(), err, "insert contents")
+
+	return hash
 }
 
-func writePackedFiles(tc util.TestCtx, project int64, start int64, stop *int64, path string) {
-	writePackedObjects(tc, project, start, stop, path, map[string]expectedObject{
-		filepath.Join(path, "a"): {content: filepath.Join(path, "a") + "v1"},
-		filepath.Join(path, "b"): {content: filepath.Join(path, "b") + "v1"},
+func writePackedFiles(tc util.TestCtx, project int64, start int64, stop *int64, path string) db.Hash {
+	return writePackedObjects(tc, project, start, stop, path, map[string]expectedObject{
+		filepath.Join(path, "1"): {content: fmt.Sprintf("%s v%d", filepath.Join(path, "1"), start)},
+		filepath.Join(path, "2"): {content: fmt.Sprintf("%s v%d", filepath.Join(path, "2"), start)},
 	})
 }
 
@@ -395,8 +397,14 @@ func createTestClient(tc util.TestCtx) (*client.Client, *api.Fs, func()) {
 	return c, fs, func() { c.Close(); s.Stop() }
 }
 
-func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, expected expectedResponse) {
-	version, count, err := c.Rebuild(tc.Context(), project, "", toVersion, dir)
+func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, cacheDir *string, expected expectedResponse) {
+	if cacheDir == nil {
+		newCacheDir := emptyTmpDir(tc.T())
+		defer os.RemoveAll(newCacheDir)
+		cacheDir = &newCacheDir
+	}
+
+	version, count, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, *cacheDir)
 	require.NoError(tc.T(), err, "client.Rebuild")
 
 	assert.Equal(tc.T(), expected.version, version, "mismatch rebuild version")

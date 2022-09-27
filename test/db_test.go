@@ -21,7 +21,7 @@ func latestCacheVersionHashes(t *testing.T, tc util.TestCtx) [][]byte {
 	for rows.Next() {
 		var h1, h2 []byte
 		err = rows.Scan(&h1, &h2)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		hash := make([]byte, 32)
 		copy(hash[0:16], h1)
@@ -42,18 +42,18 @@ func TestCreateCache(t *testing.T) {
 
 	firstVersion, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
 	firstVersionHashes := latestCacheVersionHashes(t, tc)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 1, len(firstVersionHashes))
 
 	conn := tc.Connect()
 	_, err = conn.Exec(tc.Context(), "UPDATE dl.objects SET stop_version = 2 WHERE project = 1 AND PATH = 'node_modules/a'")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	writePackedFiles(tc, 1, 2, nil, "node_modules/b")
 
 	var newVersion int64
 	newVersion, err = db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	newVersionHashes := latestCacheVersionHashes(t, tc)
 	assert.Equal(t, firstVersion+1, newVersion)
@@ -75,7 +75,7 @@ func TestCreateCacheOnlyUsesPacksWithThePrefix(t *testing.T) {
 
 	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 2, len(latestCacheVersionHashes(t, tc)))
 }
 
@@ -88,6 +88,6 @@ func TestCreateCacheIgnoresModulesNoLongerUsed(t *testing.T) {
 	writePackedFiles(tc, 2, 2, nil, "node_modules/b")
 
 	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 1, len(latestCacheVersionHashes(t, tc)))
 }

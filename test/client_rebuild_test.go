@@ -4,7 +4,13 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/gadget-inc/dateilager/pkg/client"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/gadget-inc/dateilager/internal/db"
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
@@ -26,7 +32,7 @@ func TestRebuild(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
 	})
@@ -62,7 +68,7 @@ func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
 	})
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   4,
 	})
@@ -92,7 +98,7 @@ func TestRebuildWithEmptyDirAndSymlink(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   5,
 	})
@@ -120,7 +126,7 @@ func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   2,
 	})
@@ -137,7 +143,7 @@ func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
 	err := fs.Update(updateStream)
 	require.NoError(t, err, "fs.Update")
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1,
 	})
@@ -169,7 +175,7 @@ func TestRebuildWithManyObjects(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   500,
 	})
@@ -194,7 +200,7 @@ func TestRebuildWithUpdatedObjectToDirectory(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, i(1), tmpDir, expectedResponse{
+	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   1,
 	})
@@ -203,7 +209,7 @@ func TestRebuildWithUpdatedObjectToDirectory(t *testing.T) {
 		"a": {content: "a v1"},
 	})
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 4,
 		count:   2,
 	})
@@ -213,4 +219,52 @@ func TestRebuildWithUpdatedObjectToDirectory(t *testing.T) {
 		"b/d": {content: "b/d v3"},
 		"b/e": {content: "b/e v4"},
 	})
+}
+
+func TestRebuildWithCache(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	ha := writePackedFiles(tc, 1, 1, nil, "node_modules/a")
+	hb := writePackedFiles(tc, 1, 1, nil, "node_modules/b")
+
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
+	require.NoError(t, err)
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	cacheDir := emptyTmpDir(t)
+	defer os.RemoveAll(cacheDir)
+
+	_, err = c.GetCache(tc.Context(), cacheDir)
+	require.NoError(t, err)
+
+	rebuild(tc, c, 1, nil, tmpDir, &cacheDir, expectedResponse{
+		version: 1,
+		count:   2,
+	})
+
+	aCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), ha.Hex(), "node_modules/a")
+	bCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), hb.Hex(), "node_modules/b")
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"node_modules/a": {fileType: typeSymlink, content: aCachePath},
+		"node_modules/b": {fileType: typeSymlink, content: bCachePath},
+	})
+
+	assertFileContent := func(path string, expectedContent string) {
+		content, err := os.ReadFile(path)
+		require.NoError(t, err, "error reading file %v: %w", path, err)
+		assert.Equal(t, expectedContent, string(content))
+	}
+
+	assertFileContent(filepath.Join(aCachePath, "1"), "node_modules/a/1 v1")
+	assertFileContent(filepath.Join(aCachePath, "2"), "node_modules/a/2 v1")
+	assertFileContent(filepath.Join(bCachePath, "1"), "node_modules/b/1 v1")
+	assertFileContent(filepath.Join(bCachePath, "2"), "node_modules/b/2 v1")
 }

@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -213,7 +215,7 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, ignores 
 	return objects, nil
 }
 
-func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string) (int64, uint32, error) {
+func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, cacheDir string) (int64, uint32, error) {
 	ctx, span := telemetry.Start(ctx, "client.rebuild", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Prefix.Attribute(prefix),
@@ -240,11 +242,14 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		WithContent: true,
 	}
 
+	availableCacheVersions := ReadCacheVersionFile(cacheDir)
+
 	request := &pb.GetCompressRequest{
-		Project:     project,
-		FromVersion: &fromVersion,
-		ToVersion:   toVersion,
-		Queries:     []*pb.ObjectQuery{query},
+		Project:                project,
+		FromVersion:            &fromVersion,
+		ToVersion:              toVersion,
+		Queries:                []*pb.ObjectQuery{query},
+		AvailableCacheVersions: availableCacheVersions,
 	}
 
 	stream, err := c.fs.GetCompress(ctx, request)
@@ -312,7 +317,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 					tarReader := db.NewTarReader(response.Bytes)
 
-					count, err := files.WriteTar(dir, tarReader, response.PackPath)
+					count, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath)
 					if err != nil {
 						cancel()
 						return err
@@ -477,7 +482,7 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 			return -1, updateCount, err
 		}
 	} else {
-		toVersion, _, err = c.Rebuild(rootCtx, project, "", nil, dir)
+		toVersion, _, err = c.Rebuild(rootCtx, project, "", nil, dir, "")
 		if err != nil {
 			return -1, updateCount, err
 		}
@@ -555,6 +560,165 @@ func (c *Client) Reset(ctx context.Context, state string) error {
 	}
 
 	return nil
+}
+
+func obtainCacheLockFile(cacheRootDir string) (*os.File, error) {
+	lockFile, err := os.OpenFile(filepath.Join(cacheRootDir, ".lock"), os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("unable to obtain cache lock file; another process may be using it: %w", err)
+	}
+	lockFile.Close()
+
+	return lockFile, nil
+}
+
+func cleanupCacheLockFile(lockFile *os.File) error {
+	err := os.Remove(lockFile.Name())
+	if err != nil {
+		return fmt.Errorf("unable to remove cache lock file: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, error) {
+	objectDir := CacheObjectsDir(cacheRootDir)
+	err := os.MkdirAll(objectDir, 0755)
+	if err != nil {
+		return -1, fmt.Errorf("cannot create object folder: %w", err)
+	}
+
+	tmpObjectDir := CacheTmpDir(cacheRootDir)
+	os.RemoveAll(tmpObjectDir)
+	err = os.MkdirAll(tmpObjectDir, 0755)
+	if err != nil {
+		return -1, fmt.Errorf("cannot create tmp folder to unpack cached objects: %w", err)
+	}
+
+	lockFile, err := obtainCacheLockFile(cacheRootDir)
+	if err != nil {
+		return -1, err
+	}
+
+	ctx, span := telemetry.Start(ctx, "client.get_cache")
+	defer span.End()
+
+	request := &pb.GetCacheRequest{}
+
+	stream, err := c.fs.GetCache(ctx, request)
+	if err != nil {
+		return -1, fmt.Errorf("fs.GetCache connect: %w", err)
+	}
+
+	// Pull one response before booting workers
+	// This is a short circuit in case the cache doesn't exist
+	response, err := stream.Recv()
+	if err == io.EOF {
+		err = cleanupCacheLockFile(lockFile)
+		if err != nil {
+			return -1, err
+		}
+		os.RemoveAll(tmpObjectDir)
+		return -1, nil
+	}
+	if err != nil {
+		return -1, fmt.Errorf("fs.GetCache receive: %w", err)
+	}
+	version := response.Version
+
+	tarChan := make(chan *pb.GetCacheResponse, 16)
+	group, ctx := errgroup.WithContext(ctx)
+	ctx, cancel := context.WithCancel(ctx)
+
+	group.Go(func() error {
+		ctx, span := telemetry.Start(ctx, "cache-object-receiver")
+		defer span.End()
+		defer close(tarChan)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case tarChan <- response:
+				response, err = stream.Recv()
+				if err == io.EOF {
+					return nil
+				}
+				if response.Version != version {
+					cancel()
+					return fmt.Errorf("fs.GetCache version mismatch: %d, %d", response.Version, version)
+				}
+				if err != nil {
+					cancel()
+					return fmt.Errorf("fs.GetCache receive: %w", err)
+				}
+			}
+		}
+	})
+
+	for i := 0; i < parallelWorkerCount(); i++ {
+		// create the attribute here when `i` is different
+		attr := key.Worker.Attribute(i)
+
+		group.Go(func() error {
+			ctx, span := telemetry.Start(ctx, "cache-object-writer", trace.WithAttributes(attr))
+			defer span.End()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case response, ok := <-tarChan:
+					if !ok {
+						return nil
+					}
+
+					tarReader := db.NewTarReader(response.Bytes)
+					hashHex := hex.EncodeToString(response.Hash)
+					tempDest := filepath.Join(tmpObjectDir, hashHex)
+					finalDest := filepath.Join(objectDir, hashHex)
+
+					if fileExists(tempDest) {
+						err := os.RemoveAll(tempDest)
+						return fmt.Errorf("temporary cache folder exists for %s and couldn't be removed: %w", tempDest, err)
+					}
+
+					_, err := files.WriteTar(tempDest, CacheObjectsDir(cacheRootDir), tarReader, nil)
+					if err != nil {
+						cancel()
+						return err
+					}
+
+					err = os.Rename(tempDest, finalDest)
+					if err != nil {
+						return fmt.Errorf("couldn't rename temporary folder (%s) to final folder (%s): %w", tempDest, finalDest, err)
+					}
+				}
+			}
+		})
+	}
+
+	err = group.Wait()
+	if err != nil {
+		return -1, err
+	}
+
+	versionFile, err := os.OpenFile(cacheVersionPath(cacheRootDir), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		return -1, fmt.Errorf("fs.GetCache cannot open cache versions file for writing: %w", err)
+	}
+	defer versionFile.Close()
+	if _, err = versionFile.WriteString(fmt.Sprintf("%d\n", version)); err != nil {
+		return -1, fmt.Errorf("fs.GetCache failed to update the versions file: %w", err)
+	}
+
+	err = cleanupCacheLockFile(lockFile)
+	if err != nil {
+		return -1, err
+	}
+	os.RemoveAll(tmpObjectDir)
+
+	return version, nil
 }
 
 func (c *Client) GcProject(ctx context.Context, project int64, keep int64, from *int64) (int64, error) {
@@ -643,4 +807,9 @@ func parallelWorkerCount() int {
 		halfNumCPU = 1
 	}
 	return halfNumCPU
+}
+
+func fileExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
 }

@@ -3,6 +3,7 @@ package db
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 
@@ -22,6 +23,17 @@ func HashContent(data []byte) Hash {
 		H1: sha[0:16],
 		H2: sha[16:32],
 	}
+}
+
+func (h *Hash) Bytes() []byte {
+	hash := make([]byte, 32)
+	copy(hash[0:16], h.H1)
+	copy(hash[16:], h.H2)
+	return hash
+}
+
+func (h *Hash) Hex() string {
+	return hex.EncodeToString(h.Bytes())
 }
 
 type ContentEncoder struct {

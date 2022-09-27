@@ -26,7 +26,7 @@ func TestCombined(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
 	})
@@ -44,7 +44,7 @@ func TestCombined(t *testing.T) {
 	err := fs.Update(updateStream)
 	require.NoError(t, err, "fs.Update")
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   2,
 	})
@@ -71,7 +71,7 @@ func TestCombinedWithIdenticalObjects(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
 	})
@@ -101,12 +101,12 @@ func TestCombinedWithIdenticalObjects(t *testing.T) {
 	err = os.Mkdir(tmpDir, 0775)
 	require.NoError(t, err, "os.Mkdir")
 
-	rebuild(tc, c, 1, i(1), tmpDir, expectedResponse{
+	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
 	})
 
-	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
+	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1, // Only one file should be updated since /a and /b were identical but had new mod times
 	})
@@ -127,7 +127,7 @@ func TestCombinedWithEmptyDirectories(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
 	})
@@ -172,7 +172,7 @@ func TestCombinedWithChangingObjectTypes(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
 	})
@@ -192,7 +192,7 @@ func TestCombinedWithChangingObjectTypes(t *testing.T) {
 	err := fs.Update(updateStream)
 	require.NoError(t, err, "fs.Update")
 
-	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
+	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   3,
 	})
@@ -217,7 +217,7 @@ func TestCombinedNonEmptyDirectoryIntoFile(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   1,
 	})
@@ -233,7 +233,7 @@ func TestCombinedNonEmptyDirectoryIntoFile(t *testing.T) {
 	err := fs.Update(updateStream)
 	require.NoError(t, err, "fs.Update")
 
-	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
+	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1,
 	})
@@ -256,7 +256,7 @@ func TestCombinedNonEmptyDirectoryIntoSymlink(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   1,
 	})
@@ -273,7 +273,7 @@ func TestCombinedNonEmptyDirectoryIntoSymlink(t *testing.T) {
 	err := fs.Update(updateStream)
 	require.NoError(t, err, "fs.Update")
 
-	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
+	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   2,
 	})
@@ -297,7 +297,7 @@ func TestCombinedFileIntoNonEmptyDirectory(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   1,
 	})
@@ -313,7 +313,7 @@ func TestCombinedFileIntoNonEmptyDirectory(t *testing.T) {
 	err := fs.Update(updateStream)
 	require.NoError(t, err, "fs.Update")
 
-	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
+	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1,
 	})
@@ -336,7 +336,7 @@ func TestCombinedFileIntoEmptyDirectory(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   1,
 	})
@@ -352,7 +352,7 @@ func TestCombinedFileIntoEmptyDirectory(t *testing.T) {
 	err := fs.Update(updateStream)
 	require.NoError(t, err, "fs.Update")
 
-	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
+	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1,
 	})
@@ -380,7 +380,7 @@ func TestCombinedWithPacked(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   4,
 	})
@@ -403,7 +403,7 @@ func TestCombinedWithPacked(t *testing.T) {
 		t.Fatalf("fs.Update: %v", err)
 	}
 
-	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
+	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   3, // We updated a pack so all of them were rebuilt
 	})
@@ -435,7 +435,7 @@ func TestCombinedWithPackedSymlinks(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   6,
 	})
@@ -459,7 +459,7 @@ func TestCombinedWithPackedSymlinks(t *testing.T) {
 	err := fs.Update(updateStream)
 	require.NoError(t, err, "fs.Update")
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   6, // We updated one file in a pack so all of them were rebuilt
 	})
@@ -491,7 +491,7 @@ func TestCombinedWithPackAsASymlink(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
 	})
@@ -512,7 +512,7 @@ func TestCombinedWithPackAsASymlink(t *testing.T) {
 	err := fs.Update(updateStream)
 	require.NoError(t, err, "fs.Update")
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   4,
 	})
@@ -543,7 +543,7 @@ func TestCombinedWithIdenticalPackedObjects(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
 	})
@@ -572,12 +572,12 @@ func TestCombinedWithIdenticalPackedObjects(t *testing.T) {
 	err = os.Mkdir(tmpDir, 0775)
 	require.NoError(t, err, "os.Mkdir")
 
-	rebuild(tc, c, 1, i(1), tmpDir, expectedResponse{
+	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
 	})
 
-	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
+	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1, // Only one file should be updated since /a and /b were identical but with a new mod times
 	})

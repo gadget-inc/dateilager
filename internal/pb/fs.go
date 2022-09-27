@@ -9,6 +9,11 @@ import (
 	"path/filepath"
 )
 
+const (
+	TarDeleted = 'D'
+	TarCached  = 'C'
+)
+
 func tarTypeFromMode(mode fs.FileMode) byte {
 	if mode.IsDir() {
 		return tar.TypeDir
@@ -98,7 +103,12 @@ func (o *Object) FileMode() fs.FileMode {
 func (o *Object) TarType() byte {
 	if o.Deleted {
 		// A custom DateiLager typeflag to represent deleted objects
-		return 'D'
+		return TarDeleted
+	}
+
+	if o.Cached {
+		// A custom DateiLager typeflag to represent deleted objects
+		return TarCached
 	}
 
 	return tarTypeFromMode(o.FileMode())

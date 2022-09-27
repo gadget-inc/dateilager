@@ -8,18 +8,20 @@ import (
 )
 
 type queryBuilder struct {
-	project     int64
-	vrange      VersionRange
-	objectQuery *pb.ObjectQuery
-	withHash    bool
+	project                int64
+	vrange                 VersionRange
+	objectQuery            *pb.ObjectQuery
+	availableCacheVersions []int64
+	withHash               bool
 }
 
-func newQueryBuilder(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery, withHash bool) queryBuilder {
+func newQueryBuilder(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery, availableCacheVersions []int64, withHash bool) queryBuilder {
 	return queryBuilder{
-		project:     project,
-		vrange:      vrange,
-		objectQuery: objectQuery,
-		withHash:    withHash,
+		project:                project,
+		vrange:                 vrange,
+		objectQuery:            objectQuery,
+		availableCacheVersions: availableCacheVersions,
+		withHash:               withHash,
 	}
 }
 
@@ -59,11 +61,13 @@ func (qb *queryBuilder) possibleObjectsCTE(withRemovals bool) string {
 
 func (qb *queryBuilder) updatedObjectsCTE() string {
 	template := `
-		SELECT o.path, o.mode, o.size, %s, o.packed, false AS deleted, %s
+		SELECT o.path, o.mode, o.size, h.hash as cache_hash, %s, o.packed, false AS deleted, %s
 		FROM possible_objects o
 		LEFT JOIN dl.contents c
 		  ON o.hash = c.hash
 		 %s
+	    LEFT JOIN cached_object_hashes h
+		  ON h.hash = o.hash
 		WHERE o.project = __project__
 		  AND o.start_version > __start_version__
 		  AND o.start_version <= __stop_version__
@@ -73,7 +77,7 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 		ORDER BY o.path
 	`
 
-	bytesSelector := "c.bytes"
+	bytesSelector := "CASE WHEN h.hash IS NULL THEN c.bytes ELSE NULL END as bytes"
 	contentsPredicate := ""
 	if !qb.objectQuery.WithContent {
 		bytesSelector = "c.names_tar as bytes"
@@ -129,29 +133,39 @@ func (qb *queryBuilder) removedObjectsCTE() string {
 	return fmt.Sprintf(template, ignoresPredicate)
 }
 
+func (qb *queryBuilder) cachedObjectHashesCTE() string {
+	return `
+		SELECT DISTINCT(UNNEST(hashes)) as hash FROM dl.cache_versions WHERE version = ANY (__available_cache_versions__)
+	`
+}
+
 func (qb *queryBuilder) queryWithoutRemovals() string {
 	template := `
 		WITH possible_objects AS (
 		%s
-		), updated_objects AS (
+		), cached_object_hashes AS (
+	%s
+	), updated_objects AS (
 		%s
 		)
 		%s
 	`
 
 	selectStatement := `
-		SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
+		SELECT path, mode, size, (cache_hash).h1 cache_h1, (cache_hash).h2 cache_h2, bytes, packed, deleted, (hash).h1, (hash).h2
 		FROM updated_objects
 	`
 
-	return fmt.Sprintf(template, qb.possibleObjectsCTE(false), qb.updatedObjectsCTE(), selectStatement)
+	return fmt.Sprintf(template, qb.possibleObjectsCTE(false), qb.cachedObjectHashesCTE(), qb.updatedObjectsCTE(), selectStatement)
 }
 
 func (qb *queryBuilder) queryWithRemovals() string {
 	template := `
 		WITH possible_objects AS (
 		%s
-		), updated_objects AS (
+		), cached_object_hashes AS (
+	%s
+	), updated_objects AS (
 		%s
 		), removed_objects AS (
 		%s
@@ -160,18 +174,18 @@ func (qb *queryBuilder) queryWithRemovals() string {
 	`
 
 	selectStatement := `
-		SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
+		SELECT path, mode, size, (cache_hash).h1 cache_h1, (cache_hash).h2 cache_h2, bytes, packed, deleted, (hash).h1, (hash).h2
 		FROM updated_objects
 		UNION ALL
-		SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
+		SELECT path, mode, size, null, null, bytes, packed, deleted, (hash).h1, (hash).h2
 		FROM removed_objects
 	`
-	return fmt.Sprintf(template, qb.possibleObjectsCTE(true), qb.updatedObjectsCTE(), qb.removedObjectsCTE(), selectStatement)
+	return fmt.Sprintf(template, qb.possibleObjectsCTE(true), qb.cachedObjectHashesCTE(), qb.updatedObjectsCTE(), qb.removedObjectsCTE(), selectStatement)
 }
 
 func (qb *queryBuilder) replaceQueryArgs(query string) (string, []any) {
-	argNames := []string{"__project__", "__start_version__", "__stop_version__"}
-	args := []any{qb.project, qb.vrange.From, qb.vrange.To}
+	argNames := []string{"__project__", "__start_version__", "__stop_version__", "__available_cache_versions__"}
+	args := []any{qb.project, qb.vrange.From, qb.vrange.To, qb.availableCacheVersions}
 
 	if qb.objectQuery.Path != "" {
 		argNames = append(argNames, "__path__")

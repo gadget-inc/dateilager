@@ -376,7 +376,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			key.QueryIgnores.Field(query.Ignores),
 		)
 
-		tars, err := db.GetTars(ctx, tx, req.Project, vrange, query)
+		tars, err := db.GetTars(ctx, tx, req.Project, req.AvailableCacheVersions, vrange, query)
 		if err != nil {
 			return status.Errorf(codes.Internal, "FS get tars: %v", err)
 		}
@@ -881,7 +881,7 @@ func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) erro
 	}
 
 	for {
-		version, tar, packPath, err := tars()
+		version, tar, hash, err := tars()
 		if err == io.EOF {
 			break
 		}
@@ -893,13 +893,13 @@ func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) erro
 		}
 
 		err = stream.Send(&pb.GetCacheResponse{
-			Version:  version,
-			Format:   pb.GetCacheResponse_S2_TAR,
-			Bytes:    tar,
-			PackPath: *packPath,
+			Version: version,
+			Format:  pb.GetCacheResponse_S2_TAR,
+			Bytes:   tar,
+			Hash:    hash,
 		})
 		if err != nil {
-			return status.Errorf(codes.Internal, "FS send GetCompressResponse: %v", err)
+			return status.Errorf(codes.Internal, "FS send GetCacheResponse: %v", err)
 		}
 	}
 

@@ -414,7 +414,7 @@ func TestGetCompressWithCacheVersions(t *testing.T) {
 	writePackedFiles(tc, 2, 1, nil, "node_modules/b")
 
 	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 2, len(latestCacheVersionHashes(t, tc)))
 }
 
