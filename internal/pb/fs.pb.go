@@ -478,7 +478,7 @@ type ObjectQuery struct {
 	IsPrefix    bool     `protobuf:"varint,2,opt,name=is_prefix,json=isPrefix,proto3" json:"is_prefix,omitempty"`
 	WithContent bool     `protobuf:"varint,3,opt,name=with_content,json=withContent,proto3" json:"with_content,omitempty"`
 	Ignores     []string `protobuf:"bytes,4,rep,name=ignores,proto3" json:"ignores,omitempty"`
-	WithHash    bool     `protobuf:"varint,5,opt,name=with_hash,json=withHash,proto3" json:"with_hash,omitempty"`
+	WithHash    *bool    `protobuf:"varint,5,opt,name=with_hash,json=withHash,proto3,oneof" json:"with_hash,omitempty"`
 }
 
 func (x *ObjectQuery) Reset() {
@@ -542,8 +542,8 @@ func (x *ObjectQuery) GetIgnores() []string {
 }
 
 func (x *ObjectQuery) GetWithHash() bool {
-	if x != nil {
-		return x.WithHash
+	if x != nil && x.WithHash != nil {
+		return *x.WithHash
 	}
 	return false
 }
@@ -2153,6 +2153,7 @@ func file_internal_pb_fs_proto_init() {
 	}
 	file_internal_pb_fs_proto_msgTypes[0].OneofWrappers = []interface{}{}
 	file_internal_pb_fs_proto_msgTypes[7].OneofWrappers = []interface{}{}
+	file_internal_pb_fs_proto_msgTypes[8].OneofWrappers = []interface{}{}
 	file_internal_pb_fs_proto_msgTypes[9].OneofWrappers = []interface{}{}
 	file_internal_pb_fs_proto_msgTypes[11].OneofWrappers = []interface{}{}
 	file_internal_pb_fs_proto_msgTypes[12].OneofWrappers = []interface{}{}

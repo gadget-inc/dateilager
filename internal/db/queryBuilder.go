@@ -82,8 +82,10 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 	}
 
 	hashSelector := "null::hash as hash"
-	if qb.objectQuery.WithHash {
-		hashSelector = "o.hash"
+	if qb.objectQuery.WithHash != nil {
+		if *qb.objectQuery.WithHash {
+			hashSelector = "o.hash"
+		}
 	}
 
 	return fmt.Sprintf(template, bytesSelector, hashSelector, contentsPredicate, pathPredicate, ignoresPredicate)

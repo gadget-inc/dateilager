@@ -42,11 +42,13 @@ func CopyAllObjects(ctx context.Context, tx pgx.Tx, source int64, target int64) 
 }
 
 func CloneToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, vrange VersionRange) (*int64, error) {
+	withHash := true
+
 	objectQuery := &pb.ObjectQuery{
 		Path:        "",
 		IsPrefix:    true,
 		WithContent: false,
-		WithHash:    true,
+		WithHash:    &withHash,
 	}
 
 	latestVersion, err := LockLatestVersion(ctx, tx, target)
