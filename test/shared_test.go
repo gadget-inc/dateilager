@@ -284,6 +284,7 @@ func verifyDir(t *testing.T, dir string, version int64, files map[string]expecte
 			path = fmt.Sprintf("%s/", path)
 		}
 		info := dirEntries[path]
+		require.True(t, info != nil, "can't verify, no file found at expected path %v", path)
 
 		switch file.fileType {
 		case typeDirectory:

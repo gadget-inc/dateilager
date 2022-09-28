@@ -204,6 +204,164 @@ func TestCombinedWithChangingObjectTypes(t *testing.T) {
 	})
 }
 
+func TestCombinedNonEmptyDirectoryIntoFile(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "foo/bar", "file contents")
+
+	c, fs, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+		version: 1,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"foo/bar": {content: "file contents"},
+	})
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"foo": {content: "content"},
+	})
+
+	err := fs.Update(updateStream)
+	require.NoError(t, err, "fs.Update")
+
+	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
+		version: 2,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"foo": {content: "content"},
+	})
+}
+
+func TestCombinedNonEmptyDirectoryIntoSymlink(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "foo/bar", "file contents")
+
+	c, fs, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+		version: 1,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"foo/bar": {content: "file contents"},
+	})
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"target": {content: "content"},
+		"foo":    {content: "target", mode: symlinkMode},
+	})
+
+	err := fs.Update(updateStream)
+	require.NoError(t, err, "fs.Update")
+
+	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
+		version: 2,
+		count:   2,
+	})
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"target": {content: "content"},
+		"foo":    {content: "target", fileType: typeSymlink},
+	})
+}
+
+func TestCombinedFileIntoNonEmptyDirectory(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "foo", "file contents")
+
+	c, fs, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+		version: 1,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"foo": {content: "file contents"},
+	})
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"foo/bar": {content: "content"},
+	})
+
+	err := fs.Update(updateStream)
+	require.NoError(t, err, "fs.Update")
+
+	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
+		version: 2,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"foo/bar": {content: "content"},
+	})
+}
+
+func TestCombinedFileIntoEmptyDirectory(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "foo", "file contents")
+
+	c, fs, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+		version: 1,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"foo": {content: "file contents"},
+	})
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"foo/": {mode: directoryMode},
+	})
+
+	err := fs.Update(updateStream)
+	require.NoError(t, err, "fs.Update")
+
+	rebuild(tc, c, 1, i(2), tmpDir, expectedResponse{
+		version: 2,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"foo/": {fileType: typeDirectory},
+	})
+}
+
 func TestCombinedWithPacked(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
