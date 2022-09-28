@@ -1,6 +1,5 @@
 {
-    "go.lintTool":"golangci-lint",
-    "go.lintFlags": [
-        "--fast"
-    ]
+  "eslint.workingDirectories": ["./js"],
+  "go.lintTool": "golangci-lint",
+  "go.lintFlags": ["--fast"]
 }
