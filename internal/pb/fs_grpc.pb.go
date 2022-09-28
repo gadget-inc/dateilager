@@ -34,6 +34,7 @@ type FsClient interface {
 	GcProject(ctx context.Context, in *GcProjectRequest, opts ...grpc.CallOption) (*GcProjectResponse, error)
 	GcRandomProjects(ctx context.Context, in *GcRandomProjectsRequest, opts ...grpc.CallOption) (*GcRandomProjectsResponse, error)
 	GcContents(ctx context.Context, in *GcContentsRequest, opts ...grpc.CallOption) (*GcContentsResponse, error)
+	CloneToProject(ctx context.Context, in *CloneToProjectRequest, opts ...grpc.CallOption) (*CloneToProjectResponse, error)
 }
 
 type fsClient struct {
@@ -223,6 +224,15 @@ func (c *fsClient) GcContents(ctx context.Context, in *GcContentsRequest, opts .
 	return out, nil
 }
 
+func (c *fsClient) CloneToProject(ctx context.Context, in *CloneToProjectRequest, opts ...grpc.CallOption) (*CloneToProjectResponse, error) {
+	out := new(CloneToProjectResponse)
+	err := c.cc.Invoke(ctx, "/pb.Fs/CloneToProject", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FsServer is the server API for Fs service.
 // All implementations must embed UnimplementedFsServer
 // for forward compatibility
@@ -239,6 +249,7 @@ type FsServer interface {
 	GcProject(context.Context, *GcProjectRequest) (*GcProjectResponse, error)
 	GcRandomProjects(context.Context, *GcRandomProjectsRequest) (*GcRandomProjectsResponse, error)
 	GcContents(context.Context, *GcContentsRequest) (*GcContentsResponse, error)
+	CloneToProject(context.Context, *CloneToProjectRequest) (*CloneToProjectResponse, error)
 	mustEmbedUnimplementedFsServer()
 }
 
@@ -281,6 +292,9 @@ func (UnimplementedFsServer) GcRandomProjects(context.Context, *GcRandomProjects
 }
 func (UnimplementedFsServer) GcContents(context.Context, *GcContentsRequest) (*GcContentsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GcContents not implemented")
+}
+func (UnimplementedFsServer) CloneToProject(context.Context, *CloneToProjectRequest) (*CloneToProjectResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CloneToProject not implemented")
 }
 func (UnimplementedFsServer) mustEmbedUnimplementedFsServer() {}
 
@@ -525,6 +539,24 @@ func _Fs_GcContents_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Fs_CloneToProject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CloneToProjectRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FsServer).CloneToProject(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pb.Fs/CloneToProject",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FsServer).CloneToProject(ctx, req.(*CloneToProjectRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Fs_ServiceDesc is the grpc.ServiceDesc for Fs service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -567,6 +599,10 @@ var Fs_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GcContents",
 			Handler:    _Fs_GcContents_Handler,
+		},
+		{
+			MethodName: "CloneToProject",
+			Handler:    _Fs_CloneToProject_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

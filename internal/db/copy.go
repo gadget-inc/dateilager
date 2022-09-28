@@ -87,7 +87,7 @@ func CloneToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, 
 	sql = fmt.Sprintf(`
 	%v
 	INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
-	SELECT $%d, $%d, null, path, hash, mode, size, packed
+	SELECT $%d, $%d, null, path, (h1, h2)::hash, mode, size, packed
 	FROM changed_objects
 	WHERE deleted IS false
 	ON CONFLICT

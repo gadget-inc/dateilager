@@ -192,9 +192,9 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 		var encoded []byte
 		var packed bool
 		var deleted bool
-		var hash *string
+		var h1, h2 []byte
 
-		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted, &hash)
+		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted, &h1, &h2)
 		if err != nil {
 			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: %w", project, vrange, err)
 		}
@@ -253,9 +253,9 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange,
 		var encoded []byte
 		var packed bool
 		var deleted bool
-		var hash *string
+		var h1, h2 []byte
 
-		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted, &hash)
+		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted, &h1, &h2)
 		if err != nil {
 			return nil, nil, fmt.Errorf("getTars scan, project %v vrange %v: %w", project, vrange, err)
 		}

@@ -131,7 +131,7 @@ func (qb *queryBuilder) queryWithoutRemovals() string {
 	%s
 	)
 
-	SELECT path, mode, size, bytes, packed, deleted, hash
+	SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
 	FROM updated_objects
 	`
 
@@ -148,10 +148,10 @@ func (qb *queryBuilder) queryWithRemovals() string {
 	%s
 	)
 
-	SELECT path, mode, size, bytes, packed, deleted, hash
+	SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
 	FROM updated_objects
 	UNION ALL
-	SELECT path, mode, size, bytes, packed, deleted, hash
+	SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
 	FROM removed_objects
 	`
 
