@@ -616,7 +616,7 @@ func (c *Client) GcContents(ctx context.Context, sample float32) (int64, error) 
 }
 
 func (c *Client) CloneToProject(ctx context.Context, source int64, target int64, fromVersion int64, toVersion int64) (*int64, error) {
-	ctx, span := telemetry.Start(ctx, "client.cloneToProject", trace.WithAttributes(
+	ctx, span := telemetry.Start(ctx, "client.clone-to-project", trace.WithAttributes(
 		key.Project.Attribute(source),
 		key.FromVersion.Attribute(&target),
 		key.ToVersion.Attribute(&fromVersion),
