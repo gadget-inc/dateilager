@@ -7,10 +7,12 @@ import (
 )
 
 const (
+	Count             = Int64Key("dl.count")
 	DiffCount         = Uint32Key("dl.diff_count")
 	Directory         = StringKey("dl.directory")
 	Environment       = StringKey("dl.environment")
 	FromVersion       = Int64pKey("dl.from_version")
+	KeepVersions      = Int64Key("dl.keep_versions")
 	LatestVersion     = Int64Key("dl.latest_version")
 	LiveObjectsCount  = Int64Key("dl.live_objects_count")
 	ObjectPath        = StringKey("dl.object.path")
@@ -24,6 +26,7 @@ const (
 	QueryIsPrefix     = BoolKey("dl.query.is_prefix")
 	QueryPath         = StringKey("dl.query.path")
 	QueryWithContent  = BoolKey("dl.query.with_content")
+	SampleRate        = Float32Key("dl.sample_rate")
 	Server            = StringKey("dl.server")
 	State             = StringKey("dl.state")
 	Template          = Int64pKey("dl.template")
@@ -122,4 +125,14 @@ func (uk Uint32Key) Field(value uint32) zap.Field {
 
 func (uk Uint32Key) Attribute(value uint32) attribute.KeyValue {
 	return attribute.Int(string(uk), int(value))
+}
+
+type Float32Key string
+
+func (fk Float32Key) Field(value float32) zap.Field {
+	return zap.Float32(string(fk), value)
+}
+
+func (fk Float32Key) Attribute(value float32) attribute.KeyValue {
+	return attribute.Float64(string(fk), float64(value))
 }

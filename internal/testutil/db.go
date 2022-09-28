@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/jackc/pgx/v5"
@@ -16,6 +17,14 @@ func newDbTestConnector(ctx context.Context, uri string) (*DbTestConnector, erro
 	conn, err := pgx.Connect(ctx, uri)
 	if err != nil {
 		return nil, err
+	}
+
+	for _, typeName := range []string{"hash", "hash[]"} {
+		extraType, err := conn.LoadType(ctx, typeName)
+		if err != nil {
+			return nil, fmt.Errorf("could not load type %s: %w", typeName, err)
+		}
+		conn.TypeMap().RegisterType(extraType)
 	}
 
 	tx, err := conn.Begin(ctx)

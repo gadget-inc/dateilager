@@ -61,7 +61,7 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 	if content == nil {
 		content = []byte("")
 	}
-	h1, h2 := HashContent(content)
+	hash := HashContent(content)
 
 	encoded, err := encoder.Encode(content)
 	if err != nil {
@@ -74,7 +74,7 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 		ON CONFLICT
 	       DO NOTHING
 		RETURNING project
-	`, project, version, object.Path, h1, h2, object.Mode, object.Size, false)
+	`, project, version, object.Path, hash.H1, hash.H2, object.Mode, object.Size, false)
 	if err != nil {
 		return false, fmt.Errorf("insert new object, project %v, version %v, path %v: %w", project, version, object.Path, err)
 	}
@@ -108,7 +108,7 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 		VALUES (($1, $2), $3, NULL)
 		ON CONFLICT
 		   DO NOTHING
-	`, h1, h2, encoded)
+	`, hash.H1, hash.H2, encoded)
 
 	results := tx.SendBatch(ctx, batch)
 	defer results.Close()
@@ -120,7 +120,7 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 
 	_, err = results.Exec()
 	if err != nil {
-		return false, fmt.Errorf("insert updated content, hash %x-%x: %w", h1, h2, err)
+		return false, fmt.Errorf("insert updated content, hash %x-%x: %w", hash.H1, hash.H2, err)
 	}
 
 	return true, nil
@@ -128,7 +128,7 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 
 // UpdatePackedObjects returns true if content changed, false otherwise
 func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version int64, parent string, updates []*pb.Object) (bool, error) {
-	var h1, h2 []byte
+	var hash Hash
 	var content []byte
 
 	rows, err := tx.Query(ctx, `
@@ -146,7 +146,7 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 	}
 
 	if rows.Next() {
-		err = rows.Scan(&h1, &h2, &content)
+		err = rows.Scan(&hash.H1, &hash.H2, &content)
 		if err != nil {
 			return false, fmt.Errorf("scan hash and packed content from existing object, project %v, version %v, parent %v: %w", project, version, parent, err)
 		}
@@ -162,9 +162,9 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 		return false, fmt.Errorf("update packed object: %w", err)
 	}
 
-	newH1, newH2 := HashContent(updated)
+	newHash := HashContent(updated)
 
-	if bytes.Equal(h1, newH1) && bytes.Equal(h2, newH2) {
+	if bytes.Equal(hash.H1, newHash.H1) && bytes.Equal(hash.H2, newHash.H2) {
 		// content didn't change
 		return false, nil
 	}
@@ -183,14 +183,14 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 		batch.Queue(`
 			INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 			VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
-		`, project, version, parent, newH1, newH2, 0, len(updated), true)
+		`, project, version, parent, newHash.H1, newHash.H2, 0, len(updated), true)
 
 		batch.Queue(`
 			INSERT INTO dl.contents (hash, bytes, names_tar)
 			VALUES (($1, $2), $3, $4)
 			ON CONFLICT
 			DO NOTHING
-		`, newH1, newH2, updated, namesTar)
+		`, newHash.H1, newHash.H2, updated, namesTar)
 	}
 
 	results := tx.SendBatch(ctx, batch)
@@ -209,7 +209,7 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 
 		_, err = results.Exec()
 		if err != nil {
-			return false, fmt.Errorf("insert packed content, hash %x-%x: %w", newH1, newH2, err)
+			return false, fmt.Errorf("insert packed content, hash %x-%x: %w", newHash.H1, newHash.H2, err)
 		}
 	}
 

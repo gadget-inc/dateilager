@@ -23,6 +23,7 @@ v1() {
 
     echo "a" > "${dir}/a"
     echo "b" > "${dir}/b"
+    echo "c" > "${dir}/c"
 
     mkdir -p "${dir}/n1/n2"
     echo "g" > "${dir}/n1/g"
@@ -33,9 +34,10 @@ v1() {
 v2() {
     local dir="${1}"
 
-    echo "c" > "${dir}/c"
+    echo "d" > "${dir}/d"
     ln -s a "${dir}/e"
     mkdir -p "${dir}/f"
+    rm "${dir}/c"
 
     (
         cd "${dir}/n1/n2"
@@ -48,7 +50,7 @@ v2() {
 v3() {
     local dir="${1}"
 
-    echo "d" > "${dir}"/a
+    echo "e" > "${dir}"/a
     rm "${dir}/b"
 
     log "wrote v3 to ${dir}"
