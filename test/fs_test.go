@@ -859,13 +859,11 @@ func TestCloneTo(t *testing.T) {
 		ToVersion:   1,
 		Target:      2,
 	})
-
 	require.NoError(t, err, "fs.CloneToProject")
 
 	assert.True(t, response.LatestVersion == 2, "expected new version to be 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
-
 	err = fs.Get(prefixQuery(2, &response.LatestVersion, ""), stream)
 	require.NoError(t, err, "fs.Get")
 
@@ -890,7 +888,6 @@ func TestCloneTo(t *testing.T) {
 		ToVersion:   2,
 		Target:      2,
 	})
-
 	require.NoError(t, err, "fs.CloneToProject")
 
 	assert.True(t, response.LatestVersion == 3, "expected new version to be 3")
@@ -924,13 +921,11 @@ func TestCloneToVersionGreaterThanCurrent(t *testing.T) {
 		ToVersion:   20,
 		Target:      2,
 	})
-
 	require.NoError(t, err, "fs.CloneToProject")
 
 	assert.True(t, response.LatestVersion == 2, "expected new version to be 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
-
 	err = fs.Get(prefixQuery(2, i(2), ""), stream)
 	require.NoError(t, err, "fs.Get")
 
@@ -961,13 +956,11 @@ func TestCloneToMultipleFromVersionToVersion(t *testing.T) {
 		ToVersion:   2,
 		Target:      2,
 	})
-
 	require.NoError(t, err, "fs.CloneToProject")
 
 	assert.True(t, response.LatestVersion == 2, "expected new version to be 2")
 
 	stream := &mockGetServer{ctx: tc.Context()}
-
 	err = fs.Get(prefixQuery(2, &response.LatestVersion, ""), stream)
 	require.NoError(t, err, "fs.Get")
 
@@ -982,13 +975,11 @@ func TestCloneToMultipleFromVersionToVersion(t *testing.T) {
 		ToVersion:   5,
 		Target:      2,
 	})
-
 	require.NoError(t, err, "fs.CloneToProject")
 
 	assert.True(t, response.LatestVersion == 3, "expected new version to be 3")
 
 	stream = &mockGetServer{ctx: tc.Context()}
-
 	err = fs.Get(prefixQuery(2, &response.LatestVersion, ""), stream)
 	require.NoError(t, err, "fs.Get")
 

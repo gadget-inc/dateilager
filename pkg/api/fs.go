@@ -123,7 +123,6 @@ func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) 
 	logger.Debug(ctx, "FS.CloneToProject[Init]", key.Project.Field(req.Source))
 
 	samePackPatterns, err := db.HasSamePackPattern(ctx, tx, req.Source, req.Target)
-
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS verifying pack patterns: %v", err)
 	}
@@ -133,7 +132,6 @@ func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) 
 	}
 
 	vrange, err := db.NewVersionRange(ctx, tx, req.Source, &req.FromVersion, &req.ToVersion)
-
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "FS get missing latest version: %v", err)
 	}
@@ -141,10 +139,23 @@ func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) 
 		return nil, status.Errorf(codes.Internal, "FS get latest version: %v", err)
 	}
 
-	newVersion, err := db.CloneToProject(ctx, tx, req.Source, req.Target, vrange)
+	latestVersion, err := db.LockLatestVersion(ctx, tx, req.Target)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS copy to project could not lock target (%d) version: %v", req.Target, err)
+	}
 
+	newVersion := latestVersion + 1
+
+	logger.Debug(ctx, "FS.CloneToProject[Query]", key.Project.Field(req.Source), key.CloneToProject.Field(req.Target), key.FromVersion.Field(&vrange.From), key.ToVersion.Field(&vrange.To))
+
+	err = db.CloneToProject(ctx, tx, req.Source, req.Target, vrange, newVersion)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS copy to project from source (%d) to target (%d) with range {%d,%d}: %v", req.Source, req.Target, vrange.From, vrange.To, err)
+	}
+
+	err = db.UpdateLatestVersion(ctx, tx, req.Target, newVersion)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS copy to project could not update target (%d) to latest version (%d): %v", req.Target, newVersion, err)
 	}
 
 	err = tx.Commit(ctx)
@@ -154,7 +165,7 @@ func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) 
 	logger.Debug(ctx, "FS.CloneToProject[Commit]")
 
 	return &pb.CloneToProjectResponse{
-		LatestVersion: *newVersion,
+		LatestVersion: newVersion,
 	}, nil
 }
 

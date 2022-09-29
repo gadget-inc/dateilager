@@ -630,7 +630,6 @@ func (c *Client) CloneToProject(ctx context.Context, source int64, target int64,
 		FromVersion: fromVersion,
 		ToVersion:   toVersion,
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("clone to project: %w", err)
 	}

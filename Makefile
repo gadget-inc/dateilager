@@ -35,8 +35,8 @@ install:
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.14
 	go install github.com/bojand/ghz/cmd/ghz@v0.105.0
 	go install github.com/gadget-inc/fsdiff/cmd/fsdiff@v0.4
-	go install -v github.com/stamblerre/gocode@latest
-	go install -v golang.org/x/tools/cmd/goimports@latest
+	go install github.com/stamblerre/gocode@latest
+	go install golang.org/x/tools/cmd/goimports@latest
 	cd js && npm ci
 
 migrate:

@@ -195,7 +195,6 @@ export class DateiLagerGrpcClient {
                 ignores,
                 isPrefix: true,
                 withContent: true,
-                withHash: false,
               },
             ],
           },
@@ -241,7 +240,6 @@ export class DateiLagerGrpcClient {
                 isPrefix: false,
                 withContent: true,
                 ignores: [],
-                withHash: false,
               },
             ],
           },
@@ -327,7 +325,7 @@ export class DateiLagerGrpcClient {
    * @param target      The target project.
    * @param fromVersion Start version of the source project.
    * @param toVersion   Stop version of the source project.
-   * @returns             The new version number of hte target project
+   * @returns           The new version number of hte target project
    */
   public async cloneToProject(source: bigint, target: bigint, fromVersion: bigint, toVersion: bigint): Promise<CloneToProjectResponse> {
     return await trace(

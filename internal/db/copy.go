@@ -10,7 +10,6 @@ import (
 
 func CopyAllObjects(ctx context.Context, tx pgx.Tx, source int64, target int64) error {
 	samePackPatterns, err := HasSamePackPattern(ctx, tx, source, target)
-
 	if err != nil {
 		return fmt.Errorf("check matching pack patterns, source %v, target %v: %w", source, target, err)
 	}
@@ -41,70 +40,46 @@ func CopyAllObjects(ctx context.Context, tx pgx.Tx, source int64, target int64) 
 	return nil
 }
 
-func CloneToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, vrange VersionRange) (*int64, error) {
+func CloneToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, vrange VersionRange, newTargetVersion int64) error {
 	objectQuery := &pb.ObjectQuery{
 		Path:        "",
 		IsPrefix:    true,
 		WithContent: false,
-		WithHash:    true,
 	}
 
-	latestVersion, err := LockLatestVersion(ctx, tx, target)
-
-	if err != nil {
-		return nil, fmt.Errorf("copy to project could not lock target (%d) version: %w", target, err)
-	}
-
-	newTargetVersion := latestVersion + 1
-
-	builder := newQueryBuilder(source, vrange, objectQuery)
-	removedSql, removedArgs := builder.buildRemoved()
-	removedArgsLength := len(removedArgs)
-
-	sql := fmt.Sprintf(`
-	%v
-	UPDATE dl.objects
-	SET stop_version = $%d
-	FROM removed_objects
-	WHERE "removed_objects".path = "objects".path
-	AND "objects".project = $%d
-	AND "objects".stop_version IS NULL
-	`, AsCte(removedSql, "removed_objects"), removedArgsLength+1, removedArgsLength+2)
-
-	removedArgs = append(removedArgs, newTargetVersion, target)
-
-	_, err = tx.Exec(ctx, sql, removedArgs...)
-
-	if err != nil {
-		return nil, fmt.Errorf("copy to project could not update removed files to version (%d): %w", latestVersion, err)
-	}
-
-	changedSql, changedArgs := builder.buildChanged()
+	builder := newQueryBuilder(source, vrange, objectQuery, true)
+	changedSql, changedArgs := builder.build(true)
 	changedArgsLength := len(changedArgs)
 
+	sql := fmt.Sprintf(`
+		%s
+		UPDATE dl.objects
+		SET stop_version = $%d
+		FROM changed_objects
+		WHERE "changed_objects".path = "objects".path
+		  AND "objects".project = $%d
+		  AND "objects".stop_version IS NULL
+	`, changedSql, changedArgsLength+1, changedArgsLength+2)
+
+	_, err := tx.Exec(ctx, sql, append(changedArgs, newTargetVersion, target)...)
+	if err != nil {
+		return fmt.Errorf("copy to project could not update removed files to version (%d): %w", newTargetVersion, err)
+	}
+
 	sql = fmt.Sprintf(`
-	%v
-	INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
-	SELECT $%d, $%d, null, path, (h1, h2)::hash, mode, size, packed
-	FROM changed_objects
-	WHERE deleted IS false
-	ON CONFLICT
-	   DO NOTHING
-	`, AsCte(changedSql, "changed_objects"), changedArgsLength+1, changedArgsLength+2)
+		%s
+		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
+		SELECT $%d, $%d, null, path, (h1, h2)::hash, mode, size, packed
+		FROM changed_objects
+		WHERE deleted IS false
+		ON CONFLICT
+		DO NOTHING
+	`, changedSql, changedArgsLength+1, changedArgsLength+2)
 
-	changedArgs = append(changedArgs, target, newTargetVersion)
-
-	_, err = tx.Exec(ctx, sql, changedArgs...)
-
+	_, err = tx.Exec(ctx, sql, append(changedArgs, target, newTargetVersion)...)
 	if err != nil {
-		return nil, fmt.Errorf("copy to project could not insert updated files: %w", err)
+		return fmt.Errorf("copy to project could not insert updated files: %w", err)
 	}
 
-	err = UpdateLatestVersion(ctx, tx, target, newTargetVersion)
-
-	if err != nil {
-		return nil, fmt.Errorf("copy to project could not update target (%d) to latest version (%d): %w", target, newTargetVersion, err)
-	}
-
-	return &newTargetVersion, nil
+	return nil
 }
