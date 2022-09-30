@@ -67,7 +67,6 @@ message Objekt {
     int64 size = 3;
     bool deleted = 4;
     optional bytes content = 5;
-    bool cached = 6;
 }
 
 message ObjectQuery {

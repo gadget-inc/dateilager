@@ -212,18 +212,12 @@ func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []
 			mode = 0755
 		}
 
-		object := &pb.Object{
-			Path:    path,
-			Mode:    mode,
-			Size:    int64(len(info.content)),
-			Content: []byte(info.content),
-			Deleted: info.deleted,
-		}
+		object := db.NewUncachedTarObject(path, mode, int64(len(info.content)), info.deleted, []byte(info.content))
 
-		err := contentWriter.WriteObject(object, true)
+		err := contentWriter.WriteObject(&object, true)
 		require.NoError(tc.T(), err, "write content to TAR")
 
-		err = namesWriter.WriteObject(object, false)
+		err = namesWriter.WriteObject(&object, false)
 		require.NoError(tc.T(), err, "write name to TAR")
 	}
 

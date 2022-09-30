@@ -278,26 +278,17 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, availableCacheVersio
 			return encoded, &path, nil
 		}
 
-		var content []byte
-		var cached = false
+		var object TarObject
 
 		if cache_hash != nil {
-			content = cache_hash
-			cached = true
+			object = NewCachedTarObject(path, mode, size, cache_hash)
 		} else {
-			content, err = contentDecoder.Decoder(encoded)
+			content, err := contentDecoder.Decoder(encoded)
 			if err != nil {
 				return nil, nil, fmt.Errorf("getTars decode content %v: %w", path, err)
 			}
-		}
 
-		object := pb.Object{
-			Path:    path,
-			Mode:    mode,
-			Size:    size,
-			Deleted: deleted,
-			Content: content,
-			Cached:  cached,
+			object = NewUncachedTarObject(path, mode, size, deleted, content)
 		}
 
 		err = tarWriter.WriteObject(&object, true)
