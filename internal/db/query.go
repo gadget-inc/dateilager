@@ -47,11 +47,11 @@ func ListProjects(ctx context.Context, tx pgx.Tx) ([]*pb.Project, error) {
 
 func HasSamePackPattern(ctx context.Context, tx pgx.Tx, project_1 int64, project_2 int64) (bool, error) {
 	var samePackPatterns bool
+
 	err := tx.QueryRow(ctx, `
 		SELECT COALESCE((SELECT pack_patterns FROM dl.projects WHERE id = $1), '{}') =
 		       COALESCE((SELECT pack_patterns FROM dl.projects WHERE id = $2), '{}');
 	`, project_1, project_2).Scan(&samePackPatterns)
-
 	if err != nil {
 		return false, fmt.Errorf("check matching pack patterns, source %v, target %v: %w", project_1, project_2, err)
 	}
@@ -166,7 +166,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 	}
 
 	builder := newQueryBuilder(project, vrange, objectQuery, false)
-	sql, args := builder.build(false)
+	sql, args := builder.build()
 	rows, err := tx.Query(ctx, sql, args...)
 
 	if err != nil {
@@ -229,7 +229,7 @@ type tarStream func() ([]byte, *string, error)
 
 func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
 	builder := newQueryBuilder(project, vrange, objectQuery, false)
-	sql, args := builder.build(false)
+	sql, args := builder.build()
 	rows, err := tx.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("getObjects query, project %v vrange %v: %w", project, vrange, err)

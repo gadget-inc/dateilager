@@ -31,13 +31,13 @@ func (qb *queryBuilder) possibleObjectsCTE() string {
 		  AND (
 		    -- live objects
 		    (
-	          start_version > __start_version__
+		      start_version > __start_version__
 		      AND start_version <= __stop_version__
 		      AND (stop_version IS NULL OR stop_version > __stop_version__)
 		    )
 		    OR
 		    -- removed objects
-			(
+		    (
 		      start_version <= __stop_version__
 		      AND stop_version > __start_version__
 		      AND stop_version <= __stop_version__
@@ -52,13 +52,13 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 		FROM possible_objects o
 		LEFT JOIN dl.contents c
 		  ON o.hash = c.hash
-		  %s
+		 %s
 		WHERE o.project = __project__
-			AND o.start_version > __start_version__
-			AND o.start_version <= __stop_version__
-			AND (o.stop_version IS NULL OR o.stop_version > __stop_version__)
-			%s
-			%s
+		  AND o.start_version > __start_version__
+		  AND o.start_version <= __stop_version__
+		  AND (o.stop_version IS NULL OR o.stop_version > __stop_version__)
+		  %s
+		  %s
 		ORDER BY o.path
 	`
 
@@ -101,11 +101,11 @@ func (qb *queryBuilder) removedObjectsCTE() string {
 		  AND o.stop_version <= __stop_version__
 		  %s
 		  AND (
-		  	-- Skip removing files if they are in the updated_objects list
-		  	(RIGHT(o.path, 1) != '/' AND o.path NOT IN (SELECT path FROM updated_objects))
-		  	OR
-		  	-- Skip removing empty directories if any updated_objects are within that directory
-		  	(RIGHT(o.path, 1) = '/' AND NOT EXISTS (SELECT true FROM updated_objects WHERE STARTS_WITH(path, o.path)))
+		    -- Skip removing files if they are in the updated_objects list
+		    (RIGHT(o.path, 1) != '/' AND o.path NOT IN (SELECT path FROM updated_objects))
+		    OR
+		    -- Skip removing empty directories if any updated_objects are within that directory
+		    (RIGHT(o.path, 1) = '/' AND NOT EXISTS (SELECT true FROM updated_objects WHERE STARTS_WITH(path, o.path)))
 		  )
 		ORDER BY o.path
 	`
@@ -118,14 +118,7 @@ func (qb *queryBuilder) removedObjectsCTE() string {
 	return fmt.Sprintf(template, ignoresPredicate)
 }
 
-func (qb *queryBuilder) selectWithoutRemovals() string {
-	return `
-		SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
-		FROM updated_objects
-	`
-}
-
-func (qb *queryBuilder) queryWithoutRemovals(asCte bool) string {
+func (qb *queryBuilder) queryWithoutRemovals() string {
 	template := `
 		WITH possible_objects AS (
 		%s
@@ -135,27 +128,15 @@ func (qb *queryBuilder) queryWithoutRemovals(asCte bool) string {
 		%s
 	`
 
-	selectStatement := qb.selectWithoutRemovals()
-	if asCte {
-		selectStatement = fmt.Sprintf(`, changed_objects AS (
-		%s
-		)`, selectStatement)
-	}
+	selectStatement := `
+		SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
+		FROM updated_objects
+	`
 
 	return fmt.Sprintf(template, qb.possibleObjectsCTE(), qb.updatedObjectsCTE(), selectStatement)
 }
 
-func (qb *queryBuilder) selectWithRemovals() string {
-	return `
-		SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
-		FROM updated_objects
-		UNION ALL
-		SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
-		FROM removed_objects
-	`
-}
-
-func (qb *queryBuilder) queryWithRemovals(asCte bool) string {
+func (qb *queryBuilder) queryWithRemovals() string {
 	template := `
 		WITH possible_objects AS (
 		%s
@@ -167,13 +148,13 @@ func (qb *queryBuilder) queryWithRemovals(asCte bool) string {
 		%s
 	`
 
-	selectStatement := qb.selectWithRemovals()
-	if asCte {
-		selectStatement = fmt.Sprintf(`, changed_objects AS (
-		%s
-		)`, selectStatement)
-	}
-
+	selectStatement := `
+		SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
+		FROM updated_objects
+		UNION ALL
+		SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
+		FROM removed_objects
+	`
 	return fmt.Sprintf(template, qb.possibleObjectsCTE(), qb.updatedObjectsCTE(), qb.removedObjectsCTE(), selectStatement)
 }
 
@@ -209,13 +190,13 @@ func (qb *queryBuilder) replaceQueryArgs(query string) (string, []any) {
 	return query, args
 }
 
-func (qb *queryBuilder) build(asCte bool) (string, []any) {
+func (qb *queryBuilder) build() (string, []any) {
 	var query string
 
 	if qb.vrange.From == 0 {
-		query = qb.queryWithoutRemovals(asCte)
+		query = qb.queryWithoutRemovals()
 	} else {
-		query = qb.queryWithRemovals(asCte)
+		query = qb.queryWithRemovals()
 	}
 
 	query, args := qb.replaceQueryArgs(query)
