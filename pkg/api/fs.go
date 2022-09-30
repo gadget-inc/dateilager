@@ -101,6 +101,74 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 	return &pb.NewProjectResponse{}, nil
 }
 
+func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) (*pb.CloneToProjectResponse, error) {
+	trace.SpanFromContext(ctx).SetAttributes(
+		key.Project.Attribute(req.Source),
+		key.FromVersion.Attribute(&req.FromVersion),
+		key.ToVersion.Attribute(&req.ToVersion),
+		key.CloneToProject.Attribute(req.Target),
+	)
+
+	err := requireAdminAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
+	}
+	defer close(ctx)
+
+	logger.Debug(ctx, "FS.CloneToProject[Init]", key.Project.Field(req.Source))
+
+	samePackPatterns, err := db.HasSamePackPattern(ctx, tx, req.Source, req.Target)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS verifying pack patterns: %v", err)
+	}
+
+	if !samePackPatterns {
+		return nil, status.Errorf(codes.InvalidArgument, "FS projects have different pack patterns: %v", err)
+	}
+
+	vrange, err := db.NewVersionRange(ctx, tx, req.Source, &req.FromVersion, &req.ToVersion)
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, status.Errorf(codes.NotFound, "FS get missing latest version: %v", err)
+	}
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS get latest version: %v", err)
+	}
+
+	latestVersion, err := db.LockLatestVersion(ctx, tx, req.Target)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS copy to project could not lock target (%d) version: %v", req.Target, err)
+	}
+
+	newVersion := latestVersion + 1
+
+	logger.Debug(ctx, "FS.CloneToProject[Query]", key.Project.Field(req.Source), key.CloneToProject.Field(req.Target), key.FromVersion.Field(&vrange.From), key.ToVersion.Field(&vrange.To))
+
+	err = db.CloneToProject(ctx, tx, req.Source, req.Target, vrange, newVersion)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS copy to project from source (%d) to target (%d) with range {%d,%d}: %v", req.Source, req.Target, vrange.From, vrange.To, err)
+	}
+
+	err = db.UpdateLatestVersion(ctx, tx, req.Target, newVersion)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS copy to project could not update target (%d) to latest version (%d): %v", req.Target, newVersion, err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS clone commit tx: %v", err)
+	}
+	logger.Debug(ctx, "FS.CloneToProject[Commit]")
+
+	return &pb.CloneToProjectResponse{
+		LatestVersion: newVersion,
+	}, nil
+}
+
 func (f *Fs) DeleteProject(ctx context.Context, req *pb.DeleteProjectRequest) (*pb.DeleteProjectResponse, error) {
 	trace.SpanFromContext(ctx).SetAttributes(
 		key.Project.Attribute(req.Project),

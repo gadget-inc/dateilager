@@ -28,6 +28,8 @@ service Fs {
     rpc GcRandomProjects(GcRandomProjectsRequest) returns (GcRandomProjectsResponse);
 
     rpc GcContents(GcContentsRequest) returns (GcContentsResponse);
+    
+    rpc CloneToProject(CloneToProjectRequest) returns (CloneToProjectResponse);
 }
 
 message NewProjectRequest {
@@ -161,4 +163,15 @@ message GcContentsRequest {
 
 message GcContentsResponse {
     int64 count = 1;
+}
+
+message CloneToProjectRequest {
+    int64 source = 1;
+    int64 from_version = 2;
+    int64 to_version = 3;
+    int64 target = 4;
+}
+
+message CloneToProjectResponse {
+    int64 latest_version = 1;
 }

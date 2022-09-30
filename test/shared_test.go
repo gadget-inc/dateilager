@@ -622,6 +622,7 @@ func debugObjects(tc util.TestCtx) {
 	rows, err := conn.Query(tc.Context(), `
 		SELECT project, start_version, stop_version, path, mode, size, packed, (hash).h1, (hash).h2
 		FROM dl.objects
+		ORDER BY project, start_version, stop_version, path
 	`)
 	require.NoError(tc.T(), err, "debug execute object list")
 

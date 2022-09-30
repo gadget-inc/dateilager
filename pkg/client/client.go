@@ -615,6 +615,28 @@ func (c *Client) GcContents(ctx context.Context, sample float32) (int64, error) 
 	return response.Count, nil
 }
 
+func (c *Client) CloneToProject(ctx context.Context, source int64, target int64, fromVersion int64, toVersion int64) (*int64, error) {
+	ctx, span := telemetry.Start(ctx, "client.clone-to-project", trace.WithAttributes(
+		key.Project.Attribute(source),
+		key.FromVersion.Attribute(&target),
+		key.ToVersion.Attribute(&fromVersion),
+		key.CloneToProject.Attribute(toVersion),
+	))
+	defer span.End()
+
+	response, err := c.fs.CloneToProject(ctx, &pb.CloneToProjectRequest{
+		Source:      source,
+		Target:      target,
+		FromVersion: fromVersion,
+		ToVersion:   toVersion,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("clone to project: %w", err)
+	}
+
+	return &response.LatestVersion, nil
+}
+
 func parallelWorkerCount() int {
 	halfNumCPU := runtime.NumCPU() / 2
 	if halfNumCPU < 1 {

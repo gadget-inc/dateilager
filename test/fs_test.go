@@ -839,3 +839,152 @@ func TestResetAll(t *testing.T) {
 
 	writeProject(tc, 1, 1)
 }
+
+func TestCloneTo(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeProject(tc, 2, 1)
+
+	writeObject(tc, 1, 1, nil, "/a/c", "a/c v1")
+	writeObject(tc, 1, 1, nil, "/a/d", "a/d v1")
+	writeObject(tc, 1, 1, nil, "/a/f", "a/f v1")
+
+	fs := tc.FsApi()
+
+	response, err := fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
+		Source:      1,
+		FromVersion: 0,
+		ToVersion:   1,
+		Target:      2,
+	})
+	require.NoError(t, err, "fs.CloneToProject")
+
+	assert.True(t, response.LatestVersion == 2, "expected new version to be 2")
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(2, &response.LatestVersion, ""), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+		"/a/d": {content: "a/d v1"},
+		"/a/f": {content: "a/f v1"},
+	})
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"/a/c": {deleted: true},
+		"/a/d": {content: "a/d v2"},
+	})
+	err = fs.Update(updateStream)
+	require.NoError(t, err, "fs.Update")
+
+	writeObject(tc, 1, 2, nil, "/a/b", "a/b v1")
+
+	response, err = fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
+		Source:      1,
+		FromVersion: 1,
+		ToVersion:   2,
+		Target:      2,
+	})
+	require.NoError(t, err, "fs.CloneToProject")
+
+	assert.True(t, response.LatestVersion == 3, "expected new version to be 3")
+
+	stream = &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(2, &response.LatestVersion, ""), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"/a/d": {content: "a/d v2"},
+		"/a/b": {content: "a/b v1"},
+		"/a/f": {content: "a/f v1"},
+	})
+}
+
+func TestCloneToVersionGreaterThanCurrent(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeProject(tc, 2, 1)
+
+	writeObject(tc, 1, 1, nil, "/a/c", "a/c v1")
+	writeObject(tc, 1, 1, nil, "/a/d", "a/d v1")
+
+	fs := tc.FsApi()
+
+	response, err := fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
+		Source:      1,
+		FromVersion: 0,
+		ToVersion:   20,
+		Target:      2,
+	})
+	require.NoError(t, err, "fs.CloneToProject")
+
+	assert.True(t, response.LatestVersion == 2, "expected new version to be 2")
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(2, i(2), ""), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"/a/c": {content: "a/c v1"},
+		"/a/d": {content: "a/d v1"},
+	})
+}
+
+// More complicated test involving a project with multiple versions already and cloning versions with increment > 1
+func TestCloneToMultipleFromVersionToVersion(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 5)
+	writeProject(tc, 2, 1)
+
+	writeObject(tc, 1, 1, i(2), "/a/c", "a/c v1")
+	writeObject(tc, 1, 1, i(6), "/a/d", "a/d v1")
+	writeObject(tc, 1, 2, i(4), "/a/b", "a/b v1")
+	writeObject(tc, 1, 5, nil, "/a/f", "a/f v1")
+
+	fs := tc.FsApi()
+
+	response, err := fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
+		Source:      1,
+		FromVersion: 0,
+		ToVersion:   2,
+		Target:      2,
+	})
+	require.NoError(t, err, "fs.CloneToProject")
+
+	assert.True(t, response.LatestVersion == 2, "expected new version to be 2")
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(2, &response.LatestVersion, ""), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"/a/d": {content: "a/d v1"},
+		"/a/b": {content: "a/b v1"},
+	})
+
+	response, err = fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
+		Source:      1,
+		FromVersion: 2,
+		ToVersion:   5,
+		Target:      2,
+	})
+	require.NoError(t, err, "fs.CloneToProject")
+
+	assert.True(t, response.LatestVersion == 3, "expected new version to be 3")
+
+	stream = &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(2, &response.LatestVersion, ""), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"/a/f": {content: "a/f v1"},
+		"/a/d": {content: "a/d v1"},
+	})
+}

@@ -6,7 +6,7 @@ import { GrpcTransport } from "@protobuf-ts/grpc-transport";
 import type { ClientStreamingCall, RpcOptions } from "@protobuf-ts/runtime-rpc";
 import { TextDecoder, TextEncoder } from "util";
 import { trace, tracer } from "./internal/telemetry";
-import type { Objekt, Project, UpdateRequest, UpdateResponse } from "./pb/fs_pb";
+import type { CloneToProjectResponse, Objekt, Project, UpdateRequest, UpdateResponse } from "./pb/fs_pb";
 import { FsClient } from "./pb/fs_pb.client";
 
 export type { Objekt, Project };
@@ -316,6 +316,35 @@ export class DateiLagerGrpcClient {
    */
   public async resetToSnapshotInDevOrTests(projects: Project[]): Promise<void> {
     await this._client.reset({ projects }, this._rpcOptions());
+  }
+
+  /**
+   * Clones the `source` projects changes (from `fromVersion` up to `toVersion`) to the `target` project.
+   * This method assumes that it is always a one way clone from source to target, it does not take into account
+   * the changes that have occurred in the `target` project.
+   *
+   * @param source      The source project.
+   * @param target      The target project.
+   * @param fromVersion Start version of the source project.
+   * @param toVersion   Stop version of the source project.
+   * @returns             The new version number of the target project
+   */
+  public async cloneToProject(source: bigint, target: bigint, fromVersion: bigint, toVersion: bigint): Promise<CloneToProjectResponse> {
+    return await trace(
+      "dateilager-grpc-client.clone-to-project",
+      {
+        attributes: {
+          "dl.source": String(source),
+          "dl.target": String(target),
+          "dl.fromVersion": String(fromVersion),
+          "dl.toVersion": String(toVersion),
+        },
+      },
+      async () => {
+        const call = await this._client.cloneToProject({ source, target, fromVersion, toVersion }, this._rpcOptions());
+        return call.response;
+      }
+    );
   }
 }
 
