@@ -268,3 +268,31 @@ func TestRebuildWithCache(t *testing.T) {
 	assertFileContent(filepath.Join(bCachePath, "1"), "node_modules/b/1 v1")
 	assertFileContent(filepath.Join(bCachePath, "2"), "node_modules/b/2 v1")
 }
+
+func TestRebuildWithInexistantCacheDir(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writePackedFiles(tc, 1, 1, nil, "pack/a")
+
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
+	require.NoError(t, err)
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	badPath := "/this/folder/does/not/exist"
+	rebuild(tc, c, 1, nil, tmpDir, &badPath, expectedResponse{
+		version: 1,
+		count:   2,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"pack/a/1": {content: "pack/a/1 v1"},
+		"pack/a/2": {content: "pack/a/2 v1"},
+	})
+}

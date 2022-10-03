@@ -600,6 +600,8 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 		return -1, err
 	}
 
+	availableVersions := ReadCacheVersionFile(cacheRootDir)
+
 	ctx, span := telemetry.Start(ctx, "client.get_cache")
 	defer span.End()
 
@@ -625,6 +627,12 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 		return -1, fmt.Errorf("fs.GetCache receive: %w", err)
 	}
 	version := response.Version
+
+	for _, availableVersion := range availableVersions {
+		if version == availableVersion {
+			return availableVersions[len(availableVersions)-1], nil
+		}
+	}
 
 	tarChan := make(chan *pb.GetCacheResponse, 16)
 	group, ctx := errgroup.WithContext(ctx)
@@ -677,6 +685,10 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 					hashHex := hex.EncodeToString(response.Hash)
 					tempDest := filepath.Join(tmpObjectDir, hashHex)
 					finalDest := filepath.Join(objectDir, hashHex)
+
+					if fileExists(finalDest) {
+						return nil
+					}
 
 					if fileExists(tempDest) {
 						err := os.RemoveAll(tempDest)

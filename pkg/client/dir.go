@@ -48,14 +48,16 @@ func cacheVersionPath(cacheRootDir string) string {
 func ReadCacheVersionFile(cacheRootDir string) []int64 {
 	var availableVersions = []int64{}
 	content, err := os.ReadFile(cacheVersionPath(cacheRootDir))
-	if err == nil {
-		versionsStrings := strings.Split(string(content), "\n")
+	if err != nil {
+		return availableVersions
+	}
 
-		for _, version := range versionsStrings {
-			versionNum, err := strconv.ParseInt(version, 10, 64)
-			if err == nil {
-				availableVersions = append(availableVersions, versionNum)
-			}
+	versionsStrings := strings.Split(string(content), "\n")
+
+	for _, version := range versionsStrings {
+		versionNum, err := strconv.ParseInt(version, 10, 64)
+		if err == nil {
+			availableVersions = append(availableVersions, versionNum)
 		}
 	}
 

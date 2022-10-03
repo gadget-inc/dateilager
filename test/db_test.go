@@ -1,7 +1,12 @@
 package test
 
 import (
+	"encoding/hex"
+	"io"
+	"regexp"
 	"testing"
+
+	"github.com/gadget-inc/dateilager/internal/pb"
 
 	"github.com/stretchr/testify/require"
 
@@ -90,4 +95,62 @@ func TestCreateCacheIgnoresModulesNoLongerUsed(t *testing.T) {
 	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(latestCacheVersionHashes(t, tc)))
+}
+
+func TestGetCacheWithMultipleVersions(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 3, "pack/")
+
+	writePackedFiles(tc, 1, 1, nil, "pack/a")
+	cache1, err := db.CreateCache(tc.Context(), tc.Connect(), "pack")
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(latestCacheVersionHashes(t, tc)))
+
+	deleteObject(tc, 1, 2, "pack/a")
+	writePackedFiles(tc, 1, 1, nil, "pack/b")
+	cache2, err := db.CreateCache(tc.Context(), tc.Connect(), "pack")
+	require.NoError(t, err)
+
+	vrange, err := db.NewVersionRange(tc.Context(), tc.Connect(), 1, i(0), i(1))
+	require.NoError(t, err)
+
+	availableVersions := []int64{cache1, cache2}
+
+	query := &pb.ObjectQuery{
+		Path:        "pack",
+		IsPrefix:    true,
+		WithContent: true,
+	}
+	tars, err := db.GetTars(tc.Context(), tc.Connect(), 1, availableVersions, vrange, query)
+	require.NoError(t, err)
+
+	var paths []string
+
+	for {
+		tar, _, err := tars()
+		if err == io.EOF {
+			break
+		}
+		if err == db.SKIP {
+			continue
+		}
+		tarReader := db.NewTarReader(tar)
+
+		for {
+			header, err := tarReader.Next()
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			content, err := tarReader.ReadContent()
+			require.NoError(t, err)
+			assert.Equal(t, pb.TarCached, int32(header.Typeflag))
+			hexContent := hex.EncodeToString(content)
+			assert.Regexp(t, regexp.MustCompile("[0-9a-f]{64}"), hexContent)
+			paths = append(paths, header.Name)
+		}
+	}
+	assert.Equal(t, []string{"pack/a", "pack/b"}, paths)
 }
