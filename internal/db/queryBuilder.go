@@ -96,7 +96,7 @@ func (qb *queryBuilder) removedObjectsCTE() string {
 		SELECT o.path, o.mode, 0 AS size, ''::bytea as bytes, o.packed, true AS deleted, null::hash as hash
 		FROM possible_objects o
 		WHERE o.project = __project__
-		  AND o.start_version <= __stop_version__
+		  AND o.start_version <= __start_version__
 		  AND o.stop_version > __start_version__
 		  AND o.stop_version <= __stop_version__
 		  %s

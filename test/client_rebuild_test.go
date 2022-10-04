@@ -176,3 +176,41 @@ func TestRebuildWithManyObjects(t *testing.T) {
 
 	verifyDir(t, tmpDir, 1, expectedFiles)
 }
+
+func TestRebuildWithUpdatedObjectToDirectory(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 4)
+	writeObject(tc, 1, 1, nil, "a", "a v1")
+	writeObject(tc, 1, 2, i(3), "b", "b v2")
+	writeObject(tc, 1, 3, i(4), "b/c", "b/c v3")
+	writeObject(tc, 1, 3, nil, "b/d", "b/d v3")
+	writeObject(tc, 1, 4, nil, "b/e", "b/e v4")
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, i(1), tmpDir, expectedResponse{
+		version: 1,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"a": {content: "a v1"},
+	})
+
+	rebuild(tc, c, 1, nil, tmpDir, expectedResponse{
+		version: 4,
+		count:   2,
+	})
+
+	verifyDir(t, tmpDir, 4, map[string]expectedFile{
+		"a":   {content: "a v1"},
+		"b/d": {content: "b/d v3"},
+		"b/e": {content: "b/e v4"},
+	})
+}
