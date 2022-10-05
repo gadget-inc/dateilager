@@ -99,6 +99,22 @@ func NewClient(ctx context.Context, server string, opts ...func(*options)) (*Cli
 		),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+		grpc.WithDefaultServiceConfig(`
+			{
+				"methodConfig": [
+					{
+						"name": [{"service": "pb.Fs"}],
+						"retryPolicy": {
+							"maxAttempts": 2,
+							"initialBackoff": "0.1s",
+							"maxBackoff": "1s",
+							"backoffMultiplier": 1.5,
+							"retryableStatusCodes": [ "UNAVAILABLE", "INTERNAL", "DEADLINE_EXCEEDED" ]
+						}
+					}
+				]
+			}
+		`),
 	)
 	if err != nil {
 		return nil, err

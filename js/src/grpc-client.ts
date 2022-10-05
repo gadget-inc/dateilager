@@ -77,6 +77,22 @@ export class DateiLagerGrpcClient {
   public constructor(options: DateiLagerGrpcClientOptions) {
     const tokenFn = typeof options.token === "string" ? () => Promise.resolve(options.token as string) : options.token;
 
+    if (!options.grpcClientOptions) options.grpcClientOptions = {};
+    options.grpcClientOptions["grpc.service_config"] = JSON.stringify({
+      methodConfig: [
+        {
+          name: [{ service: "pb.Fs" }],
+          retryPolicy: {
+            maxAttempts: 2,
+            initialBackoff: "0.1s",
+            maxBackoff: "1s",
+            backoffMultiplier: 1.5,
+            retryableStatusCodes: ["UNAVAILABLE", "INTERNAL", "DEADLINE_EXCEEDED"],
+          },
+        },
+      ],
+    });
+
     this._transport = new GrpcTransport({
       host: typeof options.server === "string" ? options.server : `${options.server.host}:${options.server.port}`,
       channelCredentials: credentials.combineChannelCredentials(
