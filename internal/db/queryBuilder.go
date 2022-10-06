@@ -23,27 +23,38 @@ func newQueryBuilder(project int64, vrange VersionRange, objectQuery *pb.ObjectQ
 	}
 }
 
-func (qb *queryBuilder) possibleObjectsCTE() string {
-	return `
-		SELECT *
-		FROM dl.objects
-		WHERE project = __project__
-		  AND (
-		    -- live objects
-		    (
-		      start_version > __start_version__
-		      AND start_version <= __stop_version__
-		      AND (stop_version IS NULL OR stop_version > __stop_version__)
-		    )
-		    OR
-		    -- removed objects
-		    (
-		      start_version <= __stop_version__
-		      AND stop_version > __start_version__
-		      AND stop_version <= __stop_version__
-		    )
-		  )
-	`
+func (qb *queryBuilder) possibleObjectsCTE(withRemovals bool) string {
+	if withRemovals {
+		return `
+			SELECT *
+			FROM dl.objects
+			WHERE project = __project__
+			  AND (
+			    -- live objects
+				(
+				  start_version > __start_version__
+				  AND start_version <= __stop_version__
+				  AND (stop_version IS NULL OR stop_version > __stop_version__)
+				)
+				OR
+				-- removed objects
+				(
+				  start_version <= __stop_version__
+				  AND stop_version > __start_version__
+				  AND stop_version <= __stop_version__
+				)
+			  )
+		`
+	} else {
+		return `
+			SELECT *
+			FROM dl.objects
+			WHERE project = __project__
+			  AND start_version > __start_version__
+			  AND start_version <= __stop_version__
+			  AND (stop_version IS NULL OR stop_version > __stop_version__)
+		`
+	}
 }
 
 func (qb *queryBuilder) updatedObjectsCTE() string {
@@ -133,7 +144,7 @@ func (qb *queryBuilder) queryWithoutRemovals() string {
 		FROM updated_objects
 	`
 
-	return fmt.Sprintf(template, qb.possibleObjectsCTE(), qb.updatedObjectsCTE(), selectStatement)
+	return fmt.Sprintf(template, qb.possibleObjectsCTE(false), qb.updatedObjectsCTE(), selectStatement)
 }
 
 func (qb *queryBuilder) queryWithRemovals() string {
@@ -155,7 +166,7 @@ func (qb *queryBuilder) queryWithRemovals() string {
 		SELECT path, mode, size, bytes, packed, deleted, (hash).h1, (hash).h2
 		FROM removed_objects
 	`
-	return fmt.Sprintf(template, qb.possibleObjectsCTE(), qb.updatedObjectsCTE(), qb.removedObjectsCTE(), selectStatement)
+	return fmt.Sprintf(template, qb.possibleObjectsCTE(true), qb.updatedObjectsCTE(), qb.removedObjectsCTE(), selectStatement)
 }
 
 func (qb *queryBuilder) replaceQueryArgs(query string) (string, []any) {
