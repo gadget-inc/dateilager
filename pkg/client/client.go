@@ -694,7 +694,10 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 
 					if fileExists(tempDest) {
 						err := os.RemoveAll(tempDest)
-						return fmt.Errorf("temporary cache folder exists for %s and couldn't be removed: %w", tempDest, err)
+						if err != nil {
+							cancel()
+							return fmt.Errorf("temporary cache folder exists for %s and couldn't be removed: %w", tempDest, err)
+						}
 					}
 
 					_, err := files.WriteTar(tempDest, CacheObjectsDir(cacheRootDir), tarReader, nil)
@@ -705,6 +708,7 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 
 					err = os.Rename(tempDest, finalDest)
 					if err != nil {
+						cancel()
 						return fmt.Errorf("couldn't rename temporary folder (%s) to final folder (%s): %w", tempDest, finalDest, err)
 					}
 				}
