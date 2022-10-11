@@ -144,8 +144,8 @@ func (qb *queryBuilder) queryWithoutRemovals() string {
 		WITH possible_objects AS (
 		%s
 		), cached_object_hashes AS (
-	%s
-	), updated_objects AS (
+		%s
+		), updated_objects AS (
 		%s
 		)
 		%s
@@ -164,8 +164,8 @@ func (qb *queryBuilder) queryWithRemovals() string {
 		WITH possible_objects AS (
 		%s
 		), cached_object_hashes AS (
-	%s
-	), updated_objects AS (
+		%s
+		), updated_objects AS (
 		%s
 		), removed_objects AS (
 		%s

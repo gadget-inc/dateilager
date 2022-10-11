@@ -10,9 +10,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/gadget-inc/dateilager/internal/pb"
-
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/pb"
 )
 
 func fileExists(path string) bool {

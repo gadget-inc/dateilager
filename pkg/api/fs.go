@@ -885,9 +885,6 @@ func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) erro
 		if err == io.EOF {
 			break
 		}
-		// if err == db.SKIP {
-		//	continue
-		//}
 		if err != nil {
 			return status.Errorf(codes.Internal, "FS get next tar: %v", err)
 		}

@@ -171,7 +171,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 	rows, err := tx.Query(ctx, sql, args...)
 
 	if err != nil {
-		return nil, fmt.Errorf("1getObjects query, project %v vrange %v: %w", project, vrange, err)
+		return nil, fmt.Errorf("getObjects query, project %v vrange %v: %w", project, vrange, err)
 	}
 
 	var buffer []*pb.Object
