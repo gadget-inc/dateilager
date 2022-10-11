@@ -893,7 +893,7 @@ func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) erro
 			Version: version,
 			Format:  pb.GetCacheResponse_S2_TAR,
 			Bytes:   tar,
-			Hash:    hash,
+			Hash:    hash.Bytes(),
 		})
 		if err != nil {
 			return status.Errorf(codes.Internal, "FS send GetCacheResponse: %v", err)

@@ -24,15 +24,11 @@ func latestCacheVersionHashes(t *testing.T, tc util.TestCtx) [][]byte {
 	var hashes [][]byte
 
 	for rows.Next() {
-		var h1, h2 []byte
-		err = rows.Scan(&h1, &h2)
+		var hash db.Hash
+		err = rows.Scan(&hash.H1, &hash.H2)
 		require.NoError(t, err)
 
-		hash := make([]byte, 32)
-		copy(hash[0:16], h1)
-		copy(hash[16:32], h2)
-
-		hashes = append(hashes, hash)
+		hashes = append(hashes, hash.Bytes())
 	}
 
 	return hashes

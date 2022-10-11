@@ -190,18 +190,18 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 
 		var path string
 		var mode, size int64
-		var cache_h1, cache_h2 []byte
+		var cache_hash Hash
 		var encoded []byte
 		var packed bool
 		var deleted bool
 		var h1, h2 []byte
 
-		err := rows.Scan(&path, &mode, &size, &cache_h1, &cache_h2, &encoded, &packed, &deleted, &h1, &h2)
+		err := rows.Scan(&path, &mode, &size, &cache_hash.H1, &cache_hash.H2, &encoded, &packed, &deleted, &h1, &h2)
 		if err != nil {
 			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: %w", project, vrange, err)
 		}
 
-		if cache_h1 != nil {
+		if !cache_hash.IsBlank() {
 			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: returned non-nil hash when queried without cache", project, vrange)
 		}
 
@@ -256,31 +256,24 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, availableCacheVersio
 
 		var path string
 		var mode, size int64
-		var cache_h1, cache_h2 []byte
-		var cache_hash []byte
+		var cache_hash Hash
 		var encoded []byte
 		var packed bool
 		var deleted bool
 		var h1, h2 []byte
 
-		err := rows.Scan(&path, &mode, &size, &cache_h1, &cache_h2, &encoded, &packed, &deleted, &h1, &h2)
+		err := rows.Scan(&path, &mode, &size, &cache_hash.H1, &cache_hash.H2, &encoded, &packed, &deleted, &h1, &h2)
 		if err != nil {
 			return nil, nil, fmt.Errorf("getTars scan, project %v vrange %v: %w", project, vrange, err)
 		}
 
-		if cache_h1 != nil {
-			cache_hash = make([]byte, 32)
-			copy(cache_hash[0:16], cache_h1)
-			copy(cache_hash[16:], cache_h2)
-		}
-
-		if packed && cache_hash == nil {
+		if packed && cache_hash.IsBlank() {
 			return encoded, &path, nil
 		}
 
 		var object TarObject
 
-		if cache_hash != nil {
+		if !cache_hash.IsBlank() {
 			object = NewCachedTarObject(path, mode, size, cache_hash)
 		} else {
 			content, err := contentDecoder.Decoder(encoded)
@@ -323,7 +316,7 @@ func latestCacheTarsQuery() string {
 	`
 }
 
-type cacheTarStream func() (int64, []byte, []byte, error)
+type cacheTarStream func() (int64, []byte, *Hash, error)
 
 func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, error) {
 	rows, err := tx.Query(ctx, latestCacheTarsQuery())
@@ -333,15 +326,15 @@ func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, error) {
 
 	var version int64
 
-	stream := func() (int64, []byte, []byte, error) {
+	stream := func() (int64, []byte, *Hash, error) {
 		if !rows.Next() {
 			return 0, nil, nil, io.EOF
 		}
 		var rowVersion int64
-		var h1, h2 []byte
+		var hash Hash
 		var encoded []byte
 
-		err := rows.Scan(&rowVersion, &h1, &h2, &encoded)
+		err := rows.Scan(&rowVersion, &hash.H1, &hash.H2, &encoded)
 		if err != nil {
 			return 0, nil, nil, fmt.Errorf("GetCacheTars scan: %w", err)
 		}
@@ -351,11 +344,7 @@ func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, error) {
 
 		version = rowVersion
 
-		hash := make([]byte, 32)
-		copy(hash[0:16], h1)
-		copy(hash[16:], h2)
-
-		return rowVersion, encoded, hash, nil
+		return rowVersion, encoded, &hash, nil
 	}
 
 	return stream, nil

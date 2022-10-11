@@ -36,6 +36,10 @@ func (h *Hash) Hex() string {
 	return hex.EncodeToString(h.Bytes())
 }
 
+func (h *Hash) IsBlank() bool {
+	return h.H1 == nil || h.H2 == nil
+}
+
 type ContentEncoder struct {
 	buffer *bytes.Buffer
 	writer *s2.Writer

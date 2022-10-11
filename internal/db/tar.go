@@ -124,14 +124,14 @@ func (o *TarObject) TarType() byte {
 	return pb.TarTypeFromMode(o.FileMode())
 }
 
-func NewCachedTarObject(path string, mode int64, size int64, cache_hash []byte) TarObject {
+func NewCachedTarObject(path string, mode int64, size int64, cache_hash Hash) TarObject {
 	return TarObject{
 		path,
 		mode,
 		size,
 		false,
 		true,
-		cache_hash,
+		cache_hash.Bytes(),
 	}
 }
 
