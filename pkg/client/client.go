@@ -590,7 +590,9 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 
 	tmpObjectDir := CacheTmpDir(cacheRootDir)
 	os.RemoveAll(tmpObjectDir)
+
 	err = os.MkdirAll(tmpObjectDir, 0755)
+	defer os.RemoveAll(tmpObjectDir)
 	if err != nil {
 		return -1, fmt.Errorf("cannot create tmp folder to unpack cached objects: %w", err)
 	}
@@ -728,7 +730,6 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 	if err != nil {
 		return -1, err
 	}
-	os.RemoveAll(tmpObjectDir)
 
 	return version, nil
 }
