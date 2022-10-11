@@ -190,18 +190,18 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 
 		var path string
 		var mode, size int64
-		var cache_hash Hash
+		var isCached bool
 		var encoded []byte
 		var packed bool
 		var deleted bool
 		var h1, h2 []byte
 
-		err := rows.Scan(&path, &mode, &size, &cache_hash.H1, &cache_hash.H2, &encoded, &packed, &deleted, &h1, &h2)
+		err := rows.Scan(&path, &mode, &size, &isCached, &encoded, &packed, &deleted, &h1, &h2)
 		if err != nil {
 			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: %w", project, vrange, err)
 		}
 
-		if !cache_hash.IsBlank() {
+		if isCached {
 			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: returned non-nil hash when queried without cache", project, vrange)
 		}
 
@@ -234,7 +234,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 type tarStream func() ([]byte, *string, error)
 
 func GetTars(ctx context.Context, tx pgx.Tx, project int64, availableCacheVersions []int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
-	builder := newQueryBuilder(project, vrange, objectQuery, availableCacheVersions, false)
+	builder := newQueryBuilder(project, vrange, objectQuery, availableCacheVersions, true)
 	sql, args := builder.build()
 	rows, err := tx.Query(ctx, sql, args...)
 	if err != nil {
@@ -256,25 +256,25 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, availableCacheVersio
 
 		var path string
 		var mode, size int64
-		var cache_hash Hash
+		var isCached bool
 		var encoded []byte
 		var packed bool
 		var deleted bool
-		var h1, h2 []byte
+		var hash Hash
 
-		err := rows.Scan(&path, &mode, &size, &cache_hash.H1, &cache_hash.H2, &encoded, &packed, &deleted, &h1, &h2)
+		err := rows.Scan(&path, &mode, &size, &isCached, &encoded, &packed, &deleted, &hash.H1, &hash.H2)
 		if err != nil {
 			return nil, nil, fmt.Errorf("getTars scan, project %v vrange %v: %w", project, vrange, err)
 		}
 
-		if packed && cache_hash.IsBlank() {
+		if packed && !isCached {
 			return encoded, &path, nil
 		}
 
 		var object TarObject
 
-		if !cache_hash.IsBlank() {
-			object = NewCachedTarObject(path, mode, size, cache_hash)
+		if isCached {
+			object = NewCachedTarObject(path, mode, size, hash)
 		} else {
 			content, err := contentDecoder.Decoder(encoded)
 			if err != nil {

@@ -61,7 +61,7 @@ func (qb *queryBuilder) possibleObjectsCTE(withRemovals bool) string {
 
 func (qb *queryBuilder) updatedObjectsCTE() string {
 	template := `
-		SELECT o.path, o.mode, o.size, h.hash as cache_hash, %s, o.packed, false AS deleted, %s
+		SELECT o.path, o.mode, o.size, h.hash IS NOT NULL as is_cached, %s, o.packed, false AS deleted, %s
 		FROM possible_objects o
 		LEFT JOIN dl.contents c
 		  ON o.hash = c.hash
@@ -152,7 +152,7 @@ func (qb *queryBuilder) queryWithoutRemovals() string {
 	`
 
 	selectStatement := `
-		SELECT path, mode, size, (cache_hash).h1 cache_h1, (cache_hash).h2 cache_h2, bytes, packed, deleted, (hash).h1, (hash).h2
+		SELECT path, mode, size, is_cached, bytes, packed, deleted, (hash).h1, (hash).h2
 		FROM updated_objects
 	`
 
@@ -174,10 +174,10 @@ func (qb *queryBuilder) queryWithRemovals() string {
 	`
 
 	selectStatement := `
-		SELECT path, mode, size, (cache_hash).h1 cache_h1, (cache_hash).h2 cache_h2, bytes, packed, deleted, (hash).h1, (hash).h2
+		SELECT path, mode, size, is_cached, bytes, packed, deleted, (hash).h1, (hash).h2
 		FROM updated_objects
 		UNION ALL
-		SELECT path, mode, size, null, null, bytes, packed, deleted, (hash).h1, (hash).h2
+		SELECT path, mode, size, false, bytes, packed, deleted, (hash).h1, (hash).h2
 		FROM removed_objects
 	`
 	return fmt.Sprintf(template, qb.possibleObjectsCTE(true), qb.cachedObjectHashesCTE(), qb.updatedObjectsCTE(), qb.removedObjectsCTE(), selectStatement)
