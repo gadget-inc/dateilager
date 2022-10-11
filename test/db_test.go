@@ -45,7 +45,7 @@ func TestCreateCache(t *testing.T) {
 	writeProject(tc, 1, 2, "node_modules/")
 	writePackedFiles(tc, 1, 1, nil, "node_modules/a")
 
-	firstVersion, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
+	firstVersion, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules", 100)
 	firstVersionHashes := latestCacheVersionHashes(t, tc)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(firstVersionHashes))
@@ -57,7 +57,7 @@ func TestCreateCache(t *testing.T) {
 	writePackedFiles(tc, 1, 2, nil, "node_modules/b")
 
 	var newVersion int64
-	newVersion, err = db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
+	newVersion, err = db.CreateCache(tc.Context(), tc.Connect(), "node_modules", 100)
 	require.NoError(t, err)
 
 	newVersionHashes := latestCacheVersionHashes(t, tc)
@@ -78,7 +78,7 @@ func TestCreateCacheOnlyUsesPacksWithThePrefix(t *testing.T) {
 
 	writePackedFiles(tc, 2, 1, nil, "private/")
 
-	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules", 100)
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(latestCacheVersionHashes(t, tc)))
@@ -92,7 +92,7 @@ func TestCreateCacheIgnoresModulesNoLongerUsed(t *testing.T) {
 	writePackedFiles(tc, 1, 1, i(2), "node_modules/a")
 	writePackedFiles(tc, 2, 2, nil, "node_modules/b")
 
-	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules", 100)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(latestCacheVersionHashes(t, tc)))
 }
@@ -104,13 +104,13 @@ func TestGetCacheWithMultipleVersions(t *testing.T) {
 	writeProject(tc, 1, 3, "pack/")
 
 	writePackedFiles(tc, 1, 1, nil, "pack/a")
-	cache1, err := db.CreateCache(tc.Context(), tc.Connect(), "pack")
+	cache1, err := db.CreateCache(tc.Context(), tc.Connect(), "pack", 100)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(latestCacheVersionHashes(t, tc)))
 
 	deleteObject(tc, 1, 2, "pack/a")
 	writePackedFiles(tc, 1, 1, nil, "pack/b")
-	cache2, err := db.CreateCache(tc.Context(), tc.Connect(), "pack")
+	cache2, err := db.CreateCache(tc.Context(), tc.Connect(), "pack", 100)
 	require.NoError(t, err)
 
 	vrange, err := db.NewVersionRange(tc.Context(), tc.Connect(), 1, i(0), i(1))

@@ -40,7 +40,7 @@ func TestClientGetCache(t *testing.T) {
 	writeProject(tc, 1, 1)
 	writePackedFiles(tc, 1, 1, nil, "node_modules/a")
 	writePackedFiles(tc, 1, 1, nil, "node_modules/b")
-	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules/")
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules/", 100)
 	require.NoError(t, err)
 
 	c, _, close := createTestClient(tc)
@@ -79,7 +79,7 @@ func TestClientGetCacheFailsIfLockCannotBeObtained(t *testing.T) {
 	tmpCacheDir, err := os.MkdirTemp("", "dl_cache_test_tmp")
 	require.NoError(t, err)
 
-	_, err = db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
+	_, err = db.CreateCache(tc.Context(), tc.Connect(), "node_modules", 100)
 	require.NoError(t, err)
 
 	_, err = os.OpenFile(filepath.Join(tmpCacheDir, ".lock"), os.O_CREATE|os.O_EXCL, 0600)
@@ -96,7 +96,7 @@ func TestClientCanHaveMultipleCacheVersions(t *testing.T) {
 
 	writeProject(tc, 1, 1)
 	writePackedFiles(tc, 1, 1, nil, "pack/a")
-	_, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/")
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
 	require.NoError(t, err)
 
 	c, _, close := createTestClient(tc)
@@ -108,7 +108,7 @@ func TestClientCanHaveMultipleCacheVersions(t *testing.T) {
 	version1, err := c.GetCache(tc.Context(), tmpCacheDir)
 	require.NoError(t, err, "client.GetCache after GetCache")
 
-	_, err = db.CreateCache(tc.Context(), tc.Connect(), "pack/")
+	_, err = db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
 	require.NoError(t, err)
 
 	version2, err := c.GetCache(tc.Context(), tmpCacheDir)
@@ -125,7 +125,7 @@ func TestDownloadingTheSameVersionTwice(t *testing.T) {
 
 	writeProject(tc, 1, 1)
 	writePackedFiles(tc, 1, 1, nil, "pack/a")
-	_, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/")
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
 	require.NoError(t, err)
 
 	c, _, close := createTestClient(tc)

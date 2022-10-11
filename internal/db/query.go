@@ -403,7 +403,7 @@ func (p *PackManager) IsPathPacked(path string) *string {
 	return nil
 }
 
-func CreateCache(ctx context.Context, tx pgx.Tx, prefix string) (int64, error) {
+func CreateCache(ctx context.Context, tx pgx.Tx, prefix string, count int64) (int64, error) {
 	prefix = filepath.Join(prefix, "%")
 	sql := `
 		WITH impactful_packed_objects AS (
@@ -414,14 +414,14 @@ func CreateCache(ctx context.Context, tx pgx.Tx, prefix string) (int64, error) {
 				AND stop_version IS NULL
 			GROUP BY hash
 			ORDER BY count DESC
-			LIMIT 100
+			LIMIT $2
 		)
 		INSERT INTO dl.cache_versions (hashes)
 		SELECT COALESCE(array_agg(hash), '{}') as hashes from impactful_packed_objects
 		RETURNING version
 `
 
-	row := tx.QueryRow(ctx, sql, prefix)
+	row := tx.QueryRow(ctx, sql, prefix, count)
 	var version int64
 
 	err := row.Scan(&version)

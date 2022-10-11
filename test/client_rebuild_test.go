@@ -229,7 +229,7 @@ func TestRebuildWithCache(t *testing.T) {
 	ha := writePackedFiles(tc, 1, 1, nil, "node_modules/a")
 	hb := writePackedFiles(tc, 1, 1, nil, "node_modules/b")
 
-	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules", 100)
 	require.NoError(t, err)
 
 	c, _, close := createTestClient(tc)
@@ -276,7 +276,7 @@ func TestRebuildWithInexistantCacheDir(t *testing.T) {
 	writeProject(tc, 1, 1)
 	writePackedFiles(tc, 1, 1, nil, "pack/a")
 
-	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules")
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules", 100)
 	require.NoError(t, err)
 
 	c, _, close := createTestClient(tc)
