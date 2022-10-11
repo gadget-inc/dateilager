@@ -632,7 +632,7 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 
 	for _, availableVersion := range availableVersions {
 		if version == availableVersion {
-			return availableVersions[len(availableVersions)-1], nil
+			return version, nil
 		}
 	}
 
