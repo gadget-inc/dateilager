@@ -572,13 +572,8 @@ func obtainCacheLockFile(cacheRootDir string) (*os.File, error) {
 	return lockFile, nil
 }
 
-func cleanupCacheLockFile(lockFile *os.File) error {
-	err := os.Remove(lockFile.Name())
-	if err != nil {
-		return fmt.Errorf("unable to remove cache lock file: %w", err)
-	}
-
-	return nil
+func cleanupCacheLockFile(lockFile *os.File) {
+	os.Remove(lockFile.Name())
 }
 
 func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, error) {
