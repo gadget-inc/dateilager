@@ -908,6 +908,11 @@ func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) erro
 func (f *Fs) CreateCache(ctx context.Context, req *pb.CreateCacheRequest) (*pb.CreateCacheResponse, error) {
 	trace.SpanFromContext(ctx)
 
+	err := requireAdminAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
