@@ -395,7 +395,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 
 			err = stream.Send(&pb.GetCompressResponse{
 				Version:  vrange.To,
-				Format:   pb.GetCompressResponse_S2_TAR,
+				Format:   pb.Format_S2_TAR,
 				Bytes:    tar,
 				PackPath: packPath,
 			})
@@ -891,7 +891,7 @@ func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) erro
 
 		err = stream.Send(&pb.GetCacheResponse{
 			Version: version,
-			Format:  pb.GetCacheResponse_S2_TAR,
+			Format:  pb.Format_S2_TAR,
 			Bytes:   tar,
 			Hash:    hash.Bytes(),
 		})
