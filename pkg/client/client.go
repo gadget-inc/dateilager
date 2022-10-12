@@ -592,15 +592,16 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 	os.RemoveAll(tmpObjectDir)
 
 	err = os.MkdirAll(tmpObjectDir, 0755)
-	defer os.RemoveAll(tmpObjectDir)
 	if err != nil {
 		return -1, fmt.Errorf("cannot create tmp folder to unpack cached objects: %w", err)
 	}
+	defer os.RemoveAll(tmpObjectDir)
 
 	lockFile, err := obtainCacheLockFile(cacheRootDir)
 	if err != nil {
 		return -1, err
 	}
+	defer cleanupCacheLockFile(lockFile)
 
 	availableVersions := ReadCacheVersionFile(cacheRootDir)
 
@@ -618,11 +619,6 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 	// This is a short circuit in case the cache doesn't exist
 	response, err := stream.Recv()
 	if err == io.EOF {
-		err = cleanupCacheLockFile(lockFile)
-		if err != nil {
-			return -1, err
-		}
-		os.RemoveAll(tmpObjectDir)
 		return -1, nil
 	}
 	if err != nil {
@@ -728,11 +724,6 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 	defer versionFile.Close()
 	if _, err = versionFile.WriteString(fmt.Sprintf("%d\n", version)); err != nil {
 		return -1, fmt.Errorf("fs.GetCache failed to update the versions file: %w", err)
-	}
-
-	err = cleanupCacheLockFile(lockFile)
-	if err != nil {
-		return -1, err
 	}
 
 	return version, nil
