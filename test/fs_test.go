@@ -1031,3 +1031,28 @@ func TestGetCacheWithoutAvailableCacheVersion(t *testing.T) {
 	assert.Equal(t, 0, len(stream.results), "expected 0 TAR files")
 	verifyTarResults(t, stream.results, map[string]expectedObject{})
 }
+
+func TestFsCreateCache(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2, "pack/")
+	hash1 := writePackedObjects(tc, 1, 1, nil, "pack/a", map[string]expectedObject{
+		"pack/a/a": {content: "pack/a/a v1"},
+		"pack/a/b": {content: "pack/a/b v1"},
+	})
+	hash2 := writePackedObjects(tc, 1, 2, nil, "pack/b", map[string]expectedObject{
+		"pack/b/a": {content: "pack/b/a v2"},
+		"pack/b/b": {content: "pack/b/b v2"},
+	})
+
+	fs := tc.FsApi()
+
+	_, err := fs.CreateCache(tc.Context(), &pb.CreateCacheRequest{Count: 2, Prefix: "pack/"})
+	require.NoError(t, err, "fs.CreateCache")
+
+	cachedHashes := latestCacheVersionHashes(t, tc)
+	assert.Equal(t, 2, len(cachedHashes))
+	assert.Contains(t, cachedHashes, hash1)
+	assert.Contains(t, cachedHashes, hash2)
+}

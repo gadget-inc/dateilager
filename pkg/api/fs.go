@@ -904,3 +904,27 @@ func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) erro
 
 	return nil
 }
+
+func (f *Fs) CreateCache(ctx context.Context, req *pb.CreateCacheRequest) (*pb.CreateCacheResponse, error) {
+	trace.SpanFromContext(ctx)
+
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
+	}
+	defer close(ctx)
+
+	logger.Debug(ctx, "FS.CreateCache[Init]")
+
+	versionNumber, err := db.CreateCache(ctx, tx, req.Prefix, req.Count)
+	if err != nil {
+		return nil, err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS create cache commit tx: %v", err)
+	}
+
+	return &pb.CreateCacheResponse{Version: versionNumber}, nil
+}

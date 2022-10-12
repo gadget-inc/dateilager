@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func CreateCache(ctx context.Context, tx pgx.Tx, prefix string, count int64) (int64, error) {
+func CreateCache(ctx context.Context, tx pgx.Tx, prefix string, count int32) (int64, error) {
 	sql := `
 		WITH impactful_packed_objects AS (
 			SELECT hash, count(*) AS count

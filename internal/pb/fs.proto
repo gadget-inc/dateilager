@@ -32,6 +32,8 @@ service Fs {
     rpc CloneToProject(CloneToProjectRequest) returns (CloneToProjectResponse);
 
     rpc GetCache(GetCacheRequest) returns (stream GetCacheResponse);
+
+    rpc CreateCache(CreateCacheRequest) returns (CreateCacheResponse);
 }
 
 message NewProjectRequest {
@@ -193,4 +195,13 @@ message GetCacheResponse {
     Format format = 2;
     bytes bytes = 3;
     bytes hash = 4;
+}
+
+message CreateCacheRequest {
+    int32 count = 1;
+    string prefix = 2;
+}
+
+message CreateCacheResponse {
+    int64 version = 1;
 }
