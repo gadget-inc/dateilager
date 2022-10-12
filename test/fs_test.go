@@ -1007,7 +1007,7 @@ func TestCloneToMultipleFromVersionToVersion(t *testing.T) {
 }
 
 func TestGetCache(t *testing.T) {
-	tc := util.NewTestCtx(t, auth.Admin)
+	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 2, "node_modules/")

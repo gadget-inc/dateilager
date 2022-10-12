@@ -867,6 +867,11 @@ func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) erro
 	ctx := stream.Context()
 	trace.SpanFromContext(ctx)
 
+	_, err := requireProjectAuth(ctx)
+	if err != nil {
+		return err
+	}
+
 	tx, close, err := f.DbConn.Connect(ctx)
 	if err != nil {
 		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
