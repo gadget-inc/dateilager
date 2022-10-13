@@ -40,47 +40,57 @@ func CopyAllObjects(ctx context.Context, tx pgx.Tx, source int64, target int64) 
 	return nil
 }
 
-func CloneToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, vrange VersionRange, newTargetVersion int64) error {
+func CloneToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, version int64, newTargetVersion int64) error {
 	objectQuery := &pb.ObjectQuery{
 		Path:     "",
 		IsPrefix: true,
 	}
 
-	builder := newQueryBuilder(source, vrange, objectQuery).withHashes(true)
+	sourceBuilder := newQueryBuilder(source, VersionRange{
+		To: version,
+	}, objectQuery).withHashes(true)
+	sourceSql, sourceArgs := sourceBuilder.build()
 
-	innerSql, args := builder.build()
-	argsLength := len(args)
+	targetBuilder := newQueryBuilder(target, VersionRange{
+		To: newTargetVersion - 1,
+	}, objectQuery).withHashes(true).withArgsOffset(len(sourceArgs))
+	targetSql, targetArgs := targetBuilder.build()
 
 	sql := fmt.Sprintf(`
-		WITH changed_objects AS (
+		WITH live_source_objects AS (
 			%s
+		), to_remove AS (
+			%s
+			EXCEPT
+			SELECT path, mode, size, is_cached, bytes, packed, deleted, h1, h2
+			FROM live_source_objects
 		)
-		UPDATE dl.objects
+		UPDATE dl.objects o
 		SET stop_version = $%d
-		FROM changed_objects
-		WHERE "changed_objects".path = "objects".path
-		  AND "objects".project = $%d
-		  AND "objects".stop_version IS NULL
-	`, innerSql, argsLength+1, argsLength+2)
+		FROM to_remove r
+		WHERE o.project = $%d
+		  AND o.path = r.path
+		  AND o.stop_version IS NULL
+	`, sourceSql, targetSql, len(sourceArgs)+len(targetArgs)+1, len(sourceArgs)+len(targetArgs)+2)
 
-	_, err := tx.Exec(ctx, sql, append(args, newTargetVersion, target)...)
+	_, err := tx.Exec(ctx, sql, append(append(sourceArgs, targetArgs...), newTargetVersion, target)...)
 	if err != nil {
 		return fmt.Errorf("copy to project could not update removed files to version (%d): %w", newTargetVersion, err)
 	}
 
 	sql = fmt.Sprintf(`
-		WITH changed_objects AS (
+		WITH live_source_objects AS (
 			%s
 		)
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		SELECT $%d, $%d, null, path, (h1, h2)::hash, mode, size, packed
-		FROM changed_objects
-		WHERE deleted IS false
+		FROM live_source_objects
+		WHERE deleted = false
 		ON CONFLICT
 		   DO NOTHING
-	`, innerSql, argsLength+1, argsLength+2)
+	`, sourceSql, len(sourceArgs)+1, len(sourceArgs)+2)
 
-	_, err = tx.Exec(ctx, sql, append(args, target, newTargetVersion)...)
+	_, err = tx.Exec(ctx, sql, append(sourceArgs, target, newTargetVersion)...)
 	if err != nil {
 		return fmt.Errorf("copy to project could not insert updated files: %w", err)
 	}

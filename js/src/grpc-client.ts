@@ -323,23 +323,21 @@ export class DateiLagerGrpcClient {
    *
    * @param source      The source project.
    * @param target      The target project.
-   * @param fromVersion Start version of the source project.
-   * @param toVersion   Stop version of the source project.
-   * @returns             The new version number of the target project
+   * @param version     The version of the source project to clone up to.
+   * @returns           The new version number of the target project
    */
-  public async cloneToProject(source: bigint, target: bigint, fromVersion: bigint, toVersion: bigint): Promise<CloneToProjectResponse> {
+  public async cloneToProject(source: bigint, target: bigint, version: bigint): Promise<CloneToProjectResponse> {
     return await trace(
       "dateilager-grpc-client.clone-to-project",
       {
         attributes: {
           "dl.source": String(source),
           "dl.target": String(target),
-          "dl.fromVersion": String(fromVersion),
-          "dl.toVersion": String(toVersion),
+          "dl.version": String(version),
         },
       },
       async () => {
-        const call = await this._client.cloneToProject({ source, target, fromVersion, toVersion }, this._rpcOptions());
+        const call = await this._client.cloneToProject({ source, target, version }, this._rpcOptions());
         return call.response;
       }
     );

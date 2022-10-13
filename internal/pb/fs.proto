@@ -173,9 +173,8 @@ message GcContentsResponse {
 
 message CloneToProjectRequest {
     int64 source = 1;
-    int64 from_version = 2;
-    int64 to_version = 3;
-    int64 target = 4;
+    int64 version = 2;
+    int64 target = 3;
 }
 
 message CloneToProjectResponse {
