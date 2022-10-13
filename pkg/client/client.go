@@ -680,7 +680,7 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 					finalDest := filepath.Join(objectDir, hashHex)
 
 					if fileExists(finalDest) {
-						return nil
+						continue
 					}
 
 					if fileExists(tempDest) {
