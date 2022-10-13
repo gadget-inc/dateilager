@@ -220,3 +220,11 @@ load-test-get:
 
 load-test-update:
 	$(call load-test,Update,update_increment.json,10000,1)
+
+cache-create: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+cache-create:
+	go run cmd/client/main.go cache-create --server $(GRPC_SERVER) --prefix "$(prefix)" --count 100
+
+cache-get: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
+cache-get:
+	go run cmd/client/main.go cache-get --server $(GRPC_SERVER) --cache-root-dir "$(cache_root_dir)"

@@ -724,6 +724,23 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 	return version, nil
 }
 
+func (c *Client) CreateCache(ctx context.Context, prefix string, count int32) (int64, error) {
+	ctx, span := telemetry.Start(ctx, "client.create-cache")
+	defer span.End()
+
+	request := &pb.CreateCacheRequest{
+		Prefix: prefix,
+		Count:  count,
+	}
+
+	response, err := c.fs.CreateCache(ctx, request)
+	if err != nil {
+		return -1, fmt.Errorf("create cache: %w", err)
+	}
+
+	return response.Version, nil
+}
+
 func (c *Client) GcProject(ctx context.Context, project int64, keep int64, from *int64) (int64, error) {
 	ctx, span := telemetry.Start(ctx, "client.gc-project", trace.WithAttributes(
 		key.Project.Attribute(project),

@@ -35,6 +35,7 @@ const (
 	Worker            = IntKey("dl.worker")
 	Ignores           = StringSliceKey("dl.ignores")
 	CloneToProject    = Int64Key("dl.clone_to_project")
+	CacheVersion      = Int64Key("dl.cache_version")
 )
 
 var (
