@@ -595,10 +595,13 @@ func verifyTarResults(t *testing.T, results [][]byte, expected map[string]expect
 			}
 			require.NoError(t, err, "failed to read next TAR file")
 
-			expectedMatch, ok := expected[header.Name]
-			assert.True(t, ok, "missing %v in TAR", header.Name)
-
 			count += 1
+
+			expectedMatch, ok := expected[header.Name]
+			assert.True(t, ok, "missing %v in expected objects", header.Name)
+			if !ok {
+				continue
+			}
 
 			var buffer bytes.Buffer
 			_, err = io.Copy(&buffer, tarReader)
@@ -611,7 +614,7 @@ func verifyTarResults(t *testing.T, results [][]byte, expected map[string]expect
 		}
 	}
 
-	assert.Equal(t, len(expected), count, "expected %v objects", len(expected))
+	assert.Equal(t, len(expected), count, "expected %d objects in tar results, got %d", len(expected), count)
 }
 
 // Use debugProjects(tc) and debugObjects(tc) within a failing test to log the state of the DB

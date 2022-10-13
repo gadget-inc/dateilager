@@ -61,13 +61,13 @@ func (qb *queryBuilder) possibleObjectsCTE(withRemovals bool) string {
 
 func (qb *queryBuilder) updatedObjectsCTE() string {
 	template := `
-		SELECT o.path, o.mode, o.size, h.hash IS NOT NULL as is_cached, %s, o.packed, false AS deleted, %s
+		SELECT o.path, o.mode, o.size, h.hash IS NOT NULL AS is_cached, %s, o.packed, false AS deleted, %s
 		FROM possible_objects o
 		LEFT JOIN dl.contents c
-		  ON o.hash = c.hash
+		       ON o.hash = c.hash
 		 %s
-	    LEFT JOIN cached_object_hashes h
-		  ON h.hash = o.hash
+		LEFT JOIN cached_object_hashes h
+		       ON h.hash = o.hash
 		WHERE o.project = __project__
 		  AND o.start_version > __start_version__
 		  AND o.start_version <= __stop_version__
@@ -77,10 +77,10 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 		ORDER BY o.path
 	`
 
-	bytesSelector := "CASE WHEN h.hash IS NULL THEN c.bytes ELSE NULL END as bytes"
+	bytesSelector := "CASE WHEN h.hash IS NULL THEN c.bytes ELSE NULL END AS bytes"
 	contentsPredicate := ""
 	if !qb.objectQuery.WithContent {
-		bytesSelector = "c.names_tar as bytes"
+		bytesSelector = "c.names_tar AS bytes"
 		contentsPredicate = "AND o.packed IS true"
 	}
 
@@ -98,7 +98,7 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 		ignoresPredicate = "AND o.path NOT LIKE ALL(__ignores__::text[])"
 	}
 
-	hashSelector := "null::hash as hash"
+	hashSelector := "null::hash AS hash"
 	if qb.withHash {
 		hashSelector = "o.hash"
 	}
@@ -108,7 +108,7 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 
 func (qb *queryBuilder) removedObjectsCTE() string {
 	template := `
-		SELECT o.path, o.mode, 0 AS size, ''::bytea as bytes, o.packed, true AS deleted, null::hash as hash
+		SELECT o.path, o.mode, 0 AS size, ''::bytea AS bytes, o.packed, true AS deleted, null::hash AS hash
 		FROM possible_objects o
 		WHERE o.project = __project__
 		  AND o.start_version <= __start_version__
@@ -135,7 +135,9 @@ func (qb *queryBuilder) removedObjectsCTE() string {
 
 func (qb *queryBuilder) cachedObjectHashesCTE() string {
 	return `
-		SELECT DISTINCT(UNNEST(hashes)) as hash FROM dl.cache_versions WHERE version = ANY (__available_cache_versions__)
+		SELECT DISTINCT(UNNEST(hashes)) AS hash
+		FROM dl.cache_versions
+		WHERE version = ANY(__available_cache_versions__)
 	`
 }
 

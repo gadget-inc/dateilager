@@ -64,7 +64,7 @@ func GcContentHashes(ctx context.Context, tx pgx.Tx, hashes []Hash) (int64, erro
 			SELECT c.hash
 			FROM dl.contents c
 			LEFT JOIN dl.objects o
-				ON c.hash = o.hash
+				   ON c.hash = o.hash
 			WHERE c.hash = ANY($1::hash[])
 			AND o.hash IS NULL
 		)

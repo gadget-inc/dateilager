@@ -403,21 +403,6 @@ func TestGetCompressWithIgnorePattern(t *testing.T) {
 	})
 }
 
-func TestGetCompressWithCacheVersions(t *testing.T) {
-	tc := util.NewTestCtx(t, auth.Admin)
-	defer tc.Close()
-
-	writeProject(tc, 1, 2, "node_modules/")
-	writePackedFiles(tc, 1, 1, nil, "node_modules/a")
-
-	writeProject(tc, 2, 2, "node_modules/")
-	writePackedFiles(tc, 2, 1, nil, "node_modules/b")
-
-	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules", 100)
-	require.NoError(t, err)
-	assert.Equal(t, 2, len(latestCacheVersionHashes(t, tc)))
-}
-
 func TestGetPackedObjects(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
@@ -519,12 +504,12 @@ func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
-	writeProject(tc, 1, 2, "/a/")
+	writeProject(tc, 1, 2, "pack/")
 	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
-		"/a/c": {content: "a/c v1"},
-		"/a/d": {content: "a/d v1"},
+		"pack/a": {content: "pack/a v1"},
+		"pack/b": {content: "pack/b v1"},
 	})
-	writeObject(tc, 1, 2, nil, "/b", "b v2")
+	writeObject(tc, 1, 2, nil, "c", "c v2")
 
 	fs := tc.FsApi()
 
@@ -535,9 +520,43 @@ func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
 	assert.Equal(t, 2, len(stream.results), "expected 2 TAR files")
 
 	verifyTarResults(t, stream.results, map[string]expectedObject{
-		"/a/c": {content: "a/c v1"},
-		"/a/d": {content: "a/d v1"},
-		"/b":   {content: "b v2"},
+		"pack/a": {content: "pack/a v1"},
+		"pack/b": {content: "pack/b v1"},
+		"c":      {content: "c v2"},
+	})
+}
+
+func TestGetCompressWithCacheVersions(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2, "pack/")
+	writePackedFiles(tc, 1, 1, nil, "pack/a")
+
+	cacheVersion, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
+	require.NoError(t, err)
+
+	version, hashes := latestCacheVersionHashes(tc)
+	assert.Equal(t, cacheVersion, version, "latest cache version matches newly created cache")
+	assert.Equal(t, 1, len(hashes), "cache hash count")
+
+	writePackedFiles(tc, 1, 2, nil, "pack/b")
+
+	fs := tc.FsApi()
+
+	stream := &mockGetCompressServer{ctx: tc.Context()}
+	request := buildCompressRequest(1, nil, nil, "")
+	request.AvailableCacheVersions = []int64{cacheVersion}
+
+	err = fs.GetCompress(request, stream)
+	require.NoError(t, err, "fs.GetCompress")
+
+	assert.Equal(t, 2, len(stream.results), "expected 2 TAR files")
+
+	verifyTarResults(t, stream.results, map[string]expectedObject{
+		"pack/a":   {content: string(hashes[0].Bytes())},
+		"pack/b/1": {content: "pack/b/1 v2"},
+		"pack/b/2": {content: "pack/b/2 v2"},
 	})
 }
 

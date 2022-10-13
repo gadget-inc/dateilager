@@ -226,10 +226,10 @@ func TestRebuildWithCache(t *testing.T) {
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
-	ha := writePackedFiles(tc, 1, 1, nil, "node_modules/a")
-	hb := writePackedFiles(tc, 1, 1, nil, "node_modules/b")
+	ha := writePackedFiles(tc, 1, 1, nil, "pack/a")
+	hb := writePackedFiles(tc, 1, 1, nil, "pack/b")
 
-	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules", 100)
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
 	require.NoError(t, err)
 
 	c, _, close := createTestClient(tc)
@@ -249,12 +249,12 @@ func TestRebuildWithCache(t *testing.T) {
 		count:   2,
 	})
 
-	aCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), ha.Hex(), "node_modules/a")
-	bCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), hb.Hex(), "node_modules/b")
+	aCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), ha.Hex(), "pack/a")
+	bCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), hb.Hex(), "pack/b")
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
-		"node_modules/a": {fileType: typeSymlink, content: aCachePath},
-		"node_modules/b": {fileType: typeSymlink, content: bCachePath},
+		"pack/a": {fileType: typeSymlink, content: aCachePath},
+		"pack/b": {fileType: typeSymlink, content: bCachePath},
 	})
 
 	assertFileContent := func(path string, expectedContent string) {
@@ -263,10 +263,10 @@ func TestRebuildWithCache(t *testing.T) {
 		assert.Equal(t, expectedContent, string(content))
 	}
 
-	assertFileContent(filepath.Join(aCachePath, "1"), "node_modules/a/1 v1")
-	assertFileContent(filepath.Join(aCachePath, "2"), "node_modules/a/2 v1")
-	assertFileContent(filepath.Join(bCachePath, "1"), "node_modules/b/1 v1")
-	assertFileContent(filepath.Join(bCachePath, "2"), "node_modules/b/2 v1")
+	assertFileContent(filepath.Join(aCachePath, "1"), "pack/a/1 v1")
+	assertFileContent(filepath.Join(aCachePath, "2"), "pack/a/2 v1")
+	assertFileContent(filepath.Join(bCachePath, "1"), "pack/b/1 v1")
+	assertFileContent(filepath.Join(bCachePath, "2"), "pack/b/2 v1")
 }
 
 func TestRebuildWithInexistantCacheDir(t *testing.T) {
@@ -276,7 +276,7 @@ func TestRebuildWithInexistantCacheDir(t *testing.T) {
 	writeProject(tc, 1, 1)
 	writePackedFiles(tc, 1, 1, nil, "pack/a")
 
-	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules", 100)
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
 	require.NoError(t, err)
 
 	c, _, close := createTestClient(tc)

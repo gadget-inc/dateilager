@@ -112,11 +112,10 @@ func (o *TarObject) FileMode() fs.FileMode {
 }
 
 func (o *TarObject) TarType() byte {
+	// Custome DateiLager typeflags to represent deleted & cached objects
 	if o.deleted {
-		// A custom DateiLager typeflag to represent deleted objects
 		return pb.TarDeleted
 	}
-
 	if o.cached {
 		return pb.TarCached
 	}
@@ -124,14 +123,14 @@ func (o *TarObject) TarType() byte {
 	return pb.TarTypeFromMode(o.FileMode())
 }
 
-func NewCachedTarObject(path string, mode int64, size int64, cache_hash Hash) TarObject {
+func NewCachedTarObject(path string, mode int64, size int64, hash Hash) TarObject {
 	return TarObject{
 		path,
 		mode,
 		size,
 		false,
 		true,
-		cache_hash.Bytes(),
+		hash.Bytes(),
 	}
 }
 

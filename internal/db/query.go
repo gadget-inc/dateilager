@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -298,53 +297,53 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, availableCacheVersio
 	}, nil
 }
 
-func latestCacheTarsQuery() string {
-	return `
-		WITH latest_cache_version AS (
-			SELECT version, hashes
-			FROM dl.cache_versions
-			ORDER BY version DESC LIMIT 1
-		),
-		version_hash AS (
-			SELECT version, unnest(hashes) AS hash
-			FROM latest_cache_version
-		)
-		SELECT version, (version_hash.hash).h1, (version_hash.hash).h2, bytes
-		FROM version_hash
-		JOIN dl.contents
-		ON version_hash.hash = dl.contents.hash
-	`
-}
-
 type cacheTarStream func() (int64, []byte, *Hash, error)
 
 func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, error) {
-	rows, err := tx.Query(ctx, latestCacheTarsQuery())
+	var version int64
+
+	err := tx.QueryRow(ctx, `
+		SELECT version
+		FROM dl.cache_versions
+		ORDER BY version DESC
+		LIMIT 1
+	`).Scan(&version)
+	if err == pgx.ErrNoRows {
+		return func() (int64, []byte, *Hash, error) { return 0, nil, nil, io.EOF }, nil
+	}
 	if err != nil {
-		return nil, fmt.Errorf("GetCachedTars query: %w", err)
+		return nil, fmt.Errorf("GetCacheTars latest cache version: %w", err)
 	}
 
-	var version int64
+	rows, err := tx.Query(ctx, `
+		WITH version_hashes AS (
+			SELECT unnest(hashes) AS hash
+			FROM dl.cache_versions
+			WHERE version = $1
+		)
+		SELECT (h.hash).h1, (h.hash).h2, c.bytes
+		FROM version_hashes h
+		JOIN dl.contents c
+		  ON h.hash = c.hash
+	`, version)
+	if err != nil {
+		return nil, fmt.Errorf("GetCacheTars query: %w", err)
+	}
 
 	stream := func() (int64, []byte, *Hash, error) {
 		if !rows.Next() {
 			return 0, nil, nil, io.EOF
 		}
-		var rowVersion int64
+
 		var hash Hash
 		var encoded []byte
 
-		err := rows.Scan(&rowVersion, &hash.H1, &hash.H2, &encoded)
+		err := rows.Scan(&hash.H1, &hash.H2, &encoded)
 		if err != nil {
 			return 0, nil, nil, fmt.Errorf("GetCacheTars scan: %w", err)
 		}
-		if version != 0 && rowVersion != version {
-			return 0, nil, nil, fmt.Errorf("GetCacheTars rowVersion mismatch: %d vs %d", version, rowVersion)
-		}
 
-		version = rowVersion
-
-		return rowVersion, encoded, &hash, nil
+		return version, encoded, &hash, nil
 	}
 
 	return stream, nil
@@ -390,33 +389,4 @@ func (p *PackManager) IsPathPacked(path string) *string {
 	}
 
 	return nil
-}
-
-func CreateCache(ctx context.Context, tx pgx.Tx, prefix string, count int64) (int64, error) {
-	prefix = filepath.Join(prefix, "%")
-	sql := `
-		WITH impactful_packed_objects AS (
-			SELECT hash, count(*) as count
-			FROM dl.objects
-			WHERE path LIKE $1
-				AND packed = true
-				AND stop_version IS NULL
-			GROUP BY hash
-			ORDER BY count DESC
-			LIMIT $2
-		)
-		INSERT INTO dl.cache_versions (hashes)
-		SELECT COALESCE(array_agg(hash), '{}') as hashes from impactful_packed_objects
-		RETURNING version
-`
-
-	row := tx.QueryRow(ctx, sql, prefix, count)
-	var version int64
-
-	err := row.Scan(&version)
-	if err != nil {
-		return 0, fmt.Errorf("CreateCache query, %w", err)
-	}
-
-	return version, nil
 }

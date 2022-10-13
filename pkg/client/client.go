@@ -717,7 +717,9 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 		return -1, fmt.Errorf("fs.GetCache cannot open cache versions file for writing: %w", err)
 	}
 	defer versionFile.Close()
-	if _, err = versionFile.WriteString(fmt.Sprintf("%d\n", version)); err != nil {
+
+	_, err = versionFile.WriteString(fmt.Sprintf("%d\n", version))
+	if err != nil {
 		return -1, fmt.Errorf("fs.GetCache failed to update the versions file: %w", err)
 	}
 
