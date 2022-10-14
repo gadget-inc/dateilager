@@ -1051,7 +1051,7 @@ func TestFsCreateCache(t *testing.T) {
 	_, err := fs.CreateCache(tc.Context(), &pb.CreateCacheRequest{Count: 2, Prefix: "pack/"})
 	require.NoError(t, err, "fs.CreateCache")
 
-	cachedHashes := latestCacheVersionHashes(t, tc)
+	_, cachedHashes := latestCacheVersionHashes(tc)
 	assert.Equal(t, 2, len(cachedHashes))
 	assert.Contains(t, cachedHashes, hash1)
 	assert.Contains(t, cachedHashes, hash2)
