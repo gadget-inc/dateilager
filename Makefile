@@ -21,19 +21,19 @@ PROTO_TS_FILES := $(shell find js/src/pb -type f -name '*.ts')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
-.PHONY: install migrate migrate-create build release test test-one test-js lint-js typecheck-js
-.PHONY: reset-db setup-local server server-profile
+.PHONY: install migrate migrate-create clean build release test test-one test-js lint-js typecheck-js
+.PHONY: reset-db setup-local server server-profile js-install
 .PHONY: client-update client-large-update client-get client-rebuild client-pack
 .PHONY: client-gc-contents client-gc-project client-gc-random-projects
 .PHONY: webui health upload-container-image gen-docs
 .PHONY: load-test-new load-test-get load-test-update
 
 install:
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.26
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.1
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
 	go install github.com/grpc-ecosystem/grpc-health-probe@v0.4
-	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.14
-	go install github.com/bojand/ghz/cmd/ghz@v0.105.0
+	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.15
+	go install github.com/bojand/ghz/cmd/ghz@v0.110.0
 	go install github.com/gadget-inc/fsdiff/cmd/fsdiff@v0.4
 	go install github.com/stamblerre/gocode@latest
 	go install golang.org/x/tools/cmd/goimports@latest
@@ -50,6 +50,15 @@ else
 	migrate create -ext sql -dir $(MIGRATE_DIR) -seq $(name)
 endif
 
+clean:
+	rm -f bin/*
+	rm -f release/*
+	rm -f internal/pb/*.pb.go
+	rm -rf js/dist
+	rm -rf js/node_modules
+	rm -rf js/src/pb
+	rm -rf input
+
 internal/pb/%.pb.go: internal/pb/%.proto
 	protoc --experimental_allow_proto3_optional --go_out=. --go_opt=paths=source_relative $^
 
@@ -59,10 +68,13 @@ internal/pb/%_grpc.pb.go: internal/pb/%.proto
 bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 go build $(BUILD_FLAGS) -o $@ $<
 
+js-install:
+	cd js && npm install
+
 js/src/pb: $(PROTO_FILES)
 	cd js && mkdir -p ./src/pb && npx protoc --experimental_allow_proto3_optional --ts_out ./src/pb --ts_opt long_type_bigint,ts_nocheck,eslint_disable,add_pb_suffix --proto_path ../internal/pb/ ../$^
 
-js/dist: $(PROTO_TS_FILES)
+js/dist: js-install $(PROTO_TS_FILES)
 	cd js && npm run build
 
 development/server.key:
@@ -105,13 +117,13 @@ else
 	cd test && go test -run $(name)
 endif
 
-test-js:
+test-js: js-install
 	cd js && npm run test
 
-lint-js:
+lint-js: js-install
 	cd js && npm run lint
 
-typecheck-js:
+typecheck-js: js-install
 	cd js && npm run typecheck
 
 reset-db: migrate
