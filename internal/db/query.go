@@ -165,7 +165,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 		objectQuery.Path = *packParent
 	}
 
-	builder := newQueryBuilder(project, vrange, objectQuery, nil, false)
+	builder := newQueryBuilder(project, vrange, objectQuery)
 	sql, args := builder.build()
 	rows, err := tx.Query(ctx, sql, args...)
 
@@ -232,8 +232,8 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 
 type tarStream func() ([]byte, *string, error)
 
-func GetTars(ctx context.Context, tx pgx.Tx, project int64, availableCacheVersions []int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
-	builder := newQueryBuilder(project, vrange, objectQuery, availableCacheVersions, true)
+func GetTars(ctx context.Context, tx pgx.Tx, project int64, cacheVersions []int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
+	builder := newQueryBuilder(project, vrange, objectQuery).withCacheVersions(cacheVersions).withHashes(true)
 	sql, args := builder.build()
 	rows, err := tx.Query(ctx, sql, args...)
 	if err != nil {

@@ -47,7 +47,8 @@ func CloneToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, 
 		WithContent: false,
 	}
 
-	builder := newQueryBuilder(source, vrange, objectQuery, nil, true)
+	builder := newQueryBuilder(source, vrange, objectQuery).withHashes(true)
+
 	innerSql, args := builder.build()
 	argsLength := len(args)
 
