@@ -843,10 +843,9 @@ func TestCloneTo(t *testing.T) {
 	fs := tc.FsApi()
 
 	response, err := fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
-		Source:      1,
-		FromVersion: 0,
-		ToVersion:   1,
-		Target:      2,
+		Source:  1,
+		Version: 1,
+		Target:  2,
 	})
 	require.NoError(t, err, "fs.CloneToProject")
 
@@ -872,10 +871,9 @@ func TestCloneTo(t *testing.T) {
 	writeObject(tc, 1, 2, nil, "/a/b", "a/b v1")
 
 	response, err = fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
-		Source:      1,
-		FromVersion: 1,
-		ToVersion:   2,
-		Target:      2,
+		Source:  1,
+		Version: 2,
+		Target:  2,
 	})
 	require.NoError(t, err, "fs.CloneToProject")
 
@@ -905,10 +903,9 @@ func TestCloneToVersionGreaterThanCurrent(t *testing.T) {
 	fs := tc.FsApi()
 
 	response, err := fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
-		Source:      1,
-		FromVersion: 0,
-		ToVersion:   20,
-		Target:      2,
+		Source:  1,
+		Version: 20,
+		Target:  2,
 	})
 	require.NoError(t, err, "fs.CloneToProject")
 
@@ -940,10 +937,9 @@ func TestCloneToMultipleFromVersionToVersion(t *testing.T) {
 	fs := tc.FsApi()
 
 	response, err := fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
-		Source:      1,
-		FromVersion: 0,
-		ToVersion:   2,
-		Target:      2,
+		Source:  1,
+		Version: 2,
+		Target:  2,
 	})
 	require.NoError(t, err, "fs.CloneToProject")
 
@@ -959,10 +955,9 @@ func TestCloneToMultipleFromVersionToVersion(t *testing.T) {
 	})
 
 	response, err = fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
-		Source:      1,
-		FromVersion: 2,
-		ToVersion:   5,
-		Target:      2,
+		Source:  1,
+		Version: 5,
+		Target:  2,
 	})
 	require.NoError(t, err, "fs.CloneToProject")
 
@@ -978,20 +973,86 @@ func TestCloneToMultipleFromVersionToVersion(t *testing.T) {
 	})
 }
 
+func TestCloneToDeleted(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 5)
+	writeProject(tc, 2, 1)
+
+	writeObject(tc, 1, 1, i(2), "/a/c", "/a/c v1")
+	writeObject(tc, 1, 1, i(4), "/a/d", "a/d v1")
+	writeObject(tc, 1, 5, nil, "/a/f", "a/f v1")
+
+	writeObject(tc, 2, 1, nil, "/a/c", "/a/c v1")
+
+	fs := tc.FsApi()
+
+	response, err := fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
+		Source:  1,
+		Version: 6,
+		Target:  2,
+	})
+	require.NoError(t, err, "fs.CloneToProject")
+
+	assert.True(t, response.LatestVersion == 2, "expected new version to be 2")
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(2, &response.LatestVersion, ""), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"/a/f": {content: "a/f v1"},
+	})
+}
+
+func TestCloneToOutOfSync(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 5)
+	writeProject(tc, 2, 3)
+
+	writeObject(tc, 1, 1, i(4), "/a/d", "a/d v1")
+	writeObject(tc, 1, 5, nil, "/a/f", "a/f v1")
+
+	writeObject(tc, 2, 1, nil, "/a/c", "/a/c v1")
+	writeObject(tc, 2, 1, i(2), "/a/g", "/a/g v1")
+
+	fs := tc.FsApi()
+
+	response, err := fs.CloneToProject(tc.Context(), &pb.CloneToProjectRequest{
+		Source:  1,
+		Version: 6,
+		Target:  2,
+	})
+	require.NoError(t, err, "fs.CloneToProject")
+
+	assert.True(t, response.LatestVersion == 4, "expected new version to be 4")
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err = fs.Get(prefixQuery(2, &response.LatestVersion, ""), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"/a/f": {content: "a/f v1"},
+	})
+}
+
 func TestGetCache(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
-	writeProject(tc, 1, 2, "node_modules/")
-	writePackedObjects(tc, 1, 1, nil, "node_modules/", map[string]expectedObject{
-		"node_modules/a/a": {content: "node_modules/a/a v1"},
-		"node_modules/a/b": {content: "node_modules/a/b v1"},
+	writeProject(tc, 1, 2, "pack/")
+	writePackedObjects(tc, 1, 1, nil, "pack/", map[string]expectedObject{
+		"pack/a/a": {content: "pack/a/a v1"},
+		"pack/a/b": {content: "pack/a/b v1"},
 	})
 
-	writeProject(tc, 2, 2, "node_modules/")
-	writePackedObjects(tc, 2, 1, nil, "node_modules/", map[string]expectedObject{
-		"node_modules/b/a": {content: "node_modules/b/a v1"},
-		"node_modules/b/b": {content: "node_modules/b/b v1"},
+	writeProject(tc, 2, 2, "pack/")
+	writePackedObjects(tc, 2, 1, nil, "pack/", map[string]expectedObject{
+		"pack/b/a": {content: "pack/b/a v1"},
+		"pack/b/b": {content: "pack/b/b v1"},
 	})
 
 	writePackedObjects(tc, 2, 1, nil, "private/", map[string]expectedObject{
@@ -999,7 +1060,7 @@ func TestGetCache(t *testing.T) {
 		"private/b": {content: "private/b v1"},
 	})
 
-	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules", 100)
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
 
 	require.NoError(t, err, "db.CreateCache")
 
@@ -1011,10 +1072,10 @@ func TestGetCache(t *testing.T) {
 
 	assert.Equal(t, 2, len(stream.results), "expected 2 TAR files")
 	verifyTarResults(t, stream.results, map[string]expectedObject{
-		"node_modules/a/a": {content: "node_modules/a/a v1"},
-		"node_modules/a/b": {content: "node_modules/a/b v1"},
-		"node_modules/b/a": {content: "node_modules/b/a v1"},
-		"node_modules/b/b": {content: "node_modules/b/b v1"},
+		"pack/a/a": {content: "pack/a/a v1"},
+		"pack/a/b": {content: "pack/a/b v1"},
+		"pack/b/a": {content: "pack/b/a v1"},
+		"pack/b/b": {content: "pack/b/b v1"},
 	})
 }
 

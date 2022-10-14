@@ -13,6 +13,7 @@ type queryBuilder struct {
 	objectQuery   *pb.ObjectQuery
 	cacheVersions []int64
 	includeHashes bool
+	argsOffset    int
 }
 
 func newQueryBuilder(project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) *queryBuilder {
@@ -22,6 +23,7 @@ func newQueryBuilder(project int64, vrange VersionRange, objectQuery *pb.ObjectQ
 		objectQuery:   objectQuery,
 		cacheVersions: nil,
 		includeHashes: false,
+		argsOffset:    0,
 	}
 }
 
@@ -32,6 +34,11 @@ func (qb *queryBuilder) withHashes(include bool) *queryBuilder {
 
 func (qb *queryBuilder) withCacheVersions(cacheVersions []int64) *queryBuilder {
 	qb.cacheVersions = cacheVersions
+	return qb
+}
+
+func (qb *queryBuilder) withArgsOffset(offset int) *queryBuilder {
+	qb.argsOffset = offset
 	return qb
 }
 
@@ -237,7 +244,7 @@ func (qb *queryBuilder) replaceQueryArgs(query string) (string, []any) {
 	}
 
 	for idx, name := range argNames {
-		query = strings.ReplaceAll(query, name, fmt.Sprintf("$%d", idx+1))
+		query = strings.ReplaceAll(query, name, fmt.Sprintf("$%d", qb.argsOffset+idx+1))
 	}
 
 	return query, args

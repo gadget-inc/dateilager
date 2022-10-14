@@ -782,20 +782,18 @@ func (c *Client) GcContents(ctx context.Context, sample float32) (int64, error) 
 	return response.Count, nil
 }
 
-func (c *Client) CloneToProject(ctx context.Context, source int64, target int64, fromVersion int64, toVersion int64) (*int64, error) {
+func (c *Client) CloneToProject(ctx context.Context, source int64, target int64, version int64) (*int64, error) {
 	ctx, span := telemetry.Start(ctx, "client.clone-to-project", trace.WithAttributes(
 		key.Project.Attribute(source),
-		key.FromVersion.Attribute(&target),
-		key.ToVersion.Attribute(&fromVersion),
-		key.CloneToProject.Attribute(toVersion),
+		key.ToVersion.Attribute(&version),
+		key.CloneToProject.Attribute(target),
 	))
 	defer span.End()
 
 	response, err := c.fs.CloneToProject(ctx, &pb.CloneToProjectRequest{
-		Source:      source,
-		Target:      target,
-		FromVersion: fromVersion,
-		ToVersion:   toVersion,
+		Source:  source,
+		Target:  target,
+		Version: version,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("clone to project: %w", err)

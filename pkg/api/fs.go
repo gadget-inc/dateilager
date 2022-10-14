@@ -104,8 +104,7 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) (*pb.CloneToProjectResponse, error) {
 	trace.SpanFromContext(ctx).SetAttributes(
 		key.Project.Attribute(req.Source),
-		key.FromVersion.Attribute(&req.FromVersion),
-		key.ToVersion.Attribute(&req.ToVersion),
+		key.Version.Attribute(req.Version),
 		key.CloneToProject.Attribute(req.Target),
 	)
 
@@ -131,14 +130,6 @@ func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) 
 		return nil, status.Errorf(codes.InvalidArgument, "FS projects have different pack patterns: %v", err)
 	}
 
-	vrange, err := db.NewVersionRange(ctx, tx, req.Source, &req.FromVersion, &req.ToVersion)
-	if errors.Is(err, db.ErrNotFound) {
-		return nil, status.Errorf(codes.NotFound, "FS get missing latest version: %v", err)
-	}
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS get latest version: %v", err)
-	}
-
 	latestVersion, err := db.LockLatestVersion(ctx, tx, req.Target)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS copy to project could not lock target (%d) version: %v", req.Target, err)
@@ -146,11 +137,11 @@ func (f *Fs) CloneToProject(ctx context.Context, req *pb.CloneToProjectRequest) 
 
 	newVersion := latestVersion + 1
 
-	logger.Debug(ctx, "FS.CloneToProject[Query]", key.Project.Field(req.Source), key.CloneToProject.Field(req.Target), key.FromVersion.Field(&vrange.From), key.ToVersion.Field(&vrange.To))
+	logger.Debug(ctx, "FS.CloneToProject[Query]", key.Project.Field(req.Source), key.CloneToProject.Field(req.Target), key.Version.Field(req.Version))
 
-	err = db.CloneToProject(ctx, tx, req.Source, req.Target, vrange, newVersion)
+	err = db.CloneToProject(ctx, tx, req.Source, req.Target, req.Version, newVersion)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS copy to project from source (%d) to target (%d) with range {%d,%d}: %v", req.Source, req.Target, vrange.From, vrange.To, err)
+		return nil, status.Errorf(codes.Internal, "FS copy to project from source (%d) to target (%d) with version (%d): %v", req.Source, req.Target, req.Version, err)
 	}
 
 	err = db.UpdateLatestVersion(ctx, tx, req.Target, newVersion)
