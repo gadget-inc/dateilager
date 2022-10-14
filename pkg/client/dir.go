@@ -33,6 +33,37 @@ func ensureMetadataDir(dir string) error {
 	return nil
 }
 
+func CacheObjectsDir(cacheRootDir string) string {
+	return filepath.Join(cacheRootDir, "objects")
+}
+
+func CacheTmpDir(cacheRootDir string) string {
+	return filepath.Join(cacheRootDir, "tmp")
+}
+
+func cacheVersionPath(cacheRootDir string) string {
+	return filepath.Join(cacheRootDir, "versions")
+}
+
+func ReadCacheVersionFile(cacheRootDir string) []int64 {
+	var availableVersions = []int64{}
+	content, err := os.ReadFile(cacheVersionPath(cacheRootDir))
+	if err != nil {
+		return availableVersions
+	}
+
+	versionsStrings := strings.Split(string(content), "\n")
+
+	for _, version := range versionsStrings {
+		versionNum, err := strconv.ParseInt(version, 10, 64)
+		if err == nil {
+			availableVersions = append(availableVersions, versionNum)
+		}
+	}
+
+	return availableVersions
+}
+
 func ReadVersionFile(dir string) (int64, error) {
 	path := filepath.Join(dir, versionFile)
 	bytes, err := os.ReadFile(path)

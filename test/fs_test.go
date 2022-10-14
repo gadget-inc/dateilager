@@ -3,6 +3,8 @@ package test
 import (
 	"testing"
 
+	"github.com/gadget-inc/dateilager/internal/db"
+
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
@@ -502,12 +504,12 @@ func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
-	writeProject(tc, 1, 2, "/a/")
+	writeProject(tc, 1, 2, "pack/")
 	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
-		"/a/c": {content: "a/c v1"},
-		"/a/d": {content: "a/d v1"},
+		"pack/a": {content: "pack/a v1"},
+		"pack/b": {content: "pack/b v1"},
 	})
-	writeObject(tc, 1, 2, nil, "/b", "b v2")
+	writeObject(tc, 1, 2, nil, "c", "c v2")
 
 	fs := tc.FsApi()
 
@@ -518,9 +520,43 @@ func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
 	assert.Equal(t, 2, len(stream.results), "expected 2 TAR files")
 
 	verifyTarResults(t, stream.results, map[string]expectedObject{
-		"/a/c": {content: "a/c v1"},
-		"/a/d": {content: "a/d v1"},
-		"/b":   {content: "b v2"},
+		"pack/a": {content: "pack/a v1"},
+		"pack/b": {content: "pack/b v1"},
+		"c":      {content: "c v2"},
+	})
+}
+
+func TestGetCompressWithCacheVersions(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2, "pack/")
+	writePackedFiles(tc, 1, 1, nil, "pack/a")
+
+	cacheVersion, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
+	require.NoError(t, err)
+
+	version, hashes := latestCacheVersionHashes(tc)
+	assert.Equal(t, cacheVersion, version, "latest cache version matches newly created cache")
+	assert.Equal(t, 1, len(hashes), "cache hash count")
+
+	writePackedFiles(tc, 1, 2, nil, "pack/b")
+
+	fs := tc.FsApi()
+
+	stream := &mockGetCompressServer{ctx: tc.Context()}
+	request := buildCompressRequest(1, nil, nil, "")
+	request.AvailableCacheVersions = []int64{cacheVersion}
+
+	err = fs.GetCompress(request, stream)
+	require.NoError(t, err, "fs.GetCompress")
+
+	assert.Equal(t, 2, len(stream.results), "expected 2 TAR files")
+
+	verifyTarResults(t, stream.results, map[string]expectedObject{
+		"pack/a":   {content: string(hashes[0].Bytes())},
+		"pack/b/1": {content: "pack/b/1 v2"},
+		"pack/b/2": {content: "pack/b/2 v2"},
 	})
 }
 
@@ -987,4 +1023,58 @@ func TestCloneToMultipleFromVersionToVersion(t *testing.T) {
 		"/a/f": {content: "a/f v1"},
 		"/a/d": {content: "a/d v1"},
 	})
+}
+
+func TestGetCache(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2, "node_modules/")
+	writePackedObjects(tc, 1, 1, nil, "node_modules/", map[string]expectedObject{
+		"node_modules/a/a": {content: "node_modules/a/a v1"},
+		"node_modules/a/b": {content: "node_modules/a/b v1"},
+	})
+
+	writeProject(tc, 2, 2, "node_modules/")
+	writePackedObjects(tc, 2, 1, nil, "node_modules/", map[string]expectedObject{
+		"node_modules/b/a": {content: "node_modules/b/a v1"},
+		"node_modules/b/b": {content: "node_modules/b/b v1"},
+	})
+
+	writePackedObjects(tc, 2, 1, nil, "private/", map[string]expectedObject{
+		"private/a": {content: "private/a v1"},
+		"private/b": {content: "private/b v1"},
+	})
+
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "node_modules", 100)
+
+	require.NoError(t, err, "db.CreateCache")
+
+	fs := tc.FsApi()
+
+	stream := &mockGetCacheServer{ctx: tc.Context()}
+	err = fs.GetCache(&pb.GetCacheRequest{}, stream)
+	require.NoError(t, err, "fs.GetCache")
+
+	assert.Equal(t, 2, len(stream.results), "expected 2 TAR files")
+	verifyTarResults(t, stream.results, map[string]expectedObject{
+		"node_modules/a/a": {content: "node_modules/a/a v1"},
+		"node_modules/a/b": {content: "node_modules/a/b v1"},
+		"node_modules/b/a": {content: "node_modules/b/a v1"},
+		"node_modules/b/b": {content: "node_modules/b/b v1"},
+	})
+}
+
+func TestGetCacheWithoutAvailableCacheVersion(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	fs := tc.FsApi()
+
+	stream := &mockGetCacheServer{ctx: tc.Context()}
+	err := fs.GetCache(&pb.GetCacheRequest{}, stream)
+	require.NoError(t, err, "fs.GetCache")
+
+	assert.Equal(t, 0, len(stream.results), "expected 0 TAR files")
+	verifyTarResults(t, stream.results, map[string]expectedObject{})
 }

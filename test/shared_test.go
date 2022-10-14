@@ -172,7 +172,7 @@ func writeSymlink(tc util.TestCtx, project int64, start int64, stop *int64, path
 	writeObjectFull(tc, project, start, stop, path, target, mode)
 }
 
-func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64, path string, objects map[string]expectedObject) {
+func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64, path string, objects map[string]expectedObject) db.Hash {
 	conn := tc.Connect()
 
 	contentsTar, namesTar := packObjects(tc, objects)
@@ -191,6 +191,15 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 		DO NOTHING
 	`, hash.H1, hash.H2, contentsTar, namesTar)
 	require.NoError(tc.T(), err, "insert contents")
+
+	return hash
+}
+
+func writePackedFiles(tc util.TestCtx, project int64, start int64, stop *int64, path string) db.Hash {
+	return writePackedObjects(tc, project, start, stop, path, map[string]expectedObject{
+		filepath.Join(path, "1"): {content: fmt.Sprintf("%s v%d", filepath.Join(path, "1"), start)},
+		filepath.Join(path, "2"): {content: fmt.Sprintf("%s v%d", filepath.Join(path, "2"), start)},
+	})
 }
 
 func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []byte) {
@@ -203,18 +212,12 @@ func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []
 			mode = 0755
 		}
 
-		object := &pb.Object{
-			Path:    path,
-			Mode:    mode,
-			Size:    int64(len(info.content)),
-			Content: []byte(info.content),
-			Deleted: info.deleted,
-		}
+		object := db.NewUncachedTarObject(path, mode, int64(len(info.content)), info.deleted, []byte(info.content))
 
-		err := contentWriter.WriteObject(object, true)
+		err := contentWriter.WriteObject(&object, true)
 		require.NoError(tc.T(), err, "write content to TAR")
 
-		err = namesWriter.WriteObject(object, false)
+		err = namesWriter.WriteObject(&object, false)
 		require.NoError(tc.T(), err, "write name to TAR")
 	}
 
@@ -388,8 +391,14 @@ func createTestClient(tc util.TestCtx) (*client.Client, *api.Fs, func()) {
 	return c, fs, func() { c.Close(); s.Stop() }
 }
 
-func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, expected expectedResponse) {
-	version, count, err := c.Rebuild(tc.Context(), project, "", toVersion, dir)
+func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, cacheDir *string, expected expectedResponse) {
+	if cacheDir == nil {
+		newCacheDir := emptyTmpDir(tc.T())
+		defer os.RemoveAll(newCacheDir)
+		cacheDir = &newCacheDir
+	}
+
+	version, count, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, *cacheDir)
 	require.NoError(tc.T(), err, "client.Rebuild")
 
 	assert.Equal(tc.T(), expected.version, version, "mismatch rebuild version")
@@ -491,6 +500,21 @@ func (m *mockUpdateServer) Recv() (*pb.UpdateRequest, error) {
 	}, nil
 }
 
+type mockGetCacheServer struct {
+	grpc.ServerStream
+	ctx     context.Context
+	results [][]byte
+}
+
+func (m *mockGetCacheServer) Context() context.Context {
+	return m.ctx
+}
+
+func (m *mockGetCacheServer) Send(resp *pb.GetCacheResponse) error {
+	m.results = append(m.results, resp.Bytes)
+	return nil
+}
+
 func buildRequest(project int64, fromVersion, toVersion *int64, prefix, content bool, paths ...string) *pb.GetRequest {
 	path, ignores := paths[0], paths[1:]
 
@@ -571,10 +595,13 @@ func verifyTarResults(t *testing.T, results [][]byte, expected map[string]expect
 			}
 			require.NoError(t, err, "failed to read next TAR file")
 
-			expectedMatch, ok := expected[header.Name]
-			assert.True(t, ok, "missing %v in TAR", header.Name)
-
 			count += 1
+
+			expectedMatch, ok := expected[header.Name]
+			assert.True(t, ok, "missing %v in expected objects", header.Name)
+			if !ok {
+				continue
+			}
 
 			var buffer bytes.Buffer
 			_, err = io.Copy(&buffer, tarReader)
@@ -587,7 +614,7 @@ func verifyTarResults(t *testing.T, results [][]byte, expected map[string]expect
 		}
 	}
 
-	assert.Equal(t, len(expected), count, "expected %v objects", len(expected))
+	assert.Equal(t, len(expected), count, "expected %d objects in tar results, got %d", len(expected), count)
 }
 
 // Use debugProjects(tc) and debugObjects(tc) within a failing test to log the state of the DB

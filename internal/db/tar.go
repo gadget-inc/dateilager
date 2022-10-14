@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"sort"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
@@ -60,16 +61,16 @@ func (t *TarWriter) Size() int {
 	return t.size
 }
 
-func (t *TarWriter) WriteObject(object *pb.Object, writeContent bool) error {
+func (t *TarWriter) WriteObject(object *TarObject, writeContent bool) error {
 	typeFlag := object.TarType()
 
-	size := int64(len(object.Content))
+	size := int64(len(object.content))
 	if !writeContent || typeFlag == tar.TypeDir || typeFlag == tar.TypeSymlink {
 		size = 0
 	}
 
 	header := &tar.Header{
-		Name:     object.Path,
+		Name:     object.path,
 		Mode:     int64(object.FileMode().Perm()),
 		Typeflag: typeFlag,
 		Size:     size,
@@ -77,24 +78,71 @@ func (t *TarWriter) WriteObject(object *pb.Object, writeContent bool) error {
 	}
 
 	if typeFlag == tar.TypeSymlink {
-		header.Linkname = string(object.Content)
+		header.Linkname = string(object.content)
 	}
 
 	err := t.tarWriter.WriteHeader(header)
 	if err != nil {
-		return fmt.Errorf("write header to TAR %v: %w", object.Path, err)
+		return fmt.Errorf("write header to TAR %v: %w", object.path, err)
 	}
 
 	if size > 0 {
-		_, err = t.tarWriter.Write(object.Content)
+		_, err = t.tarWriter.Write(object.content)
 		if err != nil {
-			return fmt.Errorf("write content to TAR %v: %w", object.Path, err)
+			return fmt.Errorf("write content to TAR %v: %w", object.path, err)
 		}
 	}
 
-	t.size += int(size) + len(object.Path)
+	t.size += int(size) + len(object.path)
 
 	return nil
+}
+
+type TarObject struct {
+	path    string
+	mode    int64
+	size    int64
+	deleted bool
+	cached  bool
+	content []byte
+}
+
+func (o *TarObject) FileMode() fs.FileMode {
+	return fs.FileMode(o.mode)
+}
+
+func (o *TarObject) TarType() byte {
+	// Custome DateiLager typeflags to represent deleted & cached objects
+	if o.deleted {
+		return pb.TarDeleted
+	}
+	if o.cached {
+		return pb.TarCached
+	}
+
+	return pb.TarTypeFromMode(o.FileMode())
+}
+
+func NewCachedTarObject(path string, mode int64, size int64, hash Hash) TarObject {
+	return TarObject{
+		path,
+		mode,
+		size,
+		false,
+		true,
+		hash.Bytes(),
+	}
+}
+
+func NewUncachedTarObject(path string, mode int64, size int64, deleted bool, content []byte) TarObject {
+	return TarObject{
+		path,
+		mode,
+		size,
+		deleted,
+		false,
+		content,
+	}
 }
 
 type TarReader struct {
@@ -149,12 +197,13 @@ func PackObjects(objects ObjectStream) ([]byte, []byte, error) {
 
 		empty = false
 
-		err = contentWriter.WriteObject(object, true)
+		tarObj := NewUncachedTarObject(object.Path, object.Mode, object.Size, object.Deleted, object.Content)
+		err = contentWriter.WriteObject(&tarObj, true)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		err = namesWriter.WriteObject(object, false)
+		err = namesWriter.WriteObject(&tarObj, false)
 		if err != nil {
 			return nil, nil, err
 		}

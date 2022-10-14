@@ -28,8 +28,10 @@ service Fs {
     rpc GcRandomProjects(GcRandomProjectsRequest) returns (GcRandomProjectsResponse);
 
     rpc GcContents(GcContentsRequest) returns (GcContentsResponse);
-    
+
     rpc CloneToProject(CloneToProjectRequest) returns (CloneToProjectResponse);
+
+    rpc GetCache(GetCacheRequest) returns (stream GetCacheResponse);
 }
 
 message NewProjectRequest {
@@ -91,6 +93,7 @@ message GetCompressRequest {
     optional int64 from_version = 2;
     optional int64 to_version = 3;
     repeated ObjectQuery queries = 5;
+    repeated int64 available_cache_versions = 6;
 }
 
 message GetCompressResponse {
@@ -174,4 +177,17 @@ message CloneToProjectRequest {
 
 message CloneToProjectResponse {
     int64 latest_version = 1;
+}
+
+message GetCacheRequest {};
+
+message GetCacheResponse {
+    enum Format {
+        S2_TAR = 0;
+    }
+
+    int64 version = 1;
+    Format format = 2;
+    bytes bytes = 3;
+    bytes hash = 4;
 }

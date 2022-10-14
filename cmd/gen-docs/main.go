@@ -12,11 +12,12 @@ import (
 func main() {
 	dir := flag.String("doc-path", "./docs/client", "Path directory where you want generated doc files")
 
-	if err := os.MkdirAll(*dir, 0755); err != nil {
+	err := os.MkdirAll(*dir, 0755)
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	err := doc.GenMarkdownTree(cli.NewClientCommand(), *dir)
+	err = doc.GenMarkdownTree(cli.NewClientCommand(), *dir)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -165,7 +165,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 		objectQuery.Path = *packParent
 	}
 
-	builder := newQueryBuilder(project, vrange, objectQuery, false)
+	builder := newQueryBuilder(project, vrange, objectQuery, nil, false)
 	sql, args := builder.build()
 	rows, err := tx.Query(ctx, sql, args...)
 
@@ -189,14 +189,19 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 
 		var path string
 		var mode, size int64
+		var isCached bool
 		var encoded []byte
 		var packed bool
 		var deleted bool
 		var h1, h2 []byte
 
-		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted, &h1, &h2)
+		err := rows.Scan(&path, &mode, &size, &isCached, &encoded, &packed, &deleted, &h1, &h2)
 		if err != nil {
 			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: %w", project, vrange, err)
+		}
+
+		if isCached {
+			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: returned non-nil hash when queried without cache", project, vrange)
 		}
 
 		if packParent != nil {
@@ -227,8 +232,8 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 
 type tarStream func() ([]byte, *string, error)
 
-func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
-	builder := newQueryBuilder(project, vrange, objectQuery, false)
+func GetTars(ctx context.Context, tx pgx.Tx, project int64, availableCacheVersions []int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
+	builder := newQueryBuilder(project, vrange, objectQuery, availableCacheVersions, true)
 	sql, args := builder.build()
 	rows, err := tx.Query(ctx, sql, args...)
 	if err != nil {
@@ -250,31 +255,32 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange,
 
 		var path string
 		var mode, size int64
+		var isCached bool
 		var encoded []byte
 		var packed bool
 		var deleted bool
-		var h1, h2 []byte
+		var hash Hash
 
-		err := rows.Scan(&path, &mode, &size, &encoded, &packed, &deleted, &h1, &h2)
+		err := rows.Scan(&path, &mode, &size, &isCached, &encoded, &packed, &deleted, &hash.H1, &hash.H2)
 		if err != nil {
 			return nil, nil, fmt.Errorf("getTars scan, project %v vrange %v: %w", project, vrange, err)
 		}
 
-		if packed {
+		if packed && !isCached {
 			return encoded, &path, nil
 		}
 
-		content, err := contentDecoder.Decoder(encoded)
-		if err != nil {
-			return nil, nil, fmt.Errorf("getTars decode content %v: %w", path, err)
-		}
+		var object TarObject
 
-		object := pb.Object{
-			Path:    path,
-			Mode:    mode,
-			Size:    size,
-			Deleted: deleted,
-			Content: content,
+		if isCached {
+			object = NewCachedTarObject(path, mode, size, hash)
+		} else {
+			content, err := contentDecoder.Decoder(encoded)
+			if err != nil {
+				return nil, nil, fmt.Errorf("getTars decode content %v: %w", path, err)
+			}
+
+			object = NewUncachedTarObject(path, mode, size, deleted, content)
 		}
 
 		err = tarWriter.WriteObject(&object, true)
@@ -289,6 +295,58 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, vrange VersionRange,
 
 		return nil, nil, SKIP
 	}, nil
+}
+
+type cacheTarStream func() (int64, []byte, *Hash, error)
+
+func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, error) {
+	var version int64
+
+	err := tx.QueryRow(ctx, `
+		SELECT version
+		FROM dl.cache_versions
+		ORDER BY version DESC
+		LIMIT 1
+	`).Scan(&version)
+	if err == pgx.ErrNoRows {
+		return func() (int64, []byte, *Hash, error) { return 0, nil, nil, io.EOF }, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("GetCacheTars latest cache version: %w", err)
+	}
+
+	rows, err := tx.Query(ctx, `
+		WITH version_hashes AS (
+			SELECT unnest(hashes) AS hash
+			FROM dl.cache_versions
+			WHERE version = $1
+		)
+		SELECT (h.hash).h1, (h.hash).h2, c.bytes
+		FROM version_hashes h
+		JOIN dl.contents c
+		  ON h.hash = c.hash
+	`, version)
+	if err != nil {
+		return nil, fmt.Errorf("GetCacheTars query: %w", err)
+	}
+
+	stream := func() (int64, []byte, *Hash, error) {
+		if !rows.Next() {
+			return 0, nil, nil, io.EOF
+		}
+
+		var hash Hash
+		var encoded []byte
+
+		err := rows.Scan(&hash.H1, &hash.H2, &encoded)
+		if err != nil {
+			return 0, nil, nil, fmt.Errorf("GetCacheTars scan: %w", err)
+		}
+
+		return version, encoded, &hash, nil
+	}
+
+	return stream, nil
 }
 
 type PackManager struct {

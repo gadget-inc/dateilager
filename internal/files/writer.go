@@ -2,6 +2,7 @@ package files
 
 import (
 	"archive/tar"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/pb"
 )
 
 func fileExists(path string) bool {
@@ -33,10 +35,17 @@ func retryFileErrors[R any](path string, fn retryableFileOperation[R]) (R, error
 	return result, err
 }
 
-func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error {
+func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, header *tar.Header) error {
 	path := filepath.Join(rootDir, header.Name)
 
 	switch header.Typeflag {
+	case pb.TarCached:
+		content, err := reader.ReadContent()
+		if err != nil {
+			return err
+		}
+		hashHex := hex.EncodeToString(content)
+		return makeSymlink(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
 	case tar.TypeReg:
 		dir := filepath.Dir(path)
 		_, err := retryFileErrors(dir, func() (interface{}, error) {
@@ -73,21 +82,7 @@ func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error
 		}
 
 	case tar.TypeSymlink:
-		dir := filepath.Dir(path)
-		_, err := retryFileErrors(dir, func() (interface{}, error) {
-			return nil, os.MkdirAll(dir, 0777)
-		})
-		if err != nil {
-			return fmt.Errorf("mkdir -p %v: %w", dir, err)
-		}
-
-		_, err = retryFileErrors(path, func() (interface{}, error) {
-			return nil, os.Symlink(header.Linkname, path)
-		})
-		if err != nil {
-			return fmt.Errorf("ln -s %v %v: %w", header.Linkname, path, err)
-		}
-
+		return makeSymlink(header.Linkname, path)
 	case 'D':
 		err := os.Remove(path)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -104,7 +99,26 @@ func writeObject(rootDir string, reader *db.TarReader, header *tar.Header) error
 	return nil
 }
 
-func WriteTar(finalDir string, reader *db.TarReader, packPath *string) (uint32, error) {
+func makeSymlink(linkname string, path string) error {
+	dir := filepath.Dir(path)
+	_, err := retryFileErrors(dir, func() (interface{}, error) {
+		return nil, os.MkdirAll(dir, 0777)
+	})
+	if err != nil {
+		return fmt.Errorf("mkdir -p %v: %w", dir, err)
+	}
+
+	_, err = retryFileErrors(path, func() (interface{}, error) {
+		return nil, os.Symlink(linkname, path)
+	})
+	if err != nil {
+		return fmt.Errorf("ln -s %v %v: %w", linkname, path, err)
+	}
+
+	return nil
+}
+
+func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, packPath *string) (uint32, error) {
 	var count uint32
 	dir := finalDir
 
@@ -125,7 +139,7 @@ func WriteTar(finalDir string, reader *db.TarReader, packPath *string) (uint32, 
 			return count, fmt.Errorf("read next TAR header: %w", err)
 		}
 
-		err = writeObject(dir, reader, header)
+		err = writeObject(dir, cacheObjectsDir, reader, header)
 		if err != nil {
 			return count, err
 		}
