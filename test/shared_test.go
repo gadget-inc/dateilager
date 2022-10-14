@@ -175,7 +175,7 @@ func writeSymlink(tc util.TestCtx, project int64, start int64, stop *int64, path
 func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64, path string, objects map[string]expectedObject) db.Hash {
 	conn := tc.Connect()
 
-	contentsTar, namesTar := packObjects(tc, objects)
+	contentsTar := packObjects(tc, objects)
 	hash := db.HashContent(contentsTar)
 
 	_, err := conn.Exec(tc.Context(), `
@@ -185,11 +185,11 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 	require.NoError(tc.T(), err, "insert object")
 
 	_, err = conn.Exec(tc.Context(), `
-		INSERT INTO dl.contents (hash, bytes, names_tar)
-		VALUES (($1, $2), $3, $4)
+		INSERT INTO dl.contents (hash, bytes)
+		VALUES (($1, $2), $3)
 		ON CONFLICT
 		DO NOTHING
-	`, hash.H1, hash.H2, contentsTar, namesTar)
+	`, hash.H1, hash.H2, contentsTar)
 	require.NoError(tc.T(), err, "insert contents")
 
 	return hash
@@ -202,9 +202,8 @@ func writePackedFiles(tc util.TestCtx, project int64, start int64, stop *int64, 
 	})
 }
 
-func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []byte) {
+func packObjects(tc util.TestCtx, objects map[string]expectedObject) []byte {
 	contentWriter := db.NewTarWriter()
-	namesWriter := db.NewTarWriter()
 
 	for path, info := range objects {
 		mode := info.mode
@@ -214,20 +213,14 @@ func packObjects(tc util.TestCtx, objects map[string]expectedObject) ([]byte, []
 
 		object := db.NewUncachedTarObject(path, mode, int64(len(info.content)), info.deleted, []byte(info.content))
 
-		err := contentWriter.WriteObject(&object, true)
+		err := contentWriter.WriteObject(&object)
 		require.NoError(tc.T(), err, "write content to TAR")
-
-		err = namesWriter.WriteObject(&object, false)
-		require.NoError(tc.T(), err, "write name to TAR")
 	}
 
 	contentTar, err := contentWriter.BytesAndReset()
 	require.NoError(tc.T(), err, "write content TAR to bytes")
 
-	namesTar, err := namesWriter.BytesAndReset()
-	require.NoError(tc.T(), err, "write names TAR to bytes")
-
-	return contentTar, namesTar
+	return contentTar
 }
 
 // verifyObjects asserts that the given objects contain all the expected paths and file contents
@@ -515,14 +508,13 @@ func (m *mockGetCacheServer) Send(resp *pb.GetCacheResponse) error {
 	return nil
 }
 
-func buildRequest(project int64, fromVersion, toVersion *int64, prefix, content bool, paths ...string) *pb.GetRequest {
+func buildRequest(project int64, fromVersion, toVersion *int64, prefix bool, paths ...string) *pb.GetRequest {
 	path, ignores := paths[0], paths[1:]
 
 	query := &pb.ObjectQuery{
-		Path:        path,
-		IsPrefix:    prefix,
-		WithContent: content,
-		Ignores:     ignores,
+		Path:     path,
+		IsPrefix: prefix,
+		Ignores:  ignores,
 	}
 
 	return &pb.GetRequest{
@@ -534,29 +526,24 @@ func buildRequest(project int64, fromVersion, toVersion *int64, prefix, content 
 }
 
 func exactQuery(project int64, version *int64, paths ...string) *pb.GetRequest {
-	return buildRequest(project, nil, version, false, true, paths...)
+	return buildRequest(project, nil, version, false, paths...)
 }
 
 func prefixQuery(project int64, version *int64, paths ...string) *pb.GetRequest {
-	return buildRequest(project, nil, version, true, true, paths...)
-}
-
-func noContentQuery(project int64, version *int64, paths ...string) *pb.GetRequest {
-	return buildRequest(project, nil, version, true, false, paths...)
+	return buildRequest(project, nil, version, true, paths...)
 }
 
 func rangeQuery(project int64, fromVersion, toVersion *int64, paths ...string) *pb.GetRequest {
-	return buildRequest(project, fromVersion, toVersion, true, true, paths...)
+	return buildRequest(project, fromVersion, toVersion, true, paths...)
 }
 
 func buildCompressRequest(project int64, fromVersion, toVersion *int64, paths ...string) *pb.GetCompressRequest {
 	path, ignores := paths[0], paths[1:]
 
 	query := &pb.ObjectQuery{
-		Path:        path,
-		IsPrefix:    true,
-		WithContent: true,
-		Ignores:     ignores,
+		Path:     path,
+		IsPrefix: true,
+		Ignores:  ignores,
 	}
 
 	return &pb.GetCompressRequest{

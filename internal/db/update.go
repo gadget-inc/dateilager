@@ -104,8 +104,8 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 	`, version, project, previousPaths, version)
 
 	batch.Queue(`
-		INSERT INTO dl.contents (hash, bytes, names_tar)
-		VALUES (($1, $2), $3, NULL)
+		INSERT INTO dl.contents (hash, bytes)
+		VALUES (($1, $2), $3)
 		ON CONFLICT
 		   DO NOTHING
 	`, hash.H1, hash.H2, encoded)
@@ -154,7 +154,7 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 	rows.Close()
 
 	shouldInsert := true
-	updated, namesTar, err := updateObjects(content, updates)
+	updated, err := updateObjects(content, updates)
 	if errors.Is(err, ErrEmptyPack) {
 		// If the newly packed object is empty, we only need to delete the old one.
 		shouldInsert = false
@@ -186,11 +186,11 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 		`, project, version, parent, newHash.H1, newHash.H2, 0, len(updated), true)
 
 		batch.Queue(`
-			INSERT INTO dl.contents (hash, bytes, names_tar)
-			VALUES (($1, $2), $3, $4)
+			INSERT INTO dl.contents (hash, bytes)
+			VALUES (($1, $2), $3)
 			ON CONFLICT
-			DO NOTHING
-		`, newHash.H1, newHash.H2, updated, namesTar)
+			   DO NOTHING
+		`, newHash.H1, newHash.H2, updated)
 	}
 
 	results := tx.SendBatch(ctx, batch)

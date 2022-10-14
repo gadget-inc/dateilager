@@ -335,28 +335,6 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 	}
 }
 
-func TestGetWithoutContent(t *testing.T) {
-	tc := util.NewTestCtx(t, auth.Project, 1)
-	defer tc.Close()
-
-	writeProject(tc, 1, 3)
-	writeObject(tc, 1, 1, nil, "/a", "a v1")
-	writeObject(tc, 1, 2, nil, "/b", "b v2")
-	writeObject(tc, 1, 3, nil, "/c", "c v3")
-
-	fs := tc.FsApi()
-
-	stream := &mockGetServer{ctx: tc.Context()}
-	err := fs.Get(noContentQuery(1, nil, ""), stream)
-	require.NoError(t, err, "fs.Get")
-
-	verifyStreamResults(t, stream.results, map[string]expectedObject{
-		"/a": {content: ""},
-		"/b": {content: ""},
-		"/c": {content: ""},
-	})
-}
-
 func TestGetCompress(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
@@ -426,31 +404,6 @@ func TestGetPackedObjects(t *testing.T) {
 		"/a/c": {content: "a/c v1"},
 		"/a/d": {content: "a/d v1"},
 		"/a/e": {content: "a/e v1"},
-	})
-}
-
-func TestGetPackedObjectsWithoutContent(t *testing.T) {
-	tc := util.NewTestCtx(t, auth.Project, 1)
-	defer tc.Close()
-
-	writeProject(tc, 1, 2, "/a/")
-	writePackedObjects(tc, 1, 1, nil, "/a/", map[string]expectedObject{
-		"/a/c": {content: "a/c v1"},
-		"/a/d": {content: "a/d v1"},
-		"/a/e": {content: "a/e v1"},
-	})
-	writeObject(tc, 1, 2, nil, "/b", "b v2")
-
-	fs := tc.FsApi()
-
-	stream := &mockGetServer{ctx: tc.Context()}
-	err := fs.Get(noContentQuery(1, nil, "/a"), stream)
-	require.NoError(t, err, "fs.Get")
-
-	verifyStreamResults(t, stream.results, map[string]expectedObject{
-		"/a/c": {content: ""},
-		"/a/d": {content: ""},
-		"/a/e": {content: ""},
 	})
 }
 

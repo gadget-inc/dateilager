@@ -153,9 +153,8 @@ func TestGetCacheWithMultipleVersions(t *testing.T) {
 	availableVersions := []int64{firstVersion, secondVersion}
 
 	query := &pb.ObjectQuery{
-		Path:        "pack",
-		IsPrefix:    true,
-		WithContent: true,
+		Path:     "pack",
+		IsPrefix: true,
 	}
 	tars, err := db.GetTars(tc.Context(), tc.Connect(), 1, availableVersions, vrange, query)
 	require.NoError(t, err)

@@ -1,8 +1,6 @@
 [
   {
     "project": "{{ randomInt 0 9 }}{{ randomInt 0 9 }}",
-    "queries": [
-      {"path": "", "is_prefix": false, "with_content": true}
-    ]
+    "queries": [{ "path": "", "is_prefix": false }]
   }
 ]

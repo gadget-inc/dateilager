@@ -283,7 +283,7 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, cacheVersions []int6
 			object = NewUncachedTarObject(path, mode, size, deleted, content)
 		}
 
-		err = tarWriter.WriteObject(&object, true)
+		err = tarWriter.WriteObject(&object)
 		if err != nil {
 			return nil, nil, err
 		}

@@ -25,7 +25,6 @@ const (
 	QueryIgnores      = StringSliceKey("dl.query.ignores")
 	QueryIsPrefix     = BoolKey("dl.query.is_prefix")
 	QueryPath         = StringKey("dl.query.path")
-	QueryWithContent  = BoolKey("dl.query.with_content")
 	SampleRate        = Float32Key("dl.sample_rate")
 	Server            = StringKey("dl.server")
 	State             = StringKey("dl.state")

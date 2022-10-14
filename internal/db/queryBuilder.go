@@ -75,7 +75,6 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 			FROM possible_objects o
 			LEFT JOIN dl.contents c
 			       ON o.hash = c.hash
-				%s
 			%s
 			WHERE o.project = __project__
 			AND o.start_version > __start_version__
@@ -86,16 +85,8 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 			ORDER BY o.path
 	`
 
-	bytesSelector := "c.bytes"
-	contentsPredicate := ""
-	if !qb.objectQuery.WithContent {
-		bytesSelector = "c.names_tar AS bytes"
-		contentsPredicate = "AND o.packed IS true"
-	}
-
-	// FIXME: We do not support cacheVersions and !withContent at the same time
-
 	isCachedSelector := "false AS is_cached"
+	bytesSelector := "c.bytes"
 	cacheJoin := ""
 	if len(qb.cacheVersions) > 0 {
 		isCachedSelector = "h.hash IS NOT NULL AS is_cached"
@@ -123,7 +114,7 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 		ignoresPredicate = "AND o.path NOT LIKE ALL(__ignores__::text[])"
 	}
 
-	return fmt.Sprintf(template, isCachedSelector, bytesSelector, hashSelector, contentsPredicate, cacheJoin, pathPredicate, ignoresPredicate)
+	return fmt.Sprintf(template, isCachedSelector, bytesSelector, hashSelector, cacheJoin, pathPredicate, ignoresPredicate)
 }
 
 func (qb *queryBuilder) removedObjectsCTE() string {

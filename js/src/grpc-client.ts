@@ -194,7 +194,6 @@ export class DateiLagerGrpcClient {
                 path,
                 ignores,
                 isPrefix: true,
-                withContent: true,
               },
             ],
           },
@@ -238,7 +237,6 @@ export class DateiLagerGrpcClient {
               {
                 path,
                 isPrefix: false,
-                withContent: true,
                 ignores: [],
               },
             ],

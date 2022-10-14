@@ -70,9 +70,12 @@ message Objekt {
 }
 
 message ObjectQuery {
+    // with_content has been deprecated
+    reserved 3;
+    reserved "with_content";
+
     string path = 1;
     bool is_prefix = 2;
-    bool with_content = 3;
     repeated string ignores = 4;
 }
 

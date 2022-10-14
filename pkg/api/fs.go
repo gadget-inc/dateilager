@@ -292,7 +292,6 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 			key.ToVersion.Field(&vrange.To),
 			key.QueryPath.Field(query.Path),
 			key.QueryIsPrefix.Field(query.IsPrefix),
-			key.QueryWithContent.Field(query.WithContent),
 			key.QueryIgnores.Field(query.Ignores),
 		)
 
@@ -372,7 +371,6 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			key.ToVersion.Field(&vrange.To),
 			key.QueryPath.Field(query.Path),
 			key.QueryIsPrefix.Field(query.IsPrefix),
-			key.QueryWithContent.Field(query.WithContent),
 			key.QueryIgnores.Field(query.Ignores),
 		)
 
@@ -596,9 +594,8 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 	}
 
 	query := &pb.ObjectQuery{
-		Path:        "",
-		IsPrefix:    true,
-		WithContent: false,
+		Path:     "",
+		IsPrefix: true,
 	}
 	objects, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
 	if err != nil {

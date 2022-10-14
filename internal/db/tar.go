@@ -61,11 +61,11 @@ func (t *TarWriter) Size() int {
 	return t.size
 }
 
-func (t *TarWriter) WriteObject(object *TarObject, writeContent bool) error {
+func (t *TarWriter) WriteObject(object *TarObject) error {
 	typeFlag := object.TarType()
 
 	size := int64(len(object.content))
-	if !writeContent || typeFlag == tar.TypeDir || typeFlag == tar.TypeSymlink {
+	if typeFlag == tar.TypeDir || typeFlag == tar.TypeSymlink {
 		size = 0
 	}
 
@@ -178,9 +178,8 @@ func (t *TarReader) CopyContent(buffer io.Writer) error {
 	return err
 }
 
-func PackObjects(objects ObjectStream) ([]byte, []byte, error) {
+func PackObjects(objects ObjectStream) ([]byte, error) {
 	contentWriter := NewTarWriter()
-	namesWriter := NewTarWriter()
 	empty := true
 
 	for {
@@ -192,41 +191,31 @@ func PackObjects(objects ObjectStream) ([]byte, []byte, error) {
 			break
 		}
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 		empty = false
 
 		tarObj := NewUncachedTarObject(object.Path, object.Mode, object.Size, object.Deleted, object.Content)
-		err = contentWriter.WriteObject(&tarObj, true)
+		err = contentWriter.WriteObject(&tarObj)
 		if err != nil {
-			return nil, nil, err
-		}
-
-		err = namesWriter.WriteObject(&tarObj, false)
-		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
 	if empty {
-		return nil, nil, ErrEmptyPack
+		return nil, ErrEmptyPack
 	}
 
 	contentTar, err := contentWriter.BytesAndReset()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	namesTar, err := namesWriter.BytesAndReset()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return contentTar, namesTar, nil
+	return contentTar, nil
 }
 
-func updateObjects(before []byte, updates []*pb.Object) ([]byte, []byte, error) {
+func updateObjects(before []byte, updates []*pb.Object) ([]byte, error) {
 	seenPaths := make(map[string]bool)
 	idxHint := 0
 

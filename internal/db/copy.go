@@ -42,9 +42,8 @@ func CopyAllObjects(ctx context.Context, tx pgx.Tx, source int64, target int64) 
 
 func CloneToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, vrange VersionRange, newTargetVersion int64) error {
 	objectQuery := &pb.ObjectQuery{
-		Path:        "",
-		IsPrefix:    true,
-		WithContent: false,
+		Path:     "",
+		IsPrefix: true,
 	}
 
 	builder := newQueryBuilder(source, vrange, objectQuery).withHashes(true)

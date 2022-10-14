@@ -182,10 +182,9 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, ignores 
 	var objects []*pb.Object
 
 	query := &pb.ObjectQuery{
-		Path:        prefix,
-		IsPrefix:    true,
-		WithContent: true,
-		Ignores:     ignores,
+		Path:     prefix,
+		IsPrefix: true,
+		Ignores:  ignores,
 	}
 
 	request := &pb.GetRequest{
@@ -237,9 +236,8 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 	span.SetAttributes(key.FromVersion.Attribute(&fromVersion))
 
 	query := &pb.ObjectQuery{
-		Path:        prefix,
-		IsPrefix:    true,
-		WithContent: true,
+		Path:     prefix,
+		IsPrefix: true,
 	}
 
 	availableCacheVersions := ReadCacheVersionFile(cacheDir)
