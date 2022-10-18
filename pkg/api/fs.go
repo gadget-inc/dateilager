@@ -49,8 +49,9 @@ func requireProjectAuth(ctx context.Context) (int64, error) {
 type Fs struct {
 	pb.UnimplementedFsServer
 
-	Env    environment.Env
-	DbConn db.DbConnector
+	Env           environment.Env
+	DbConn        db.DbConnector
+	ContentLookup *db.ContentLookup
 }
 
 func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.NewProjectResponse, error) {
@@ -286,8 +287,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 			key.QueryIgnores.Field(query.Ignores),
 		)
 
-		objects, closeFunc, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
-		defer closeFunc(ctx)
+		objects, err := db.GetObjects(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query)
 		if err != nil {
 			return status.Errorf(codes.Internal, "FS get objects: %v", err)
 		}
@@ -366,8 +366,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			key.QueryIgnores.Field(query.Ignores),
 		)
 
-		tars, closeFunc, err := db.GetTars(ctx, tx, req.Project, req.AvailableCacheVersions, vrange, query)
-		defer closeFunc(ctx)
+		tars, err := db.GetTars(ctx, tx, f.ContentLookup, req.Project, req.AvailableCacheVersions, vrange, query)
 		if err != nil {
 			return status.Errorf(codes.Internal, "FS get tars: %v", err)
 		}
@@ -416,6 +415,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	defer close(ctx)
 
 	contentEncoder := db.NewContentEncoder()
+	defer contentEncoder.Close()
 
 	var packManager *db.PackManager
 	buffer := make(map[string][]*pb.Object)
@@ -590,8 +590,7 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 		Path:     "",
 		IsPrefix: true,
 	}
-	objects, closeFunc, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
-	defer closeFunc(ctx)
+	objects, err := db.GetObjects(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS get objects: %v", err)
 	}

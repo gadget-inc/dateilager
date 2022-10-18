@@ -50,7 +50,7 @@ func (t *TarWriter) BytesAndReset() ([]byte, error) {
 	output := t.buffer.Bytes()
 
 	t.size = 0
-	t.buffer.Truncate(0)
+	t.buffer.Reset()
 	t.s2Writer.Reset(t.buffer)
 	t.tarWriter = tar.NewWriter(t.s2Writer)
 
@@ -104,7 +104,20 @@ type TarObject struct {
 	size    int64
 	deleted bool
 	cached  bool
+	packed  bool
 	content []byte
+}
+
+func NewUncachedTarObject(path string, mode int64, size int64, deleted bool, content []byte) TarObject {
+	return TarObject{
+		path,
+		mode,
+		size,
+		deleted,
+		false,
+		false,
+		content,
+	}
 }
 
 func (o *TarObject) FileMode() fs.FileMode {
@@ -121,28 +134,6 @@ func (o *TarObject) TarType() byte {
 	}
 
 	return pb.TarTypeFromMode(o.FileMode())
-}
-
-func NewCachedTarObject(path string, mode int64, size int64, hash Hash) TarObject {
-	return TarObject{
-		path,
-		mode,
-		size,
-		false,
-		true,
-		hash.Bytes(),
-	}
-}
-
-func NewUncachedTarObject(path string, mode int64, size int64, deleted bool, content []byte) TarObject {
-	return TarObject{
-		path,
-		mode,
-		size,
-		deleted,
-		false,
-		content,
-	}
 }
 
 type TarReader struct {
@@ -178,7 +169,7 @@ func (t *TarReader) CopyContent(buffer io.Writer) error {
 	return err
 }
 
-func PackObjects(objects ObjectStream) ([]byte, error) {
+func packObjects(objects ObjectStream) ([]byte, error) {
 	contentWriter := NewTarWriter()
 	empty := true
 
@@ -269,7 +260,7 @@ func updateObjects(before []byte, updates []*pb.Object) ([]byte, error) {
 		return pb.ObjectFromTarHeader(header, content), nil
 	}
 
-	return PackObjects(stream)
+	return packObjects(stream)
 }
 
 func findUpdate(updates []*pb.Object, path string) *pb.Object {

@@ -19,6 +19,7 @@ type TestCtx struct {
 	t      *testing.T
 	log    *zap.Logger
 	dbConn *DbTestConnector
+	lookup *db.ContentLookup
 	ctx    context.Context
 }
 
@@ -36,10 +37,14 @@ func NewTestCtx(t *testing.T, role auth.Role, projects ...int64) TestCtx {
 	dbConn, err := newDbTestConnector(ctx, os.Getenv("DB_URI"))
 	require.NoError(t, err, "connecting to DB")
 
+	lookup, err := db.NewContentLookup()
+	require.NoError(t, err, "create content lookup")
+
 	return TestCtx{
 		t:      t,
 		log:    zaptest.NewLogger(t),
 		dbConn: dbConn,
+		lookup: lookup,
 		ctx:    ctx,
 	}
 }
@@ -50,6 +55,10 @@ func (tc *TestCtx) Logger() *zap.Logger {
 
 func (tc *TestCtx) Connector() db.DbConnector {
 	return tc.dbConn
+}
+
+func (tc *TestCtx) ContentLookup() *db.ContentLookup {
+	return tc.lookup
 }
 
 func (tc *TestCtx) Context() context.Context {
@@ -73,7 +82,8 @@ func (tc *TestCtx) Close() {
 
 func (tc *TestCtx) FsApi() *api.Fs {
 	return &api.Fs{
-		Env:    environment.Test,
-		DbConn: tc.Connector(),
+		Env:           environment.Test,
+		DbConn:        tc.Connector(),
+		ContentLookup: tc.ContentLookup(),
 	}
 }

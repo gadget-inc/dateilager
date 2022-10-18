@@ -122,6 +122,8 @@ func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, p
 	require.NoError(tc.T(), err, "insert object")
 
 	contentEncoder := db.NewContentEncoder()
+	defer contentEncoder.Close()
+
 	encoded, err := contentEncoder.Encode(contentBytes)
 	require.NoError(tc.T(), err, "encode content")
 

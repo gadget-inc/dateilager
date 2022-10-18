@@ -14,6 +14,7 @@ import (
 	"runtime/pprof"
 	"syscall"
 
+	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
@@ -109,11 +110,17 @@ func NewServerCommand() *cobra.Command {
 				return fmt.Errorf("cannot parse Paseto public key %s: %w", pasetoFile, err)
 			}
 
+			contentLookup, err := db.NewContentLookup()
+			if err != nil {
+				return fmt.Errorf("cannot setup content lookup: %w", err)
+			}
+
 			s := server.NewServer(ctx, dbConn, &cert, pasetoKey)
 			logger.Info(ctx, "register Fs")
 			fs := &api.Fs{
-				Env:    env,
-				DbConn: dbConn,
+				Env:           env,
+				DbConn:        dbConn,
+				ContentLookup: contentLookup,
 			}
 			s.RegisterFs(ctx, fs)
 
