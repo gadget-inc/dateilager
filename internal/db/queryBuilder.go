@@ -102,7 +102,7 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 			       ON h.hash = o.hash`
 	}
 
-	hashSelector := "null::hash as hash"
+	hashSelector := "'(00000000-0000-0000-0000-000000000000,00000000-0000-0000-0000-000000000000)'::hash as hash"
 	if qb.includeHashes {
 		hashSelector = "o.hash"
 	}
@@ -126,7 +126,7 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 
 func (qb *queryBuilder) removedObjectsCTE() string {
 	template := `
-			SELECT o.path, o.mode, 0 AS size, ''::bytea AS bytes, o.packed, true AS deleted, null::hash AS hash
+			SELECT o.path, o.mode, 0 AS size, ''::bytea AS bytes, o.packed, true AS deleted, '(00000000-0000-0000-0000-000000000000,00000000-0000-0000-0000-000000000000)'::hash AS hash
 			FROM possible_objects o
 			WHERE o.project = __project__
 			AND o.start_version <= __start_version__

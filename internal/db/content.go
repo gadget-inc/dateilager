@@ -13,22 +13,22 @@ import (
 )
 
 type Hash struct {
-	H1 []byte
-	H2 []byte
+	H1 [16]byte
+	H2 [16]byte
 }
 
 func HashContent(data []byte) Hash {
 	sha := sha256.Sum256(data)
 	return Hash{
-		H1: sha[0:16],
-		H2: sha[16:32],
+		H1: *(*[16]byte)(sha[0:16]),
+		H2: *(*[16]byte)(sha[16:32]),
 	}
 }
 
 func (h *Hash) Bytes() []byte {
-	hash := make([]byte, 32)
-	copy(hash[0:16], h.H1)
-	copy(hash[16:], h.H2)
+	var hash []byte
+	hash = append(hash, h.H1[:]...)
+	hash = append(hash, h.H2[:]...)
 	return hash
 }
 
@@ -109,13 +109,13 @@ func RandomContents(ctx context.Context, tx pgx.Tx, sample float32) ([]Hash, err
 	var hashes []Hash
 
 	for rows.Next() {
-		var h1, h2 []byte
-		err = rows.Scan(&h1, &h2)
+		var hash Hash
+		err = rows.Scan(&hash.H1, &hash.H2)
 		if err != nil {
 			return nil, fmt.Errorf("random contents scan: %w", err)
 		}
 
-		hashes = append(hashes, Hash{H1: h1, H2: h2})
+		hashes = append(hashes, hash)
 	}
 
 	return hashes, nil

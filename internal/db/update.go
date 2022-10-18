@@ -1,7 +1,6 @@
 package db
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -164,7 +163,7 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 
 	newHash := HashContent(updated)
 
-	if bytes.Equal(hash.H1, newHash.H1) && bytes.Equal(hash.H2, newHash.H2) {
+	if hash == newHash {
 		// content didn't change
 		return false, nil
 	}
