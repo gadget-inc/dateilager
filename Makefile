@@ -224,11 +224,11 @@ define load-test
 		localhost:$(GRPC_PORT)
 endef
 
-load-test-new:
+load-test-new: reset-db
 	$(call load-test,NewProject,new.json,100,1)
 
-load-test-get:
-	$(call load-test,Get,get_all.json,100000,50,5000)
-
 load-test-update:
-	$(call load-test,Update,update_increment.json,10000,1)
+	$(call load-test,Update,update.json,10000,20)
+
+load-test-get:
+	$(call load-test,Get,get_all.json,100000,40,5000)
