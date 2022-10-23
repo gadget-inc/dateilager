@@ -582,3 +582,42 @@ func TestCombinedWithIdenticalPackedObjects(t *testing.T) {
 		count:   1, // Only one file should be updated since /a and /b were identical but with a new mod times
 	})
 }
+
+func TestCombinedWithPrefixDirectoryBug(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeEmptyDir(tc, 1, 1, nil, "a/")
+
+	c, fs, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"a/": {content: "", fileType: typeDirectory},
+	})
+
+	writeFile(t, tmpDir, "abc", "abc v2")
+
+	update(tc, c, 1, tmpDir, expectedResponse{
+		version: 2,
+		count:   1,
+	})
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err := fs.Get(prefixQuery(1, nil, ""), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"a/":  {content: ""},
+		"abc": {content: "abc v2"},
+	})
+}
