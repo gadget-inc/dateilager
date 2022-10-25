@@ -128,19 +128,23 @@ func (c *Client) ListProjects(ctx context.Context) ([]*pb.Project, error) {
 	return resp.Projects, nil
 }
 
-func (c *Client) NewProject(ctx context.Context, id int64, template *int64, packPatterns string) error {
-	splitPackPatterns := strings.Split(packPatterns, ",")
+func (c *Client) NewProject(ctx context.Context, id int64, template *int64, packPatternsString *string) error {
+	var packPatterns []string
+	if packPatternsString != nil && *packPatternsString != "" {
+		packPatterns = strings.Split(*packPatternsString, ",")
+	}
+
 	ctx, span := telemetry.Start(ctx, "client.new-project", trace.WithAttributes(
 		key.Project.Attribute(id),
 		key.Template.Attribute(template),
-		key.PackPatterns.Attribute(splitPackPatterns),
+		key.PackPatterns.Attribute(packPatterns),
 	))
 	defer span.End()
 
 	request := &pb.NewProjectRequest{
 		Id:           id,
 		Template:     template,
-		PackPatterns: splitPackPatterns,
+		PackPatterns: packPatterns,
 	}
 
 	_, err := c.fs.NewProject(ctx, request)
