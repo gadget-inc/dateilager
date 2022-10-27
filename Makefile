@@ -121,7 +121,7 @@ endif
 test-fuzz: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 test-fuzz: export DL_SKIP_SSL_VERIFICATION=1
 test-fuzz: reset-db
-	go run cmd/fuzz-test/main.go --server $(GRPC_SERVER) --iterations 1000 --projects 5
+	go run cmd/fuzz-test/main.go --server $(GRPC_SERVER) --iterations 50 --projects 5
 
 test-js: js-install
 	cd js && npm run test
@@ -237,4 +237,7 @@ load-test-update:
 	$(call load-test,Update,update.json,10000,20)
 
 load-test-get:
-	$(call load-test,Get,get_all.json,100000,40,5000)
+	$(call load-test,Get,get.json,100000,40,5000)
+
+load-test-get-compress:
+	$(call load-test,GetCompress,get-compress.json,100000,40,5000)

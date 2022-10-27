@@ -132,11 +132,16 @@ func objectExists(objects map[string]Type, project int64, path string) bool {
 }
 
 type Operation interface {
+	Project() int64
 	Apply() error
 	String() string
 }
 
 type SkipOp struct{}
+
+func (o SkipOp) Project() int64 {
+	return -1
+}
 
 func (o SkipOp) Apply() error {
 	return nil
@@ -147,6 +152,7 @@ func (o SkipOp) String() string {
 }
 
 type AddFileOp struct {
+	project int64
 	base    string
 	dir     string
 	name    string
@@ -163,16 +169,25 @@ func newAddFileOp(base string, project int64) Operation {
 		dir = Join(dir, dirs[rand.Intn(len(dirs))])
 	}
 
+	if rand.Intn(4) == 1 {
+		name = "a"
+	}
+
 	if objectExists(objects, project, Join(dir, name)) {
 		return SkipOp{}
 	}
 
 	return AddFileOp{
+		project: project,
 		base:    base,
 		dir:     dir,
 		name:    name,
 		content: []byte(randString(rand.Intn(500))),
 	}
+}
+
+func (o AddFileOp) Project() int64 {
+	return o.project
 }
 
 func (o AddFileOp) Apply() error {
@@ -184,6 +199,7 @@ func (o AddFileOp) String() string {
 }
 
 type UpdateFileOp struct {
+	project int64
 	base    string
 	dir     string
 	name    string
@@ -198,12 +214,17 @@ func newUpdateFileOp(base string, project int64) Operation {
 		return SkipOp{}
 	}
 
-	return AddFileOp{
+	return UpdateFileOp{
+		project: project,
 		base:    base,
 		dir:     dir,
 		name:    files[rand.Intn(len(files))],
 		content: []byte(randString(rand.Intn(500))),
 	}
+}
+
+func (o UpdateFileOp) Project() int64 {
+	return o.project
 }
 
 func (o UpdateFileOp) Apply() error {
@@ -215,9 +236,10 @@ func (o UpdateFileOp) String() string {
 }
 
 type AddDirOp struct {
-	base string
-	dir  string
-	name string
+	project int64
+	base    string
+	dir     string
+	name    string
 }
 
 func newAddDirOp(base string, project int64) Operation {
@@ -237,10 +259,15 @@ func newAddDirOp(base string, project int64) Operation {
 	}
 
 	return AddDirOp{
-		base: base,
-		dir:  dir,
-		name: name,
+		project: project,
+		base:    base,
+		dir:     dir,
+		name:    name,
 	}
+}
+
+func (o AddDirOp) Project() int64 {
+	return o.project
 }
 
 func (o AddDirOp) Apply() error {
@@ -252,9 +279,10 @@ func (o AddDirOp) String() string {
 }
 
 type RemoveFileOp struct {
-	base string
-	dir  string
-	name string
+	project int64
+	base    string
+	dir     string
+	name    string
 }
 
 func newRemoveFileOp(base string, project int64) Operation {
@@ -266,10 +294,15 @@ func newRemoveFileOp(base string, project int64) Operation {
 	}
 
 	return RemoveFileOp{
-		base: base,
-		dir:  dir,
-		name: files[rand.Intn(len(files))],
+		project: project,
+		base:    base,
+		dir:     dir,
+		name:    files[rand.Intn(len(files))],
 	}
+}
+
+func (o RemoveFileOp) Project() int64 {
+	return o.project
 }
 
 func (o RemoveFileOp) Apply() error {
@@ -281,10 +314,11 @@ func (o RemoveFileOp) String() string {
 }
 
 type AddSymlinkOp struct {
-	base   string
-	dir    string
-	name   string
-	target string
+	project int64
+	base    string
+	dir     string
+	name    string
+	target  string
 }
 
 func newAddSymlinkOp(base string, project int64) Operation {
@@ -308,11 +342,16 @@ func newAddSymlinkOp(base string, project int64) Operation {
 	}
 
 	return AddSymlinkOp{
-		base:   base,
-		dir:    dir,
-		name:   name,
-		target: files[rand.Intn(len(files))],
+		project: project,
+		base:    base,
+		dir:     dir,
+		name:    name,
+		target:  files[rand.Intn(len(files))],
 	}
+}
+
+func (o AddSymlinkOp) Project() int64 {
+	return o.project
 }
 
 func (o AddSymlinkOp) Apply() error {
@@ -340,71 +379,93 @@ func randomOperation(baseDir string, project int64) Operation {
 	return operation
 }
 
-func createDirs(projects int) (string, string, string, string, error) {
+type Directories struct {
+	base     string
+	reset    string
+	previous string
+	step     string
+}
+
+func createDirectories(projects int) (*Directories, error) {
 	var dirs []string
 
-	for _, name := range []string{"base", "continue", "reset", "step"} {
+	for _, name := range []string{"base", "reset", "previous", "step"} {
 		dir, err := os.MkdirTemp("", fmt.Sprintf("dl-ft-%s-", name))
 		if err != nil {
-			return "", "", "", "", fmt.Errorf("cannot create tmp dir: %w", err)
+			return nil, fmt.Errorf("cannot create tmp dir: %w", err)
 		}
 
 		for projectIdx := 1; projectIdx <= projects; projectIdx++ {
 			err = os.MkdirAll(filepath.Join(dir, fmt.Sprint(projectIdx)), 0755)
 			if err != nil {
-				return "", "", "", "", fmt.Errorf("cannot create project dir: %w", err)
+				return nil, fmt.Errorf("cannot create project dir: %w", err)
 			}
 		}
 		dirs = append(dirs, dir)
 	}
 
-	return dirs[0], dirs[1], dirs[2], dirs[3], nil
+	return &Directories{
+		base:     dirs[0],
+		reset:    dirs[1],
+		previous: dirs[2],
+		step:     dirs[3],
+	}, nil
 }
 
-func runIteration(ctx context.Context, client *dlc.Client, project int64, operation Operation, baseDir, continueDir, resetDir, stepDir string) error {
+func (d *Directories) RemoveAll() {
+	os.RemoveAll(d.base)
+	os.RemoveAll(d.reset)
+	os.RemoveAll(d.previous)
+	os.RemoveAll(d.step)
+}
+
+func runIteration(ctx context.Context, client *dlc.Client, project int64, operation Operation, dirs *Directories) (int64, error) {
 	err := operation.Apply()
 	if err != nil {
-		return fmt.Errorf("failed to apply operation %s: %w", operation.String(), err)
+		return -1, fmt.Errorf("failed to apply operation %s: %w", operation.String(), err)
 	}
 
-	version, _, err := client.Update(ctx, project, projectDir(baseDir, project))
+	version, _, err := client.Update(ctx, project, projectDir(dirs.base, project))
 	if err != nil {
-		return fmt.Errorf("failed to update project %d: %w", project, err)
+		return -1, fmt.Errorf("failed to update project %d: %w", project, err)
 	}
 
-	_, _, err = client.Rebuild(ctx, project, "", nil, projectDir(continueDir, project), "")
+	os.RemoveAll(projectDir(dirs.reset, project))
+	err = os.MkdirAll(projectDir(dirs.reset, project), 0755)
 	if err != nil {
-		return fmt.Errorf("failed to rebuild continue project %d: %w", project, err)
+		return -1, fmt.Errorf("failed to create reset dir %s: %w", projectDir(dirs.reset, project), err)
 	}
 
-	os.RemoveAll(projectDir(resetDir, project))
-	err = os.MkdirAll(projectDir(resetDir, project), 0755)
+	_, _, err = client.Rebuild(ctx, project, "", nil, projectDir(dirs.reset, project), "")
 	if err != nil {
-		return fmt.Errorf("failed to create reset dir %s: %w", projectDir(resetDir, project), err)
+		return -1, fmt.Errorf("failed to rebuild reset project %d: %w", project, err)
 	}
 
-	_, _, err = client.Rebuild(ctx, project, "", nil, projectDir(resetDir, project), "")
+	_, _, err = client.Rebuild(ctx, project, "", nil, projectDir(dirs.previous, project), "")
 	if err != nil {
-		return fmt.Errorf("failed to rebuild reset project %d: %w", project, err)
+		return -1, fmt.Errorf("failed to rebuild from previous version dir %d: %w", project, err)
 	}
 
-	os.RemoveAll(projectDir(stepDir, project))
-	err = os.MkdirAll(projectDir(stepDir, project), 0755)
+	os.RemoveAll(projectDir(dirs.step, project))
+	err = os.MkdirAll(projectDir(dirs.step, project), 0755)
 	if err != nil {
-		return fmt.Errorf("failed to create step dir %s: %w", projectDir(stepDir, project), err)
+		return -1, fmt.Errorf("failed to create step dir %s: %w", projectDir(dirs.step, project), err)
 	}
 
+	if version <= 0 {
+		return -1, fmt.Errorf("failed to create step version from %d", version)
+	}
 	stepVersion := int64(rand.Intn(int(version)))
-	_, _, err = client.Rebuild(ctx, project, "", &stepVersion, projectDir(stepDir, project), "")
+	_, _, err = client.Rebuild(ctx, project, "", &stepVersion, projectDir(dirs.step, project), "")
 	if err != nil {
-		return fmt.Errorf("failed to rebuild step project %d: %w", project, err)
+		return -1, fmt.Errorf("failed to rebuild step project %d at version %d: %w", project, stepVersion, err)
 	}
-	_, _, err = client.Rebuild(ctx, project, "", &version, projectDir(stepDir, project), "")
+	_, _, err = client.Rebuild(ctx, project, "", &version, projectDir(dirs.step, project), "")
 	if err != nil {
-		return fmt.Errorf("failed to rebuild step project %d: %w", project, err)
+		return -1, fmt.Errorf("failed to rebuild step project %d from version %d: %w", project, stepVersion, err)
 	}
 
-	return nil
+	return stepVersion, nil
 }
 
 type MatchError struct {
@@ -501,17 +562,21 @@ func logMatchErrors(ctx context.Context, matchErrors []MatchError) {
 	}
 }
 
-func logOpLog(ctx context.Context, opLog []Operation) {
+func logOperations(ctx context.Context, opLog []Operation) {
 	for idx, operation := range opLog {
 		logger.Info(ctx, "operation", zap.Int("idx", idx), zap.String("op", operation.String()))
 	}
 }
 
-func verifyDirs(ctx context.Context, projects int, baseDir, continueDir, resetDir, stepDir string) error {
+func verifyDirs(ctx context.Context, projects int, dirs *Directories, stepVersion int64) error {
 	for projectIdx := 1; projectIdx <= projects; projectIdx++ {
 		project := int64(projectIdx)
 
-		matchErrors, err := compareDirs(project, projectDir(baseDir, project), projectDir(resetDir, project))
+		if _, err := os.Lstat(Join(projectDir(dirs.base, project), "a")); err == nil {
+			return errors.New("fake error, file a exists")
+		}
+
+		matchErrors, err := compareDirs(project, projectDir(dirs.base, project), projectDir(dirs.reset, project))
 		if err != nil {
 			return fmt.Errorf("failed to compare base & reset dirs: %w", err)
 		}
@@ -520,25 +585,89 @@ func verifyDirs(ctx context.Context, projects int, baseDir, continueDir, resetDi
 			return errors.New("reset directory match error")
 		}
 
-		matchErrors, err = compareDirs(project, projectDir(baseDir, project), projectDir(continueDir, project))
+		matchErrors, err = compareDirs(project, projectDir(dirs.base, project), projectDir(dirs.previous, project))
 		if err != nil {
-			return fmt.Errorf("failed to compare base & continue dirs: %w", err)
+			return fmt.Errorf("failed to compare base & previous version dirs: %w", err)
 		}
 		if len(matchErrors) > 0 {
 			logMatchErrors(ctx, matchErrors)
-			return errors.New("continue directory match error")
+			return errors.New("previous version directory match error")
 		}
 
-		matchErrors, err = compareDirs(project, projectDir(baseDir, project), projectDir(stepDir, project))
+		matchErrors, err = compareDirs(project, projectDir(dirs.base, project), projectDir(dirs.step, project))
 		if err != nil {
-			return fmt.Errorf("failed to compare base & step dirs: %w", err)
+			return fmt.Errorf("failed to compare base & step dirs at version %d: %w", stepVersion, err)
 		}
 		if len(matchErrors) > 0 {
 			logMatchErrors(ctx, matchErrors)
-			return errors.New("step directory match error")
+			return fmt.Errorf("step directory match error at version %d", stepVersion)
 		}
 	}
 	return nil
+}
+
+func reduceStep(ctx context.Context, client *dlc.Client, projects int, operations []Operation) ([]Operation, bool, error) {
+	dirs, err := createDirectories(projects)
+	if err != nil {
+		return nil, false, err
+	}
+	defer dirs.RemoveAll()
+
+	removalIdx := rand.Intn(len(operations))
+	candidate := operations
+	if removalIdx == len(candidate)-1 {
+		candidate = candidate[:removalIdx]
+	} else {
+		candidate = append(candidate[:removalIdx], candidate[removalIdx+1:]...)
+	}
+
+	logOperations(ctx, candidate)
+	logger.Info(ctx, "^ attempting candidate")
+
+	for idx, operation := range candidate {
+		logger.Info(ctx, "run iter", zap.String("op", operation.String()), zap.Int64("project", operation.Project()))
+		stepVersion, err := runIteration(ctx, client, operation.Project(), operation, dirs)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to run iteration while reducing %d: %w", idx, err)
+		}
+
+		err = verifyDirs(ctx, projects, dirs, stepVersion)
+		if err != nil {
+			return candidate, true, nil
+		}
+	}
+
+	return nil, false, nil
+}
+
+func reduceErrorCase(ctx context.Context, client *dlc.Client, projects int, project int64, operations []Operation) ([]Operation, error) {
+	var projectOperations []Operation
+	for _, operation := range operations {
+		if operation.Project() == project {
+			projectOperations = append(projectOperations, operation)
+		}
+	}
+
+	logOperations(ctx, projectOperations)
+	logger.Info(ctx, "^ project operations")
+
+	reduced := projectOperations
+	for idx := 0; idx <= len(projectOperations); idx++ {
+		candidate, stillBroken, err := reduceStep(ctx, client, projects, reduced)
+
+		logOperations(ctx, candidate)
+		logger.Info(ctx, "reduced step", zap.Bool("still broken", stillBroken))
+
+		if err != nil {
+			logger.Info(ctx, "error while reducing", zap.String("err", err.Error()))
+			continue
+		}
+		if stillBroken {
+			reduced = candidate
+		}
+	}
+
+	return reduced, nil
 }
 
 func fuzzTest(ctx context.Context, client *dlc.Client, projects, iterations int) error {
@@ -552,31 +681,38 @@ func fuzzTest(ctx context.Context, client *dlc.Client, projects, iterations int)
 		}
 	}
 
-	baseDir, continueDir, resetDir, stepDir, err := createDirs(projects)
+	dirs, err := createDirectories(projects)
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(baseDir)
-	defer os.RemoveAll(continueDir)
-	defer os.RemoveAll(resetDir)
-	defer os.RemoveAll(stepDir)
+	defer dirs.RemoveAll()
 
-	var opLog []Operation
+	var operations []Operation
 
 	for iterIdx := 0; iterIdx < iterations; iterIdx++ {
 		project := int64(rand.Intn(projects) + 1)
 
-		operation := randomOperation(baseDir, project)
-		opLog = append(opLog, operation)
+		operation := randomOperation(dirs.base, project)
+		operations = append(operations, operation)
 
-		err := runIteration(ctx, client, project, operation, baseDir, continueDir, resetDir, stepDir)
+		stepVersion, err := runIteration(ctx, client, project, operation, dirs)
 		if err != nil {
 			return fmt.Errorf("failed to run iteration %d: %w", iterIdx, err)
 		}
 
-		err = verifyDirs(ctx, projects, baseDir, continueDir, resetDir, stepDir)
+		err = verifyDirs(ctx, projects, dirs, stepVersion)
 		if err != nil {
-			logOpLog(ctx, opLog)
+			logOperations(ctx, operations)
+			logger.Info(ctx, "error detected, attempting to reduce error case")
+
+			reduced, reductionErr := reduceErrorCase(ctx, client, projects, project, operations)
+			if reductionErr != nil {
+				logger.Error(ctx, "failed to reduce error case", zap.Error(reductionErr))
+				logOperations(ctx, operations)
+				return err
+			}
+
+			logOperations(ctx, reduced)
 			return err
 		}
 	}
