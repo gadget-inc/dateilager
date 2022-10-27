@@ -21,7 +21,8 @@ PROTO_TS_FILES := $(shell find js/src/pb -type f -name '*.ts')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
-.PHONY: install migrate migrate-create clean build release test test-one test-js lint-js typecheck-js
+.PHONY: install migrate migrate-create clean build release
+.PHONY: test test-one test-fuzz test-js lint-js typecheck-js
 .PHONY: reset-db setup-local server server-profile js-install
 .PHONY: client-update client-large-update client-get client-rebuild client-pack
 .PHONY: client-gc-contents client-gc-project client-gc-random-projects
@@ -116,6 +117,11 @@ ifndef name
 else
 	cd test && go test -run $(name)
 endif
+
+test-fuzz: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+test-fuzz: export DL_SKIP_SSL_VERIFICATION=1
+test-fuzz: reset-db
+	go run cmd/fuzz-test/main.go --server $(GRPC_SERVER) --iterations 1000 --projects 5
 
 test-js: js-install
 	cd js && npm run test
