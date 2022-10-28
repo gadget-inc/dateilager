@@ -156,7 +156,8 @@ func TestGetCacheWithMultipleVersions(t *testing.T) {
 		Path:     "pack",
 		IsPrefix: true,
 	}
-	tars, err := db.GetTars(tc.Context(), tc.Connect(), 1, availableVersions, vrange, query)
+	tars, closeFunc, err := db.GetTars(tc.Context(), tc.Connect(), 1, availableVersions, vrange, query)
+	defer closeFunc(tc.Context())
 	require.NoError(t, err)
 
 	var paths []string

@@ -157,7 +157,7 @@ func filterObject(path string, objectQuery *pb.ObjectQuery, object *pb.Object) (
 	return nil, SKIP
 }
 
-func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, error) {
+func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, CloseFunc, error) {
 	packParent := packManager.IsPathPacked(objectQuery.Path)
 
 	originalPath := objectQuery.Path
@@ -167,10 +167,11 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 
 	builder := newQueryBuilder(project, vrange, objectQuery)
 	sql, args := builder.build()
-	rows, err := tx.Query(ctx, sql, args...)
 
+	rows, err := tx.Query(ctx, sql, args...)
+	closeFunc := func(_ context.Context) { rows.Close() }
 	if err != nil {
-		return nil, fmt.Errorf("getObjects query, project %v vrange %v: %w", project, vrange, err)
+		return nil, closeFunc, fmt.Errorf("getObjects query, project %v vrange %v: %w", project, vrange, err)
 	}
 
 	var buffer []*pb.Object
@@ -227,17 +228,19 @@ func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, projec
 			Deleted: deleted,
 			Content: content,
 		})
-	}, nil
+	}, closeFunc, nil
 }
 
 type tarStream func() ([]byte, *string, error)
 
-func GetTars(ctx context.Context, tx pgx.Tx, project int64, cacheVersions []int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
+func GetTars(ctx context.Context, tx pgx.Tx, project int64, cacheVersions []int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, CloseFunc, error) {
 	builder := newQueryBuilder(project, vrange, objectQuery).withCacheVersions(cacheVersions).withHashes(true)
 	sql, args := builder.build()
+
 	rows, err := tx.Query(ctx, sql, args...)
+	closeFunc := func(_ context.Context) { rows.Close() }
 	if err != nil {
-		return nil, fmt.Errorf("getObjects query, project %v vrange %v: %w", project, vrange, err)
+		return nil, closeFunc, fmt.Errorf("getObjects query, project %v vrange %v: %w", project, vrange, err)
 	}
 
 	tarWriter := NewTarWriter()
@@ -294,12 +297,12 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, cacheVersions []int6
 		}
 
 		return nil, nil, SKIP
-	}, nil
+	}, closeFunc, nil
 }
 
 type cacheTarStream func() (int64, []byte, *Hash, error)
 
-func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, error) {
+func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, CloseFunc, error) {
 	var version int64
 
 	err := tx.QueryRow(ctx, `
@@ -309,10 +312,10 @@ func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, error) {
 		LIMIT 1
 	`).Scan(&version)
 	if err == pgx.ErrNoRows {
-		return func() (int64, []byte, *Hash, error) { return 0, nil, nil, io.EOF }, nil
+		return func() (int64, []byte, *Hash, error) { return 0, nil, nil, io.EOF }, func(_ context.Context) {}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("GetCacheTars latest cache version: %w", err)
+		return nil, func(_ context.Context) {}, fmt.Errorf("GetCacheTars latest cache version: %w", err)
 	}
 
 	rows, err := tx.Query(ctx, `
@@ -326,11 +329,12 @@ func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, error) {
 		JOIN dl.contents c
 		  ON h.hash = c.hash
 	`, version)
+	closeFunc := func(_ context.Context) { rows.Close() }
 	if err != nil {
-		return nil, fmt.Errorf("GetCacheTars query: %w", err)
+		return nil, closeFunc, fmt.Errorf("GetCacheTars query: %w", err)
 	}
 
-	stream := func() (int64, []byte, *Hash, error) {
+	return func() (int64, []byte, *Hash, error) {
 		if !rows.Next() {
 			return 0, nil, nil, io.EOF
 		}
@@ -344,9 +348,7 @@ func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, error) {
 		}
 
 		return version, encoded, &hash, nil
-	}
-
-	return stream, nil
+	}, closeFunc, nil
 }
 
 type PackManager struct {

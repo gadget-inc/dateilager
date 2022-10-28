@@ -286,7 +286,8 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 			key.QueryIgnores.Field(query.Ignores),
 		)
 
-		objects, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
+		objects, closeFunc, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
+		defer closeFunc(ctx)
 		if err != nil {
 			return status.Errorf(codes.Internal, "FS get objects: %v", err)
 		}
@@ -365,7 +366,8 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			key.QueryIgnores.Field(query.Ignores),
 		)
 
-		tars, err := db.GetTars(ctx, tx, req.Project, req.AvailableCacheVersions, vrange, query)
+		tars, closeFunc, err := db.GetTars(ctx, tx, req.Project, req.AvailableCacheVersions, vrange, query)
+		defer closeFunc(ctx)
 		if err != nil {
 			return status.Errorf(codes.Internal, "FS get tars: %v", err)
 		}
@@ -588,7 +590,8 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 		Path:     "",
 		IsPrefix: true,
 	}
-	objects, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
+	objects, closeFunc, err := db.GetObjects(ctx, tx, packManager, req.Project, vrange, query)
+	defer closeFunc(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS get objects: %v", err)
 	}
@@ -868,7 +871,8 @@ func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) erro
 
 	logger.Debug(ctx, "FS.GetCache[Init]")
 
-	tars, err := db.GetCacheTars(ctx, tx)
+	tars, closeFunc, err := db.GetCacheTars(ctx, tx)
+	defer closeFunc(ctx)
 	if err != nil {
 		return status.Errorf(codes.Internal, "FS get cached tars: %v", err)
 	}
