@@ -243,6 +243,11 @@ func writeFile(t *testing.T, dir string, path string, content string) {
 	require.NoError(t, err, "write file %v", path)
 }
 
+func removeFile(t *testing.T, dir string, path string) {
+	err := os.Remove(filepath.Join(dir, path))
+	require.NoError(t, err, "remove file %v", path)
+}
+
 func emptyTmpDir(t *testing.T) string {
 	dir, err := os.MkdirTemp("", "dateilager_tests_")
 	require.NoError(t, err, "create temp dir")
