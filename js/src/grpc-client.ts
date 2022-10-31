@@ -321,10 +321,10 @@ export class DateiLagerGrpcClient {
    * This method assumes that it is always a one way clone from source to target, it does not take into account
    * the changes that have occurred in the `target` project.
    *
-   * @param source      The source project.
-   * @param target      The target project.
-   * @param version     The version of the source project to clone up to.
-   * @returns           The new version number of the target project
+   * @param source  The source project.
+   * @param target  The target project.
+   * @param version The version of the source project to clone up to.
+   * @returns         The new version number of the target project.
    */
   public async cloneToProject(source: bigint, target: bigint, version: bigint): Promise<CloneToProjectResponse> {
     return await trace(
@@ -341,6 +341,53 @@ export class DateiLagerGrpcClient {
         return call.response;
       }
     );
+  }
+
+  /**
+   * GC project.
+   *
+   * @param project The project to GC.
+   * @param keep    The amount of versions since the latest that should be kept.
+   * @param from    The starting version to GC from.
+   * @returns         The amount of objects that were GC'd.
+   */
+  public async gcProject(project: bigint, keep: bigint, from?: bigint): Promise<bigint> {
+    const call = await this._client.gcProject({
+      project: project,
+      keepVersions: keep,
+      fromVersion: from,
+    });
+    return call.response.count;
+  }
+
+  /**
+   * GC random projects.
+   *
+   * @param sample The percentage of projects to sample from.
+   * @param keep   The amount of versions since the latest that should be kept.
+   * @param from   The starting version to GC from.
+   * @returns        The amount of objects that were GC'd.
+   */
+  public async gcRandomProjects(sample: number, keep: bigint, from?: bigint): Promise<bigint> {
+    const call = await this._client.gcRandomProjects({
+      sample: sample,
+      keepVersions: keep,
+      fromVersion: from,
+    });
+    return call.response.count;
+  }
+
+  /**
+   * GC contents.
+   *
+   * @param sample The percentage of projects to sample from.
+   * @returns        The amount of objects that were GC'd.
+   */
+  public async gcContents(sample: number): Promise<bigint> {
+    const call = await this._client.gcContents({
+      sample: sample,
+    });
+    return call.response.count;
   }
 }
 
