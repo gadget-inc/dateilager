@@ -12,7 +12,6 @@ type queryBuilder struct {
 	vrange        VersionRange
 	objectQuery   *pb.ObjectQuery
 	cacheVersions []int64
-	includeHashes bool
 	argsOffset    int
 }
 
@@ -22,14 +21,8 @@ func newQueryBuilder(project int64, vrange VersionRange, objectQuery *pb.ObjectQ
 		vrange:        vrange,
 		objectQuery:   objectQuery,
 		cacheVersions: nil,
-		includeHashes: false,
 		argsOffset:    0,
 	}
-}
-
-func (qb *queryBuilder) withHashes(include bool) *queryBuilder {
-	qb.includeHashes = include
-	return qb
 }
 
 func (qb *queryBuilder) withCacheVersions(cacheVersions []int64) *queryBuilder {
@@ -78,10 +71,8 @@ func (qb *queryBuilder) possibleObjectsCTE(withRemovals bool) string {
 
 func (qb *queryBuilder) updatedObjectsCTE() string {
 	template := `
-			SELECT o.path, o.mode, o.size, %s, %s, o.packed, false AS deleted, %s
+			SELECT o.path, o.mode, o.size, %s, o.packed, false AS deleted, o.hash
 			FROM possible_objects o
-			LEFT JOIN dl.contents c
-			       ON o.hash = c.hash
 			%s
 			WHERE o.project = __project__
 			AND o.start_version > __start_version__
@@ -93,18 +84,11 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 	`
 
 	isCachedSelector := "false AS is_cached"
-	bytesSelector := "c.bytes"
 	cacheJoin := ""
 	if len(qb.cacheVersions) > 0 {
 		isCachedSelector = "h.hash IS NOT NULL AS is_cached"
-		bytesSelector = "CASE WHEN h.hash IS NULL THEN c.bytes ELSE NULL END AS bytes"
 		cacheJoin = `LEFT JOIN cached_object_hashes h
 			       ON h.hash = o.hash`
-	}
-
-	hashSelector := "'(00000000-0000-0000-0000-000000000000,00000000-0000-0000-0000-000000000000)'::hash as hash"
-	if qb.includeHashes {
-		hashSelector = "o.hash"
 	}
 
 	pathPredicate := ""
@@ -121,12 +105,12 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 		ignoresPredicate = "AND o.path NOT LIKE ALL(__ignores__::text[])"
 	}
 
-	return fmt.Sprintf(template, isCachedSelector, bytesSelector, hashSelector, cacheJoin, pathPredicate, ignoresPredicate)
+	return fmt.Sprintf(template, isCachedSelector, cacheJoin, pathPredicate, ignoresPredicate)
 }
 
 func (qb *queryBuilder) removedObjectsCTE() string {
 	template := `
-			SELECT o.path, o.mode, 0 AS size, ''::bytea AS bytes, o.packed, true AS deleted, '(00000000-0000-0000-0000-000000000000,00000000-0000-0000-0000-000000000000)'::hash AS hash
+			SELECT o.path, o.mode, 0 AS size, o.packed, true AS deleted, '(00000000-0000-0000-0000-000000000000,00000000-0000-0000-0000-000000000000)'::hash AS hash
 			FROM possible_objects o
 			WHERE o.project = __project__
 			AND o.start_version <= __start_version__
@@ -177,7 +161,7 @@ func (qb *queryBuilder) queryWithoutRemovals() string {
 	}
 
 	selectStatement := `
-		SELECT path, mode, size, is_cached, bytes, packed, deleted, (hash).h1, (hash).h2
+		SELECT path, mode, size, is_cached, packed, deleted, (hash).h1, (hash).h2
 		FROM updated_objects
 	`
 
@@ -204,10 +188,10 @@ func (qb *queryBuilder) queryWithRemovals() string {
 	}
 
 	selectStatement := `
-		SELECT path, mode, size, is_cached, bytes, packed, deleted, (hash).h1, (hash).h2
+		SELECT path, mode, size, is_cached, packed, deleted, (hash).h1, (hash).h2
 		FROM updated_objects
 		UNION ALL
-		SELECT path, mode, size, false, bytes, packed, deleted, (hash).h1, (hash).h2
+		SELECT path, mode, size, false, packed, deleted, (hash).h1, (hash).h2
 		FROM removed_objects
 	`
 	return fmt.Sprintf(template, qb.possibleObjectsCTE(true), cacheCte, qb.updatedObjectsCTE(), qb.removedObjectsCTE(), selectStatement)

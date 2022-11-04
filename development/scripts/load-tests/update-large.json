@@ -6,7 +6,7 @@
             "mode": 420,
             "size": 10,
             "deleted": false,
-            "content": "{{ b64enc (randAlpha 4) }}"
+            "content": "{{ b64enc (randAlpha (randInt 500 10_000)) }}"
         }
     }
 ]

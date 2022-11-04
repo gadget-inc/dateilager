@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -39,6 +40,29 @@ func DeleteProject(ctx context.Context, tx pgx.Tx, project int64) error {
 	return nil
 }
 
+func ListProjects(ctx context.Context, tx pgx.Tx) ([]*pb.Project, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT id, latest_version
+		FROM dl.projects
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("snapshotProjects query: %w", err)
+	}
+
+	projects := []*pb.Project{}
+
+	for rows.Next() {
+		var id, version int64
+		err = rows.Scan(&id, &version)
+		if err != nil {
+			return nil, fmt.Errorf("snapshotProjects scan: %w", err)
+		}
+		projects = append(projects, &pb.Project{Id: id, Version: version})
+	}
+
+	return projects, nil
+}
+
 func RandomProjects(ctx context.Context, tx pgx.Tx, sample float32) ([]int64, error) {
 	var projects []int64
 
@@ -71,4 +95,53 @@ func RandomProjects(ctx context.Context, tx pgx.Tx, sample float32) ([]int64, er
 	}
 
 	return projects, nil
+}
+
+func getLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
+	var latestVersion int64
+
+	err := tx.QueryRow(ctx, `
+		SELECT latest_version
+		FROM dl.projects WHERE id = $1
+	`, project).Scan(&latestVersion)
+	if err == pgx.ErrNoRows {
+		return -1, fmt.Errorf("get latest version for %v: %w", project, ErrNotFound)
+	}
+	if err != nil {
+		return -1, fmt.Errorf("get latest version for %v: %w", project, err)
+	}
+
+	return latestVersion, nil
+}
+
+func LockLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
+	var latestVersion int64
+
+	err := tx.QueryRow(ctx, `
+		SELECT latest_version
+		FROM dl.projects WHERE id = $1
+		FOR UPDATE
+	`, project).Scan(&latestVersion)
+	if err == pgx.ErrNoRows {
+		return -1, fmt.Errorf("lock latest version for %v: %w", project, ErrNotFound)
+	}
+	if err != nil {
+		return -1, fmt.Errorf("lock latest version for %v: %w", project, err)
+	}
+
+	return latestVersion, nil
+}
+
+func HasSamePackPattern(ctx context.Context, tx pgx.Tx, project_1 int64, project_2 int64) (bool, error) {
+	var samePackPatterns bool
+
+	err := tx.QueryRow(ctx, `
+		SELECT COALESCE((SELECT pack_patterns FROM dl.projects WHERE id = $1), '{}') =
+		       COALESCE((SELECT pack_patterns FROM dl.projects WHERE id = $2), '{}');
+	`, project_1, project_2).Scan(&samePackPatterns)
+	if err != nil {
+		return false, fmt.Errorf("check matching pack patterns, source %v, target %v: %w", project_1, project_2, err)
+	}
+
+	return samePackPatterns, nil
 }

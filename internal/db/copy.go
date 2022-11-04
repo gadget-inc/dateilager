@@ -48,12 +48,12 @@ func CloneToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, 
 
 	sourceBuilder := newQueryBuilder(source, VersionRange{
 		To: version,
-	}, objectQuery).withHashes(true)
+	}, objectQuery)
 	sourceSql, sourceArgs := sourceBuilder.build()
 
 	targetBuilder := newQueryBuilder(target, VersionRange{
 		To: newTargetVersion - 1,
-	}, objectQuery).withHashes(true).withArgsOffset(len(sourceArgs))
+	}, objectQuery).withArgsOffset(len(sourceArgs))
 	targetSql, targetArgs := targetBuilder.build()
 
 	sql := fmt.Sprintf(`
@@ -62,7 +62,7 @@ func CloneToProject(ctx context.Context, tx pgx.Tx, source int64, target int64, 
 		), to_remove AS (
 			%s
 			EXCEPT
-			SELECT path, mode, size, is_cached, bytes, packed, deleted, h1, h2
+			SELECT path, mode, size, is_cached, packed, deleted, h1, h2
 			FROM live_source_objects
 		)
 		UPDATE dl.objects o

@@ -14,6 +14,7 @@ import (
 
 const (
 	TargetTarSize = 512 * 1024
+	chunkSize     = 50
 )
 
 var (
@@ -22,76 +23,33 @@ var (
 	ErrNotFound = errors.New("resource not found")
 )
 
-func ListProjects(ctx context.Context, tx pgx.Tx) ([]*pb.Project, error) {
-	rows, err := tx.Query(ctx, `
-		SELECT id, latest_version
-		FROM dl.projects
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("snapshotProjects query: %w", err)
-	}
+type EncodedContent = []byte
+type DecodedContent = []byte
 
-	projects := []*pb.Project{}
-
-	for rows.Next() {
-		var id, version int64
-		err = rows.Scan(&id, &version)
-		if err != nil {
-			return nil, fmt.Errorf("snapshotProjects scan: %w", err)
-		}
-		projects = append(projects, &pb.Project{Id: id, Version: version})
-	}
-
-	return projects, nil
+type DbObject struct {
+	hash    Hash
+	path    string
+	mode    int64
+	size    int64
+	deleted bool
+	cached  bool
+	packed  bool
 }
 
-func HasSamePackPattern(ctx context.Context, tx pgx.Tx, project_1 int64, project_2 int64) (bool, error) {
-	var samePackPatterns bool
-
-	err := tx.QueryRow(ctx, `
-		SELECT COALESCE((SELECT pack_patterns FROM dl.projects WHERE id = $1), '{}') =
-		       COALESCE((SELECT pack_patterns FROM dl.projects WHERE id = $2), '{}');
-	`, project_1, project_2).Scan(&samePackPatterns)
-	if err != nil {
-		return false, fmt.Errorf("check matching pack patterns, source %v, target %v: %w", project_1, project_2, err)
+func (d *DbObject) ToTarObject(content []byte) TarObject {
+	if d.cached {
+		content = d.hash.Bytes()
 	}
 
-	return samePackPatterns, nil
-}
-
-func getLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
-	var latestVersion int64
-
-	err := tx.QueryRow(ctx, `
-		SELECT latest_version
-		FROM dl.projects WHERE id = $1
-	`, project).Scan(&latestVersion)
-	if err == pgx.ErrNoRows {
-		return -1, fmt.Errorf("get latest version for %v: %w", project, ErrNotFound)
+	return TarObject{
+		path:    d.path,
+		mode:    d.mode,
+		size:    d.size,
+		deleted: d.deleted,
+		cached:  d.cached,
+		packed:  d.packed,
+		content: content,
 	}
-	if err != nil {
-		return -1, fmt.Errorf("get latest version for %v: %w", project, err)
-	}
-
-	return latestVersion, nil
-}
-
-func LockLatestVersion(ctx context.Context, tx pgx.Tx, project int64) (int64, error) {
-	var latestVersion int64
-
-	err := tx.QueryRow(ctx, `
-		SELECT latest_version
-		FROM dl.projects WHERE id = $1
-		FOR UPDATE
-	`, project).Scan(&latestVersion)
-	if err == pgx.ErrNoRows {
-		return -1, fmt.Errorf("lock latest version for %v: %w", project, ErrNotFound)
-	}
-	if err != nil {
-		return -1, fmt.Errorf("lock latest version for %v: %w", project, err)
-	}
-
-	return latestVersion, nil
 }
 
 type VersionRange struct {
@@ -143,8 +101,6 @@ func unpackObjects(content []byte) ([]*pb.Object, error) {
 	}
 }
 
-type ObjectStream func() (*pb.Object, error)
-
 func filterObject(path string, objectQuery *pb.ObjectQuery, object *pb.Object) (*pb.Object, error) {
 	if objectQuery.IsPrefix && strings.HasPrefix(object.Path, path) {
 		return object, nil
@@ -157,97 +113,157 @@ func filterObject(path string, objectQuery *pb.ObjectQuery, object *pb.Object) (
 	return nil, SKIP
 }
 
-func GetObjects(ctx context.Context, tx pgx.Tx, packManager *PackManager, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, CloseFunc, error) {
-	packParent := packManager.IsPathPacked(objectQuery.Path)
+func executeQuery(ctx context.Context, tx pgx.Tx, queryBuilder *queryBuilder) ([]DbObject, error) {
+	sql, args := queryBuilder.build()
+	rows, err := tx.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
+	var dbObjects []DbObject
+	for {
+		if !rows.Next() {
+			break
+		}
+
+		var object DbObject
+
+		err := rows.Scan(&object.path, &object.mode, &object.size, &object.cached, &object.packed, &object.deleted, &object.hash.H1, &object.hash.H2)
+		if err != nil {
+			return nil, err
+		}
+
+		dbObjects = append(dbObjects, object)
+	}
+
+	return dbObjects, nil
+}
+
+func loadChunk(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, dbObjects []DbObject, startIdx int, chunkSize int) ([]DecodedContent, error) {
+	hashes := make(map[Hash]bool, chunkSize)
+
+	for idx := 0; idx < chunkSize && idx+startIdx < len(dbObjects); idx++ {
+		dbObject := dbObjects[idx+startIdx]
+
+		if !dbObject.cached {
+			hashes[dbObject.hash] = !dbObject.packed
+		}
+	}
+
+	uncachedContents, err := lookup.Lookup(ctx, tx, hashes)
+	if err != nil {
+		return nil, err
+	}
+
+	var decoded []DecodedContent
+
+	for idx := 0; idx < chunkSize && idx+startIdx < len(dbObjects); idx++ {
+		dbObject := dbObjects[idx+startIdx]
+		if dbObject.cached {
+			decoded = append(decoded, dbObject.hash.Bytes())
+		} else {
+			decoded = append(decoded, uncachedContents[dbObject.hash])
+		}
+	}
+
+	return decoded, nil
+}
+
+type ObjectStream func() (*pb.Object, error)
+
+func GetObjects(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManager *PackManager, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, error) {
+	packParent := packManager.IsPathPacked(objectQuery.Path)
 	originalPath := objectQuery.Path
 	if packParent != nil {
 		objectQuery.Path = *packParent
 	}
 
 	builder := newQueryBuilder(project, vrange, objectQuery)
-	sql, args := builder.build()
-
-	rows, err := tx.Query(ctx, sql, args...)
-	closeFunc := func(_ context.Context) { rows.Close() }
+	dbObjects, err := executeQuery(ctx, tx, builder)
 	if err != nil {
-		return nil, closeFunc, fmt.Errorf("getObjects query, project %v vrange %v: %w", project, vrange, err)
+		return nil, fmt.Errorf("get objects query, project %v vrange %v: %w", project, vrange, err)
 	}
 
-	var buffer []*pb.Object
-	contentDecoder := NewContentDecoder()
+	idx := 0
+	chunkIdx := 0
+	chunk, err := loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load chunk: %w", err)
+	}
+
+	var packBuffer []*pb.Object
 
 	return func() (*pb.Object, error) {
-		if len(buffer) > 0 {
-			object := buffer[0]
-			buffer = buffer[1:]
+		if len(packBuffer) > 0 {
+			object := packBuffer[0]
+			packBuffer = packBuffer[1:]
 			return filterObject(originalPath, objectQuery, object)
 		}
 
-		if !rows.Next() {
+		if idx >= len(dbObjects) {
 			return nil, io.EOF
 		}
 
-		var path string
-		var mode, size int64
-		var isCached bool
-		var encoded []byte
-		var packed bool
-		var deleted bool
-		var h1, h2 []byte
-
-		err := rows.Scan(&path, &mode, &size, &isCached, &encoded, &packed, &deleted, &h1, &h2)
-		if err != nil {
-			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: %w", project, vrange, err)
+		if chunkIdx >= len(chunk) {
+			chunkIdx = 0
+			chunk, err = loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load chunk: %w", err)
+			}
 		}
 
-		if isCached {
+		dbObject := dbObjects[idx]
+		content := chunk[chunkIdx]
+
+		idx += 1
+		chunkIdx += 1
+
+		if dbObject.cached {
 			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: returned non-nil hash when queried without cache", project, vrange)
 		}
 
-		if packParent != nil {
-			buffer, err = unpackObjects(encoded)
+		if dbObject.packed {
+			packBuffer, err = unpackObjects(content)
 			if err != nil {
 				return nil, err
 			}
 
-			object := buffer[0]
-			buffer = buffer[1:]
+			object := packBuffer[0]
+			packBuffer = packBuffer[1:]
 			return filterObject(originalPath, objectQuery, object)
 		}
 
-		content, err := contentDecoder.Decoder(encoded)
-		if err != nil {
-			return nil, fmt.Errorf("getObjects decode content %v: %w", path, err)
-		}
-
 		return filterObject(originalPath, objectQuery, &pb.Object{
-			Path:    path,
-			Mode:    mode,
-			Size:    size,
-			Deleted: deleted,
+			Path:    dbObject.path,
+			Mode:    dbObject.mode,
+			Size:    dbObject.size,
+			Deleted: dbObject.deleted,
 			Content: content,
 		})
-	}, closeFunc, nil
+	}, nil
 }
 
 type tarStream func() ([]byte, *string, error)
 
-func GetTars(ctx context.Context, tx pgx.Tx, project int64, cacheVersions []int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, CloseFunc, error) {
-	builder := newQueryBuilder(project, vrange, objectQuery).withCacheVersions(cacheVersions).withHashes(true)
-	sql, args := builder.build()
-
-	rows, err := tx.Query(ctx, sql, args...)
-	closeFunc := func(_ context.Context) { rows.Close() }
+func GetTars(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, project int64, cacheVersions []int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (tarStream, error) {
+	builder := newQueryBuilder(project, vrange, objectQuery).withCacheVersions(cacheVersions)
+	dbObjects, err := executeQuery(ctx, tx, builder)
 	if err != nil {
-		return nil, closeFunc, fmt.Errorf("getObjects query, project %v vrange %v: %w", project, vrange, err)
+		return nil, fmt.Errorf("get tars query, project %v vrange %v: %w", project, vrange, err)
 	}
 
 	tarWriter := NewTarWriter()
-	contentDecoder := NewContentDecoder()
+
+	idx := 0
+	chunkIdx := 0
+	chunk, err := loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load chunk: %w", err)
+	}
 
 	return func() ([]byte, *string, error) {
-		if !rows.Next() {
+		if idx >= len(dbObjects) {
 			if tarWriter.Size() > 0 {
 				bytes, err := tarWriter.BytesAndReset()
 				return bytes, nil, err
@@ -256,37 +272,26 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, cacheVersions []int6
 			return nil, nil, io.EOF
 		}
 
-		var path string
-		var mode, size int64
-		var isCached bool
-		var encoded []byte
-		var packed bool
-		var deleted bool
-		var hash Hash
-
-		err := rows.Scan(&path, &mode, &size, &isCached, &encoded, &packed, &deleted, &hash.H1, &hash.H2)
-		if err != nil {
-			return nil, nil, fmt.Errorf("getTars scan, project %v vrange %v: %w", project, vrange, err)
-		}
-
-		if packed && !isCached {
-			return encoded, &path, nil
-		}
-
-		var object TarObject
-
-		if isCached {
-			object = NewCachedTarObject(path, mode, size, hash)
-		} else {
-			content, err := contentDecoder.Decoder(encoded)
+		if chunkIdx >= len(chunk) {
+			chunkIdx = 0
+			chunk, err = loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize)
 			if err != nil {
-				return nil, nil, fmt.Errorf("getTars decode content %v: %w", path, err)
+				return nil, nil, fmt.Errorf("failed to load chunk: %w", err)
 			}
-
-			object = NewUncachedTarObject(path, mode, size, deleted, content)
 		}
 
-		err = tarWriter.WriteObject(&object)
+		dbObject := dbObjects[idx]
+		content := chunk[chunkIdx]
+
+		idx += 1
+		chunkIdx += 1
+
+		if dbObject.packed && !dbObject.cached {
+			return content, &dbObject.path, nil
+		}
+
+		tarObject := dbObject.ToTarObject(content)
+		err = tarWriter.WriteObject(&tarObject)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -297,7 +302,7 @@ func GetTars(ctx context.Context, tx pgx.Tx, project int64, cacheVersions []int6
 		}
 
 		return nil, nil, SKIP
-	}, closeFunc, nil
+	}, nil
 }
 
 type cacheTarStream func() (int64, []byte, *Hash, error)

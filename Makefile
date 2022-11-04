@@ -141,7 +141,7 @@ setup-local: reset-db
 server: export DL_ENV=dev
 server: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT)
-
+	
 server-profile: export DL_ENV=dev
 server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT) --profile cpu.prof --log-level info
@@ -236,5 +236,11 @@ load-test-new: reset-db
 load-test-update:
 	$(call load-test,Update,update.json,10000,20)
 
+load-test-update-large:
+	$(call load-test,Update,update-large.json,10000,20)
+
 load-test-get:
-	$(call load-test,Get,get_all.json,100000,40,5000)
+	$(call load-test,Get,get.json,100000,40,5000)
+
+load-test-get-compress:
+	$(call load-test,GetCompress,get-compress.json,100000,40,5000)
