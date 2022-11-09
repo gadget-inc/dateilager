@@ -269,7 +269,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		return fromVersion, diffCount, fmt.Errorf("receive fs.GetCompress: %w", err)
 	}
 
-	tarChan := make(chan *pb.GetCompressResponse, 16)
+	tarChan := make(chan *pb.GetCompressResponse, 32)
 	group, ctx := errgroup.WithContext(ctx)
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -373,7 +373,7 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 	toVersion := int64(-1)
 
 	updateChan := make(chan *fsdiff_pb.Update, len(diff.Updates))
-	objectChan := make(chan *pb.Object, 16)
+	objectChan := make(chan *pb.Object, 32)
 
 	group, ctx := errgroup.WithContext(rootCtx)
 	ctx, cancel := context.WithCancel(ctx)

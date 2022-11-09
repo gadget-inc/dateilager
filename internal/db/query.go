@@ -14,7 +14,7 @@ import (
 
 const (
 	TargetTarSize = 512 * 1024
-	chunkSize     = 50
+	chunkSize     = 200
 )
 
 var (
