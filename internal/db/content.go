@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	MB              = 1000 * 1000
+	KB              = 1024
+	MB              = KB * KB
 	DecoderPoolSize = 1000
 )
 
