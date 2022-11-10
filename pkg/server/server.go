@@ -34,8 +34,12 @@ import (
 )
 
 const (
-	MB               = 1000 * 1000
-	MAX_MESSAGE_SIZE = 300 * MB
+	KB                       = 1024
+	MB                       = KB * KB
+	BUFFER_SIZE              = 28 * KB
+	INITIAL_WINDOW_SIZE      = 1 * MB
+	INITIAL_CONN_WINDOW_SIZE = 2 * INITIAL_WINDOW_SIZE
+	MAX_MESSAGE_SIZE         = 300 * MB
 )
 
 type DbPoolConnector struct {
@@ -134,6 +138,10 @@ func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certifica
 				validateTokenStream(validator),
 			),
 		),
+		grpc.ReadBufferSize(BUFFER_SIZE),
+		grpc.WriteBufferSize(BUFFER_SIZE),
+		grpc.InitialConnWindowSize(INITIAL_CONN_WINDOW_SIZE),
+		grpc.InitialWindowSize(INITIAL_WINDOW_SIZE),
 		grpc.MaxRecvMsgSize(MAX_MESSAGE_SIZE),
 		grpc.MaxSendMsgSize(MAX_MESSAGE_SIZE),
 		grpc.Creds(creds),

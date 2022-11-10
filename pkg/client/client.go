@@ -32,8 +32,12 @@ import (
 )
 
 const (
-	MB               = 1000 * 1000
-	MAX_MESSAGE_SIZE = 300 * MB
+	KB                       = 1024
+	MB                       = KB * KB
+	BUFFER_SIZE              = 28 * KB
+	INITIAL_WINDOW_SIZE      = 1 * MB
+	INITIAL_CONN_WINDOW_SIZE = 2 * INITIAL_WINDOW_SIZE
+	MAX_MESSAGE_SIZE         = 300 * MB
 )
 
 type VersionRange struct {
@@ -96,6 +100,10 @@ func NewClient(ctx context.Context, server string, opts ...func(*options)) (*Cli
 	conn, err := grpc.DialContext(connectCtx, server,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(auth),
+		grpc.WithReadBufferSize(BUFFER_SIZE),
+		grpc.WithWriteBufferSize(BUFFER_SIZE),
+		grpc.WithInitialConnWindowSize(INITIAL_CONN_WINDOW_SIZE),
+		grpc.WithInitialWindowSize(INITIAL_WINDOW_SIZE),
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(MAX_MESSAGE_SIZE),
 			grpc.MaxCallSendMsgSize(MAX_MESSAGE_SIZE),
