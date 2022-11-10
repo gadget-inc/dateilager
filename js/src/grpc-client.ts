@@ -91,7 +91,12 @@ export class DateiLagerGrpcClient {
             .catch(callback);
         })
       ),
-      clientOptions: options.grpcClientOptions,
+      clientOptions: {
+        "grpc.keepalive_time_ms": 10_000,
+        "grpc.keepalive_timeout_ms": 5_000,
+        "grpc.keepalive_permit_without_calls": 1,
+        ...options.grpcClientOptions,
+      },
     });
 
     this._client = new FsClient(this._transport);
