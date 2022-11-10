@@ -28,6 +28,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
+	"google.golang.org/grpc/keepalive"
 )
 
 const (
@@ -99,6 +100,11 @@ func NewClient(ctx context.Context, server string, opts ...func(*options)) (*Cli
 			grpc.MaxCallRecvMsgSize(MAX_MESSAGE_SIZE),
 			grpc.MaxCallSendMsgSize(MAX_MESSAGE_SIZE),
 		),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                10 * time.Second,
+			Timeout:             5 * time.Second,
+			PermitWithoutStream: true,
+		}),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
 	)
