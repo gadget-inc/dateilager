@@ -145,12 +145,8 @@ func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certifica
 		grpc.MaxRecvMsgSize(MAX_MESSAGE_SIZE),
 		grpc.MaxSendMsgSize(MAX_MESSAGE_SIZE),
 		grpc.Creds(creds),
-		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Time:    10 * time.Second,
-			Timeout: 5 * time.Second,
-		}),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			MinTime:             10 * time.Second,
+			MinTime:             2 * time.Second,
 			PermitWithoutStream: true,
 		}),
 	)
