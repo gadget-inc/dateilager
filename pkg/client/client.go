@@ -109,8 +109,8 @@ func NewClient(ctx context.Context, server string, opts ...func(*options)) (*Cli
 			grpc.MaxCallSendMsgSize(MAX_MESSAGE_SIZE),
 		),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                10 * time.Second,
-			Timeout:             5 * time.Second,
+			Time:                5 * time.Second,
+			Timeout:             1 * time.Second,
 			PermitWithoutStream: true,
 		}),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
