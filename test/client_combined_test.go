@@ -621,3 +621,67 @@ func TestCombinedWithPrefixDirectoryBug(t *testing.T) {
 		"abc": {content: "abc v2"},
 	})
 }
+
+func TestCombinedAddAndRemoveInDirBug(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeEmptyDir(tc, 1, 1, nil, "a/")
+
+	c, fs, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"a/": {content: "", fileType: typeDirectory},
+	})
+
+	writeFile(t, tmpDir, "a/b", "a/b v1")
+
+	update(tc, c, 1, tmpDir, expectedResponse{
+		version: 2,
+		count:   1,
+	})
+
+	removeFile(t, tmpDir, "a/b")
+
+	update(tc, c, 1, tmpDir, expectedResponse{
+		version: 3,
+		count:   2,
+	})
+
+	updateStream := newMockUpdateServer(tc.Context(), 1, map[string]expectedObject{
+		"b":  {content: "b v4"},
+		"a/": {deleted: true},
+	})
+	err := fs.Update(updateStream)
+	require.NoError(t, err, "fs.Update")
+
+	os.RemoveAll(tmpDir)
+	err = os.MkdirAll(tmpDir, 0755)
+	require.NoError(t, err, "recreate tmp dir %v", tmpDir)
+
+	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
+		version: 2,
+		count:   1,
+	})
+
+	debugObjects(tc)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 4,
+		count:   2,
+	})
+
+	verifyDir(t, tmpDir, 4, map[string]expectedFile{
+		"b": {content: "b v4"},
+	})
+}
