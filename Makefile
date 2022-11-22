@@ -22,7 +22,7 @@ MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
 .PHONY: install migrate migrate-create clean build release
-.PHONY: test test-one test-fuzz test-js lint-js typecheck-js
+.PHONY: test test-one test-fuzz test-conn test-js lint-js typecheck-js
 .PHONY: reset-db setup-local server server-profile js-install
 .PHONY: client-update client-large-update client-get client-rebuild client-pack
 .PHONY: client-gc-contents client-gc-project client-gc-random-projects
@@ -123,6 +123,11 @@ test-fuzz: export DL_SKIP_SSL_VERIFICATION=1
 test-fuzz: reset-db
 	go run cmd/fuzz-test/main.go --server $(GRPC_SERVER) --iterations 1000 --projects 5
 
+test-conn: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+test-conn: export DL_SKIP_SSL_VERIFICATION=1
+test-conn:
+	go run cmd/conn-test/main.go --server $(GRPC_SERVER)
+
 test-js: js-install
 	cd js && npm run test
 
@@ -141,7 +146,7 @@ setup-local: reset-db
 server: export DL_ENV=dev
 server: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT)
-	
+
 server-profile: export DL_ENV=dev
 server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT) --profile cpu.prof --log-level info
