@@ -40,6 +40,7 @@ const (
 	INITIAL_WINDOW_SIZE      = 1 * MB
 	INITIAL_CONN_WINDOW_SIZE = 2 * INITIAL_WINDOW_SIZE
 	MAX_MESSAGE_SIZE         = 300 * MB
+	MAX_POOL_SIZE            = 30
 )
 
 type DbPoolConnector struct {
@@ -52,6 +53,8 @@ func NewDbPoolConnector(ctx context.Context, uri string) (*DbPoolConnector, erro
 	if err != nil {
 		return nil, err
 	}
+
+	config.MaxConns = MAX_POOL_SIZE
 
 	if os.Getenv("DL_PGX_TRACING") == "1" {
 		config.ConnConfig.Tracer = telemetry.NewQueryTracer()
