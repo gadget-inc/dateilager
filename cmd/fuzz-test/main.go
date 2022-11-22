@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
 	stdlog "log"
@@ -66,10 +65,6 @@ func randString(length int) string {
 
 func trimDir(path, dir string) string {
 	return strings.TrimPrefix(strings.TrimPrefix(path, dir), "/")
-}
-
-func projectDir(base string, project int64) string {
-	return filepath.Join(base, fmt.Sprint(project))
 }
 
 func walkDir(dir string) map[string]Type {
@@ -180,7 +175,7 @@ func (o AddFileOp) Apply() error {
 }
 
 func (o AddFileOp) String() string {
-	return fmt.Sprintf("AddFileOp(%s, %d)", Join(o.dir, o.name), len(o.content))
+	return fmt.Sprintf("AddFile(%s, %d)", Join(o.dir, o.name), len(o.content))
 }
 
 type UpdateFileOp struct {
@@ -198,7 +193,7 @@ func newUpdateFileOp(base string, project int64) Operation {
 		return SkipOp{}
 	}
 
-	return AddFileOp{
+	return UpdateFileOp{
 		base:    base,
 		dir:     dir,
 		name:    files[rand.Intn(len(files))],
@@ -211,7 +206,7 @@ func (o UpdateFileOp) Apply() error {
 }
 
 func (o UpdateFileOp) String() string {
-	return fmt.Sprintf("UpdateFileOp(%s, %d)", Join(o.dir, o.name), len(o.content))
+	return fmt.Sprintf("UpdateFile(%s, %d)", Join(o.dir, o.name), len(o.content))
 }
 
 type AddDirOp struct {
@@ -248,7 +243,7 @@ func (o AddDirOp) Apply() error {
 }
 
 func (o AddDirOp) String() string {
-	return fmt.Sprintf("AddDirOp(%s)", Join(o.dir, o.name))
+	return fmt.Sprintf("AddDir(%s)", Join(o.dir, o.name))
 }
 
 type RemoveFileOp struct {
@@ -277,7 +272,7 @@ func (o RemoveFileOp) Apply() error {
 }
 
 func (o RemoveFileOp) String() string {
-	return fmt.Sprintf("RemoveFileOp(%s)", Join(o.dir, o.name))
+	return fmt.Sprintf("RemoveFile(%s)", Join(o.dir, o.name))
 }
 
 type AddSymlinkOp struct {
@@ -320,7 +315,7 @@ func (o AddSymlinkOp) Apply() error {
 }
 
 func (o AddSymlinkOp) String() string {
-	return fmt.Sprintf("AddSymlinkOp(%s, %s)", Join(o.dir, o.target), Join(o.dir, o.name))
+	return fmt.Sprintf("AddSymlink(%s, %s)", Join(o.dir, o.target), Join(o.dir, o.name))
 }
 
 type OpConstructor func(dir string, project int64) Operation
@@ -340,71 +335,113 @@ func randomOperation(baseDir string, project int64) Operation {
 	return operation
 }
 
-func createDirs(projects int) (string, string, string, string, error) {
+type Directories struct {
+	base       string
+	reset      string
+	oneStep    string
+	randomStep string
+}
+
+func createDirs(projects int) (*Directories, error) {
 	var dirs []string
 
-	for _, name := range []string{"base", "continue", "reset", "step"} {
+	for _, name := range []string{"base", "reset", "one-step", "random-step"} {
 		dir, err := os.MkdirTemp("", fmt.Sprintf("dl-ft-%s-", name))
 		if err != nil {
-			return "", "", "", "", fmt.Errorf("cannot create tmp dir: %w", err)
+			return nil, fmt.Errorf("cannot create tmp dir: %w", err)
 		}
 
 		for projectIdx := 1; projectIdx <= projects; projectIdx++ {
 			err = os.MkdirAll(filepath.Join(dir, fmt.Sprint(projectIdx)), 0755)
 			if err != nil {
-				return "", "", "", "", fmt.Errorf("cannot create project dir: %w", err)
+				return nil, fmt.Errorf("cannot create project dir: %w", err)
 			}
 		}
 		dirs = append(dirs, dir)
 	}
 
-	return dirs[0], dirs[1], dirs[2], dirs[3], nil
+	return &Directories{
+		base:       dirs[0],
+		reset:      dirs[1],
+		oneStep:    dirs[2],
+		randomStep: dirs[3],
+	}, nil
 }
 
-func runIteration(ctx context.Context, client *dlc.Client, project int64, operation Operation, baseDir, continueDir, resetDir, stepDir string) error {
+func (d *Directories) Base(project int64) string {
+	return filepath.Join(d.base, fmt.Sprint(project))
+}
+
+func (d *Directories) Reset(project int64) string {
+	return filepath.Join(d.reset, fmt.Sprint(project))
+}
+
+func (d *Directories) OneStep(project int64) string {
+	return filepath.Join(d.oneStep, fmt.Sprint(project))
+}
+
+func (d *Directories) RandomStep(project int64) string {
+	return filepath.Join(d.randomStep, fmt.Sprint(project))
+}
+
+func (d *Directories) Log(ctx context.Context) {
+	logger.Info(ctx, "base       ", zap.String("path", d.base))
+	logger.Info(ctx, "reset      ", zap.String("path", d.reset))
+	logger.Info(ctx, "one-step   ", zap.String("path", d.oneStep))
+	logger.Info(ctx, "random-step", zap.String("path", d.randomStep))
+}
+
+func (d *Directories) RemoveAll() {
+	os.RemoveAll(d.base)
+	os.RemoveAll(d.reset)
+	os.RemoveAll(d.oneStep)
+	os.RemoveAll(d.randomStep)
+}
+
+func runIteration(ctx context.Context, client *dlc.Client, project int64, operation Operation, dirs *Directories) (int64, error) {
 	err := operation.Apply()
 	if err != nil {
-		return fmt.Errorf("failed to apply operation %s: %w", operation.String(), err)
+		return -1, fmt.Errorf("failed to apply operation %s: %w", operation.String(), err)
 	}
 
-	version, _, err := client.Update(ctx, project, projectDir(baseDir, project))
+	version, _, err := client.Update(ctx, project, dirs.Base(project))
 	if err != nil {
-		return fmt.Errorf("failed to update project %d: %w", project, err)
+		return -1, fmt.Errorf("failed to update project %d: %w", project, err)
 	}
 
-	_, _, err = client.Rebuild(ctx, project, "", nil, projectDir(continueDir, project), "")
+	os.RemoveAll(dirs.Reset(project))
+	err = os.MkdirAll(dirs.Reset(project), 0755)
 	if err != nil {
-		return fmt.Errorf("failed to rebuild continue project %d: %w", project, err)
+		return -1, fmt.Errorf("failed to create reset dir %s: %w", dirs.Reset(project), err)
 	}
 
-	os.RemoveAll(projectDir(resetDir, project))
-	err = os.MkdirAll(projectDir(resetDir, project), 0755)
+	_, _, err = client.Rebuild(ctx, project, "", nil, dirs.Reset(project), "")
 	if err != nil {
-		return fmt.Errorf("failed to create reset dir %s: %w", projectDir(resetDir, project), err)
+		return -1, fmt.Errorf("failed to rebuild reset project %d: %w", project, err)
 	}
 
-	_, _, err = client.Rebuild(ctx, project, "", nil, projectDir(resetDir, project), "")
+	_, _, err = client.Rebuild(ctx, project, "", nil, dirs.OneStep(project), "")
 	if err != nil {
-		return fmt.Errorf("failed to rebuild reset project %d: %w", project, err)
+		return -1, fmt.Errorf("failed to rebuild continue project %d: %w", project, err)
 	}
 
-	os.RemoveAll(projectDir(stepDir, project))
-	err = os.MkdirAll(projectDir(stepDir, project), 0755)
+	os.RemoveAll(dirs.RandomStep(project))
+	err = os.MkdirAll(dirs.RandomStep(project), 0755)
 	if err != nil {
-		return fmt.Errorf("failed to create step dir %s: %w", projectDir(stepDir, project), err)
+		return -1, fmt.Errorf("failed to create step dir %s: %w", dirs.RandomStep(project), err)
 	}
 
-	stepVersion := int64(rand.Intn(int(version)))
-	_, _, err = client.Rebuild(ctx, project, "", &stepVersion, projectDir(stepDir, project), "")
+	randomStepVersion := int64(rand.Intn(int(version)))
+	_, _, err = client.Rebuild(ctx, project, "", &randomStepVersion, dirs.RandomStep(project), "")
 	if err != nil {
-		return fmt.Errorf("failed to rebuild step project %d: %w", project, err)
+		return -1, fmt.Errorf("failed to rebuild step project %d: %w", project, err)
 	}
-	_, _, err = client.Rebuild(ctx, project, "", &version, projectDir(stepDir, project), "")
+	_, _, err = client.Rebuild(ctx, project, "", &version, dirs.RandomStep(project), "")
 	if err != nil {
-		return fmt.Errorf("failed to rebuild step project %d: %w", project, err)
+		return -1, fmt.Errorf("failed to rebuild step project %d: %w", project, err)
 	}
 
-	return nil
+	return randomStepVersion, nil
 }
 
 type MatchError struct {
@@ -507,35 +544,35 @@ func logOpLog(ctx context.Context, opLog []Operation) {
 	}
 }
 
-func verifyDirs(ctx context.Context, projects int, baseDir, continueDir, resetDir, stepDir string) error {
+func verifyDirs(ctx context.Context, projects int, dirs *Directories, stepVersion int64) error {
 	for projectIdx := 1; projectIdx <= projects; projectIdx++ {
 		project := int64(projectIdx)
 
-		matchErrors, err := compareDirs(project, projectDir(baseDir, project), projectDir(resetDir, project))
+		matchErrors, err := compareDirs(project, dirs.Base(project), dirs.Reset(project))
 		if err != nil {
 			return fmt.Errorf("failed to compare base & reset dirs: %w", err)
 		}
 		if len(matchErrors) > 0 {
 			logMatchErrors(ctx, matchErrors)
-			return errors.New("reset directory match error")
+			return fmt.Errorf("reset directory match error, project %d", project)
 		}
 
-		matchErrors, err = compareDirs(project, projectDir(baseDir, project), projectDir(continueDir, project))
+		matchErrors, err = compareDirs(project, dirs.Base(project), dirs.OneStep(project))
 		if err != nil {
-			return fmt.Errorf("failed to compare base & continue dirs: %w", err)
+			return fmt.Errorf("failed to compare base & one-step dirs: %w", err)
 		}
 		if len(matchErrors) > 0 {
 			logMatchErrors(ctx, matchErrors)
-			return errors.New("continue directory match error")
+			return fmt.Errorf("one-step directory match error, project %d", project)
 		}
 
-		matchErrors, err = compareDirs(project, projectDir(baseDir, project), projectDir(stepDir, project))
+		matchErrors, err = compareDirs(project, dirs.Base(project), dirs.RandomStep(project))
 		if err != nil {
-			return fmt.Errorf("failed to compare base & step dirs: %w", err)
+			return fmt.Errorf("failed to compare base & random-step dirs: %w", err)
 		}
 		if len(matchErrors) > 0 {
 			logMatchErrors(ctx, matchErrors)
-			return errors.New("step directory match error")
+			return fmt.Errorf("random step from version %d directory match error, project %d", stepVersion, project)
 		}
 	}
 	return nil
@@ -552,35 +589,34 @@ func fuzzTest(ctx context.Context, client *dlc.Client, projects, iterations int)
 		}
 	}
 
-	baseDir, continueDir, resetDir, stepDir, err := createDirs(projects)
+	dirs, err := createDirs(projects)
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(baseDir)
-	defer os.RemoveAll(continueDir)
-	defer os.RemoveAll(resetDir)
-	defer os.RemoveAll(stepDir)
 
 	var opLog []Operation
 
 	for iterIdx := 0; iterIdx < iterations; iterIdx++ {
 		project := int64(rand.Intn(projects) + 1)
 
-		operation := randomOperation(baseDir, project)
+		operation := randomOperation(dirs.base, project)
 		opLog = append(opLog, operation)
 
-		err := runIteration(ctx, client, project, operation, baseDir, continueDir, resetDir, stepDir)
+		stepVersion, err := runIteration(ctx, client, project, operation, dirs)
 		if err != nil {
+			dirs.Log(ctx)
 			return fmt.Errorf("failed to run iteration %d: %w", iterIdx, err)
 		}
 
-		err = verifyDirs(ctx, projects, baseDir, continueDir, resetDir, stepDir)
+		err = verifyDirs(ctx, projects, dirs, stepVersion)
 		if err != nil {
+			dirs.Log(ctx)
 			logOpLog(ctx, opLog)
 			return err
 		}
 	}
 
+	dirs.RemoveAll()
 	return nil
 }
 
