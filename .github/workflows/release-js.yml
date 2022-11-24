@@ -7,6 +7,10 @@ on:
     paths:
       - js/package.json
 
+defaults:
+  run:
+    shell: bash -l {0}
+
 jobs:
   test:
     uses: ./.github/workflows/test.yml
@@ -15,9 +19,15 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: ./.github/actions/setup-env
-      - run: nix develop -c make build
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup development environment
+        uses: ./.github/actions/setup-env
+
+      - name: Build JS package
+        run: make build-js
+
       - uses: JS-DevTools/npm-publish@v1
         with:
           token: ${{ secrets.NPM_TOKEN }}

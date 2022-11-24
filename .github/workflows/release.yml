@@ -5,17 +5,28 @@ on:
     tags:
       - v*
 
+defaults:
+  run:
+    shell: bash -l {0}
+
 jobs:
   test:
     uses: ./.github/workflows/test.yml
+
   build:
     needs: test
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: ./.github/actions/setup-env
-      - run: nix develop -c make internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
-      - uses: goreleaser/goreleaser-action@v2
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup development environment
+        uses: ./.github/actions/setup-env
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v3
         with:
           version: latest
           args: release --rm-dist
