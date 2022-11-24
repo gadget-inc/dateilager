@@ -1,54 +1,53 @@
 name: "Set up environment"
 description: ""
-inputs: {}
-outputs: {}
 runs:
   using: composite
   steps:
-    - uses: cachix/install-nix-action@v14
+    - name: Install nix
+      uses: nixbuild/nix-quick-install-action@v19
       with:
-        install_url: https://nixos-nix-install-tests.cachix.org/serve/vij683ly7sl95nnhb67bdjjfabclr85m/install
-        install_options: "--tarball-url-prefix https://nixos-nix-install-tests.cachix.org/serve"
-        extra_nix_config: |
-          experimental-features = nix-command flakes
+        nix_conf: experimental-features = nix-command flakes
 
-    - run: nix flake check
+    - name: Add nix devshell to .bash_profile
+      run: echo "source <(nix print-dev-env --show-trace)" >> "$HOME/.bash_profile"
       shell: bash
 
     - name: Set cache paths
       id: cache-paths
       run: |
-        echo "::set-output name=go_mod::$(go env GOMODCACHE)"
-        echo "::set-output name=go_build::$(go env GOCACHE)"
-        echo "::set-output name=npm::$(npm config get cache)"
-      shell: nix develop -c bash -eo pipefail -l {0}
+        echo "go_mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+        echo "go_build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+        echo "npm=$(npm config get cache)" >> $GITHUB_OUTPUT
+      shell: bash -l {0}
 
-    - name: Cache go mods
-      uses: actions/cache@v2
+    - name: Cache Go mods
+      uses: actions/cache@v3
       with:
         path: |
           ${{ steps.cache-paths.outputs.go_mod }}
           ${{ steps.cache-paths.outputs.go_build }}
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
+          ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           ${{ runner.os }}-go-
 
     - name: Cache npm packages
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: ${{ steps.cache-paths.outputs.npm }}
         key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
         restore-keys: |
+          ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           ${{ runner.os }}-node-
 
-    - run: go mod download
-      shell: nix develop -c bash -eo pipefail -l {0}
+    - name: Download Go modules
+      run: go mod download
+      shell: bash -l {0}
 
-    - run: echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-      shell: nix develop -c bash -eo pipefail -l {0}
+    - name: Add Go binaries to PATH
+      run: echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+      shell: bash -l {0}
 
-    - run: dirname $(which go) >> $GITHUB_PATH
-      shell: nix develop -c bash -eo pipefail -l {0}
-
-    - run: make install
-      shell: nix develop -c bash -eo pipefail -l {0}
+    - name: Install Go binaries
+      run: make install
+      shell: bash -l {0}

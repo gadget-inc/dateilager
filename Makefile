@@ -16,14 +16,13 @@ DEV_TOKEN_PROJECT_1 ?= v2.public.eyJzdWIiOiIxIiwiaWF0IjoiMjAyMS0xMC0xNVQxMToyMDo
 PKG_GO_FILES := $(shell find pkg/ -type f -name '*.go')
 INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
 PROTO_FILES := $(shell find internal/pb/ -type f -name '*.proto')
-PROTO_TS_FILES := $(shell find js/src/pb -type f -name '*.ts')
 
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
 .PHONY: install migrate migrate-create clean build release
-.PHONY: test test-one test-fuzz test-js lint-js typecheck-js
-.PHONY: reset-db setup-local server server-profile js-install
+.PHONY: test test-one test-fuzz test-js lint-js build-js
+.PHONY: reset-db setup-local server server-profile install-js
 .PHONY: client-update client-large-update client-get client-rebuild client-pack
 .PHONY: client-gc-contents client-gc-project client-gc-random-projects
 .PHONY: webui health upload-container-image gen-docs
@@ -38,7 +37,6 @@ install:
 	go install github.com/gadget-inc/fsdiff/cmd/fsdiff@v0.4
 	go install github.com/stamblerre/gocode@latest
 	go install golang.org/x/tools/cmd/goimports@latest
-	cd js && npm ci
 
 migrate:
 	migrate -database $(DB_URI)?sslmode=disable -path $(MIGRATE_DIR) up
@@ -69,21 +67,12 @@ internal/pb/%_grpc.pb.go: internal/pb/%.proto
 bin/%: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 go build $(BUILD_FLAGS) -o $@ $<
 
-js-install:
-	cd js && npm install
-
-js/src/pb: $(PROTO_FILES)
-	cd js && mkdir -p ./src/pb && npx protoc --experimental_allow_proto3_optional --ts_out ./src/pb --ts_opt long_type_bigint,ts_nocheck,eslint_disable,add_pb_suffix --proto_path ../internal/pb/ ../$^
-
-js/dist: js-install $(PROTO_TS_FILES)
-	cd js && npm run build
-
 development/server.key:
 	mkcert -cert-file development/server.crt -key-file development/server.key localhost
 
 development/server.crt: development/server.key
 
-build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui js/src/pb js/dist development/server.crt
+build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui  development/server.crt
 
 release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o $@ $<
@@ -123,15 +112,6 @@ test-fuzz: export DL_SKIP_SSL_VERIFICATION=1
 test-fuzz: reset-db
 	go run cmd/fuzz-test/main.go --server $(GRPC_SERVER) --iterations 1000 --projects 5
 
-test-js: js-install
-	cd js && npm run test
-
-lint-js: js-install
-	cd js && npm run lint
-
-typecheck-js: js-install
-	cd js && npm run typecheck
-
 reset-db: migrate
 	psql $(DB_URI) -c "truncate dl.objects; truncate dl.contents; truncate dl.projects; truncate dl.cache_versions;"
 
@@ -141,7 +121,7 @@ setup-local: reset-db
 server: export DL_ENV=dev
 server: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT)
-	
+
 server-profile: export DL_ENV=dev
 server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT) --profile cpu.prof --log-level info
@@ -244,3 +224,28 @@ load-test-get:
 
 load-test-get-compress:
 	$(call load-test,GetCompress,get-compress.json,100000,40,5000)
+
+# JS
+
+js/node_modules:
+ifeq ($(CI),true)
+	cd js && npm ci
+else
+	cd js && npm install
+endif
+
+js/src/pb: $(PROTO_FILES)
+	cd js && mkdir -p ./src/pb && npx protoc --experimental_allow_proto3_optional --ts_out ./src/pb --ts_opt long_type_bigint,ts_nocheck,eslint_disable,add_pb_suffix --proto_path ../internal/pb/ ../$^
+
+js/dist: js/node_modules js/src/pb
+	cd js && npm run build
+
+test-js: js/node_modules js/src/pb
+	cd js && npm run test
+
+lint-js: js/node_modules js/src/pb
+	cd js && npm run lint
+
+install-js: js/node_modules
+
+build-js: js/dist
