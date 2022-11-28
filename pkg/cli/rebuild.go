@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
@@ -15,6 +16,7 @@ func NewCmdRebuild() *cobra.Command {
 		to      *int64
 		prefix  string
 		dir     string
+		ignores string
 	)
 
 	cmd := &cobra.Command{
@@ -25,10 +27,14 @@ func NewCmdRebuild() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-
 			client := client.FromContext(ctx)
 
-			version, count, err := client.Rebuild(ctx, project, prefix, to, dir, "")
+			var ignoreList []string
+			if len(ignores) > 0 {
+				ignoreList = strings.Split(ignores, ",")
+			}
+
+			version, count, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, "")
 			if err != nil {
 				return fmt.Errorf("could not rebuild project: %w", err)
 			}
@@ -56,6 +62,7 @@ func NewCmdRebuild() *cobra.Command {
 	cmd.Flags().Int64Var(&project, "project", -1, "Project ID (required)")
 	cmd.Flags().StringVar(&prefix, "prefix", "", "Search prefix")
 	cmd.Flags().StringVar(&dir, "dir", "", "Output directory")
+	cmd.Flags().StringVar(&ignores, "ignores", "", "Comma separated list of ignore paths")
 	to = cmd.Flags().Int64("to", -1, "To version ID (optional)")
 
 	_ = cmd.MarkFlagRequired("project")
