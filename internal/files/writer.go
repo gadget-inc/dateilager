@@ -62,6 +62,10 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 			return fmt.Errorf("open file %v: %w", path, err)
 		}
 
+		err = PreAllocate(file, header.Size)
+		if err != nil {
+			return fmt.Errorf("failed to pre allocate %v: %w", path, err)
+		}
 		err = reader.CopyContent(file)
 		file.Close()
 		if err != nil {
