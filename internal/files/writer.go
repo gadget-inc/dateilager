@@ -127,10 +127,11 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 	dir := finalDir
 
 	if packPath != nil && fileExists(filepath.Join(finalDir, *packPath)) {
-		tmpDir, err := os.MkdirTemp("", "dateilager_pack_path_")
+		tmpDir, err := os.MkdirTemp(filepath.Join(finalDir, ".dl"), "dateilager_pack_path_")
 		if err != nil {
 			return count, fmt.Errorf("cannot create tmp dir for packed tar: %w", err)
 		}
+		defer os.RemoveAll(tmpDir)
 		dir = tmpDir
 	}
 
@@ -164,8 +165,6 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 				return count, fmt.Errorf("cannot rename packed path %v to %v: %w", filepath.Join(dir, *packPath), path, err)
 			}
 		}
-
-		os.RemoveAll(dir)
 	}
 
 	return count, nil
