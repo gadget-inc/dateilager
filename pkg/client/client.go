@@ -232,7 +232,7 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, ignores 
 	return objects, nil
 }
 
-func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, cacheDir string) (int64, uint32, error) {
+func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, ignores []string, cacheDir string) (int64, uint32, error) {
 	ctx, span := telemetry.Start(ctx, "client.rebuild", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Prefix.Attribute(prefix),
@@ -256,6 +256,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 	query := &pb.ObjectQuery{
 		Path:     prefix,
 		IsPrefix: true,
+		Ignores:  ignores,
 	}
 
 	availableCacheVersions := ReadCacheVersionFile(cacheDir)
@@ -498,7 +499,7 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 			return -1, updateCount, err
 		}
 	} else {
-		toVersion, _, err = c.Rebuild(rootCtx, project, "", nil, dir, "")
+		toVersion, _, err = c.Rebuild(rootCtx, project, "", nil, dir, nil, "")
 		if err != nil {
 			return -1, updateCount, err
 		}

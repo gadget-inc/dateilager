@@ -393,7 +393,7 @@ func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64,
 		cacheDir = &newCacheDir
 	}
 
-	version, count, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, *cacheDir)
+	version, count, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, *cacheDir)
 	require.NoError(tc.T(), err, "client.Rebuild")
 
 	assert.Equal(tc.T(), expected.version, version, "mismatch rebuild version")

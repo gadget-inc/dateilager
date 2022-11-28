@@ -155,9 +155,15 @@ export class DateiLagerBinaryClient {
    * @param directory       The path of the directory to rebuild the filesystem at.
    * @param options         Object of options.
    * @param options.timeout Number of milliseconds to wait before terminating the process.
+   * @param options.ignores The paths to ignore when rebuilding the FS.
    * @returns                 The latest project version or `null` if something went wrong.
    */
-  public async rebuild(project: bigint, to: bigint | null, directory: string, options?: { timeout: number }): Promise<bigint | null> {
+  public async rebuild(
+    project: bigint,
+    to: bigint | null,
+    directory: string,
+    options?: { timeout: number; ignores: string[] }
+  ): Promise<bigint | null> {
     return await trace(
       "dateilager-binary-client.rebuild",
       {
@@ -173,6 +179,10 @@ export class DateiLagerBinaryClient {
         const args = ["--dir", directory];
         if (to) {
           args.push("--to", String(to));
+        }
+
+        if (options?.ignores) {
+          args.push("--ignores", options.ignores.join(","));
         }
 
         const result = await this._call("rebuild", project, directory, args, options);
