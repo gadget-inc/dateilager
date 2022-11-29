@@ -126,7 +126,7 @@ export class DateiLagerBinaryClient {
    * @param options.timeout Number of milliseconds to wait before terminating the process.
    * @returns                 The latest project version or `null` if something went wrong.
    */
-  public async update(project: bigint, directory: string, options?: { timeout: number }): Promise<bigint | null> {
+  public async update(project: bigint, directory: string, options?: { timeout?: number }): Promise<bigint | null> {
     return await trace(
       "dateilager-binary-client.update",
       {
@@ -150,19 +150,20 @@ export class DateiLagerBinaryClient {
   /**
    * Rebuild the local filesystem.
    *
-   * @param project         The id of the project.
-   * @param to              The version of the project to rebuild the filesystem to.
-   * @param directory       The path of the directory to rebuild the filesystem at.
-   * @param options         Object of options.
-   * @param options.timeout Number of milliseconds to wait before terminating the process.
-   * @param options.ignores The paths to ignore when rebuilding the FS.
-   * @returns                 The latest project version or `null` if something went wrong.
+   * @param project           The id of the project.
+   * @param to                The version of the project to rebuild the filesystem to.
+   * @param directory         The path of the directory to rebuild the filesystem at.
+   * @param options           Object of options.
+   * @param options.timeout   Number of milliseconds to wait before terminating the process.
+   * @param options.ignores   The paths to ignore when rebuilding the FS.
+   * @param options.summarize Should produce the summary file after rebuilding.
+   * @returns                   The latest project version or `null` if something went wrong.
    */
   public async rebuild(
     project: bigint,
     to: bigint | null,
     directory: string,
-    options?: { timeout: number; ignores: string[] }
+    options?: { timeout?: number; ignores?: string[]; summarize?: boolean }
   ): Promise<bigint | null> {
     return await trace(
       "dateilager-binary-client.rebuild",
@@ -185,6 +186,10 @@ export class DateiLagerBinaryClient {
           args.push("--ignores", options.ignores.join(","));
         }
 
+        if (options?.summarize === false) {
+          args.push("--summarize=false");
+        }
+
         const result = await this._call("rebuild", project, directory, args, options);
         if (result.stdout == "-1") {
           return null;
@@ -201,7 +206,7 @@ export class DateiLagerBinaryClient {
     project: bigint,
     cwd: string,
     args: string[],
-    options?: { timeout: number }
+    options?: { timeout?: number }
   ): Promise<ExecaReturnValue> {
     const baseArgs = [method, "--project", String(project), "--server", this._options.server, "--log-encoding", "json"];
 
