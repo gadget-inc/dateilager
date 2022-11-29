@@ -12,11 +12,12 @@ import (
 
 func NewCmdRebuild() *cobra.Command {
 	var (
-		project int64
-		to      *int64
-		prefix  string
-		dir     string
-		ignores string
+		project   int64
+		to        *int64
+		prefix    string
+		dir       string
+		ignores   string
+		summarize bool
 	)
 
 	cmd := &cobra.Command{
@@ -34,7 +35,7 @@ func NewCmdRebuild() *cobra.Command {
 				ignoreList = strings.Split(ignores, ",")
 			}
 
-			version, count, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, "")
+			version, count, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, "", summarize)
 			if err != nil {
 				return fmt.Errorf("could not rebuild project: %w", err)
 			}
@@ -63,6 +64,7 @@ func NewCmdRebuild() *cobra.Command {
 	cmd.Flags().StringVar(&prefix, "prefix", "", "Search prefix")
 	cmd.Flags().StringVar(&dir, "dir", "", "Output directory")
 	cmd.Flags().StringVar(&ignores, "ignores", "", "Comma separated list of ignore paths")
+	cmd.Flags().BoolVar(&summarize, "summarize", true, "Should include the summary file (required for future updates)")
 	to = cmd.Flags().Int64("to", -1, "To version ID (optional)")
 
 	_ = cmd.MarkFlagRequired("project")
