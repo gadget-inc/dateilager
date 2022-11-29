@@ -141,13 +141,19 @@ type TarReader struct {
 	tarReader *tar.Reader
 }
 
-func NewTarReader(content []byte) *TarReader {
-	s2Reader := s2.NewReader(bytes.NewBuffer(content))
+func NewTarReader() *TarReader {
+	var buffer bytes.Buffer
+	s2Reader := s2.NewReader(&buffer)
 
 	return &TarReader{
 		s2Reader:  s2Reader,
 		tarReader: tar.NewReader(s2Reader),
 	}
+}
+
+func (t *TarReader) FromBytes(content []byte) {
+	t.s2Reader.Reset(bytes.NewBuffer(content))
+	t.tarReader = tar.NewReader(t.s2Reader)
 }
 
 func (t *TarReader) Next() (*tar.Header, error) {
@@ -210,7 +216,8 @@ func updateObjects(before []byte, updates []*pb.Object) ([]byte, error) {
 	seenPaths := make(map[string]bool)
 	idxHint := 0
 
-	reader := NewTarReader(before)
+	reader := NewTarReader()
+	reader.FromBytes(before)
 	readerObjectsRemaining := true
 
 	sort.Slice(updates, func(i, j int) bool { return updates[i].Path < updates[j].Path })
