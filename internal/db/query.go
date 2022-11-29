@@ -81,7 +81,8 @@ func NewVersionRange(ctx context.Context, tx pgx.Tx, project int64, from *int64,
 
 func unpackObjects(content []byte) ([]*pb.Object, error) {
 	var objects []*pb.Object
-	tarReader := NewTarReader(content)
+	tarReader := NewTarReader()
+	tarReader.FromBytes(content)
 
 	for {
 		header, err := tarReader.Next()

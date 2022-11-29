@@ -34,7 +34,7 @@ import (
 const (
 	KB                       = 1024
 	MB                       = KB * KB
-	BUFFER_SIZE              = 28 * KB
+	BUFFER_SIZE              = 64 * KB
 	INITIAL_WINDOW_SIZE      = 1 * MB
 	INITIAL_CONN_WINDOW_SIZE = 2 * INITIAL_WINDOW_SIZE
 	MAX_MESSAGE_SIZE         = 300 * MB
@@ -323,6 +323,8 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 			ctx, span := telemetry.Start(ctx, "object-writer", trace.WithAttributes(attr))
 			defer span.End()
 
+			tarReader := db.NewTarReader()
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -332,7 +334,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 						return nil
 					}
 
-					tarReader := db.NewTarReader(response.Bytes)
+					tarReader.FromBytes(response.Bytes)
 
 					count, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath)
 					if err != nil {
@@ -682,6 +684,8 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 			ctx, span := telemetry.Start(ctx, "cache-object-writer", trace.WithAttributes(attr))
 			defer span.End()
 
+			tarReader := db.NewTarReader()
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -691,7 +695,7 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 						return nil
 					}
 
-					tarReader := db.NewTarReader(response.Bytes)
+					tarReader.FromBytes(response.Bytes)
 					hashHex := hex.EncodeToString(response.Hash)
 					tempDest := filepath.Join(tmpObjectDir, hashHex)
 					finalDest := filepath.Join(objectDir, hashHex)

@@ -169,7 +169,8 @@ func TestGetCacheWithMultipleVersions(t *testing.T) {
 		if err == db.SKIP {
 			continue
 		}
-		tarReader := db.NewTarReader(tar)
+		tarReader := db.NewTarReader()
+		tarReader.FromBytes(tar)
 
 		for {
 			header, err := tarReader.Next()
