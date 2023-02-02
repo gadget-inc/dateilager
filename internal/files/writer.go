@@ -46,6 +46,7 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 		}
 		hashHex := hex.EncodeToString(content)
 		return makeSymlink(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
+
 	case tar.TypeReg:
 		dir := filepath.Dir(path)
 		_, err := retryFileErrors(dir, func() (interface{}, error) {
@@ -87,6 +88,7 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 
 	case tar.TypeSymlink:
 		return makeSymlink(header.Linkname, path)
+
 	case 'D':
 		err := os.Remove(path)
 		if errors.Is(err, fs.ErrNotExist) {

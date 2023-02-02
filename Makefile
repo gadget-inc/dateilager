@@ -90,10 +90,11 @@ release/assets.tar.gz: assets/*
 	tar -zcf $@ assets
 
 release: build
-release: release/server_linux_amd64 release/server_macos_amd64 release/server_macos_arm64
-release: release/client_linux_amd64 release/client_macos_amd64 release/client_macos_arm64
-release: release/webui_linux_amd64 release/webui_macos_amd64 release/webui_macos_arm64
-release: release/assets.tar.gz release/migrations.tar.gz
+release: release/client_linux_amd64
+# release: release/server_linux_amd64 release/server_macos_amd64 release/server_macos_arm64
+# release: release/client_linux_amd64 release/client_macos_amd64 release/client_macos_arm64
+# release: release/webui_linux_amd64 release/webui_macos_amd64 release/webui_macos_arm64
+# release: release/assets.tar.gz release/migrations.tar.gz
 
 test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test: migrate
