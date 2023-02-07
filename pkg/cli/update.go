@@ -14,6 +14,7 @@ func NewCmdUpdate() *cobra.Command {
 		project    int64
 		dir        string
 		logUpdates bool
+		checkGlobs []string
 	)
 
 	cmd := &cobra.Command{
@@ -31,11 +32,18 @@ func NewCmdUpdate() *cobra.Command {
 			logger.Info(ctx, "updated objects",
 				key.Project.Field(project),
 				key.Version.Field(version),
-				key.DiffCount.Field(uint32(len(diff.Updates))),
+				key.DiffCount.Field(DiffUpdateCount(diff)),
 			)
 
-			if logUpdates {
-				LogUpdates(diff)
+			if diff != nil {
+				err = LogIfGlobsMatched(checkGlobs, diff)
+				if err != nil {
+					return fmt.Errorf("could not check for matching globs: %w", err)
+				}
+
+				if logUpdates {
+					LogUpdates(diff)
+				}
 			}
 
 			fmt.Println(version)
@@ -47,6 +55,7 @@ func NewCmdUpdate() *cobra.Command {
 	cmd.Flags().Int64Var(&project, "project", -1, "Project ID (required)")
 	cmd.Flags().StringVar(&dir, "dir", "", "Directory containing updated files")
 	cmd.Flags().BoolVar(&logUpdates, "log-updates", false, "Log all updated files to the console")
+	cmd.Flags().StringSliceVar(&checkGlobs, "check-glob", []string{}, "Report if any files matching the given globs were changed by this update operation")
 
 	_ = cmd.MarkFlagRequired("project")
 

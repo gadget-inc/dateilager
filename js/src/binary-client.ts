@@ -13,18 +13,18 @@ export interface DateiLagerBinaryClientOptions {
    * The address of the dateilager server.
    */
   server:
-  | string
-  | {
-    /**
-     * The host of the dateilager server.
-     */
-    host: string;
+    | string
+    | {
+        /**
+         * The host of the dateilager server.
+         */
+        host: string;
 
-    /**
-     * The port of the dateilager server.
-     */
-    port: number;
-  };
+        /**
+         * The port of the dateilager server.
+         */
+        port: number;
+      };
 
   /**
    * The token that will be sent as authorization metadata to the dateilager server.
@@ -44,22 +44,22 @@ export interface DateiLagerBinaryClientOptions {
    * @default 0 No timeout.
    */
   timeout?:
-  | number
-  | {
-    /**
-     * The default number of milliseconds to wait before terminating the update command.
-     *
-     * @default 0 No timeout.
-     */
-    update?: number;
+    | number
+    | {
+        /**
+         * The default number of milliseconds to wait before terminating the update command.
+         *
+         * @default 0 No timeout.
+         */
+        update?: number;
 
-    /**
-     * The default number of milliseconds to wait before terminating the rebuild command.
-     *
-     * @default 0 No timeout.
-     */
-    rebuild?: number;
-  };
+        /**
+         * The default number of milliseconds to wait before terminating the rebuild command.
+         *
+         * @default 0 No timeout.
+         */
+        rebuild?: number;
+      };
 
   /**
    * Whether the dateilager binary client should enable tracing.
@@ -86,17 +86,36 @@ export interface DateiLagerBinaryClientOptions {
 
 /**
  * A record of one file being changed during an update operation
- **/
+ */
 export interface Update {
+  /**
+   *
+   */
   operation: "ADD" | "DELETE" | "CHANGE";
+  /**
+   *
+   */
   path: string;
 }
 
 /**
- * The result of running an update operation. Reports the new project version, and a list of updated files if the `logUpdates` option was passed.
+ * The result of running an update or rebuild operation. Reports:
+ * - the new project version
+ * - a list of updated files if the `logUpdates` option was passed.
+ * - a boolean if the passed globs matched any files changed by a rebuild if the `checkGlobs` option was passed
  */
-export interface UpdateResult {
+export interface OperationResult {
+  /**
+   *
+   */
   version: bigint;
+  /**
+   *
+   */
+  globsMatched?: boolean;
+  /**
+   *
+   */
   updates?: Update[];
 }
 
@@ -120,14 +139,14 @@ export class DateiLagerBinaryClient {
       timeout:
         typeof options.timeout === "number"
           ? {
-            update: options.timeout,
-            rebuild: options.timeout,
-          }
+              update: options.timeout,
+              rebuild: options.timeout,
+            }
           : {
-            update: 0,
-            rebuild: 0,
-            ...options.timeout,
-          },
+              update: 0,
+              rebuild: 0,
+              ...options.timeout,
+            },
       tracing: options.tracing ?? false,
       logger: options.logger,
     };
@@ -136,14 +155,19 @@ export class DateiLagerBinaryClient {
   /**
    * Update objects in a project based on the differences in a local directory.
    *
-   * @param    project             The id of the project.
-   * @param    directory           The path of the directory to send updates from.
-   * @param    options             Object of options.
-   * @param    options.timeout     Number of milliseconds to wait before terminating the process.
-   * @param    options.listUpdated Should we return a list of the updated files to the caller
-   * @returns                      An update result or `null` if something went wrong.
+   * @param project             The id of the project.
+   * @param directory           The path of the directory to send updates from.
+   * @param options             Object of options.
+   * @param options.timeout     Number of milliseconds to wait before terminating the process.
+   * @param options.listUpdated Should we return a list of the updated files to the caller
+   * @param options.checkGlobs
+   * @returns                     An update result or `null` if something went wrong.
    */
-  public async update(project: bigint, directory: string, options?: { timeout?: number, listUpdated?: boolean }): Promise<UpdateResult | null> {
+  public async update(
+    project: bigint,
+    directory: string,
+    options?: { timeout?: number; listUpdated?: boolean; checkGlobs?: string[] }
+  ): Promise<OperationResult | null> {
     return await trace(
       "dateilager-binary-client.update",
       {
@@ -153,14 +177,17 @@ export class DateiLagerBinaryClient {
         },
       },
       async () => {
-        const result = await this._call("update", project, directory, ["--dir", directory, `--log-updates=${String(!!options?.listUpdated)}`, String(!!options?.listUpdated)], options);
+        const args = ["--dir", directory, `--log-updates=${String(!!options?.listUpdated)}`, String(!!options?.listUpdated)];
 
-        const { version, updates } = this.parseUpdateResult(result);
+        if (options?.checkGlobs) {
+          for (const glob of options.checkGlobs) {
+            args.push(`--check-glob=${glob}`);
+          }
+        }
 
-        return {
-          updates: options?.listUpdated ? updates : undefined,
-          version: BigInt(version),
-        };
+        const result = await this._call("update", project, directory, args, options);
+
+        return this.parseBuildResult(result, options);
       }
     );
   }
@@ -168,21 +195,22 @@ export class DateiLagerBinaryClient {
   /**
    * Rebuild the local filesystem.
    *
-   * @param project           The id of the project.
-   * @param to                The version of the project to rebuild the filesystem to.
-   * @param directory         The path of the directory to rebuild the filesystem at.
-   * @param options           Object of options.
-   * @param options.timeout   Number of milliseconds to wait before terminating the process.
-   * @param options.ignores   The paths to ignore when rebuilding the FS.
-   * @param options.summarize Should produce the summary file after rebuilding.
-   * @returns                   The latest project version or `null` if something went wrong.
+   * @param project             The id of the project.
+   * @param to                  The version of the project to rebuild the filesystem to.
+   * @param directory           The path of the directory to rebuild the filesystem at.
+   * @param options             Object of options.
+   * @param options.timeout     Number of milliseconds to wait before terminating the process.
+   * @param options.ignores     The paths to ignore when rebuilding the FS.
+   * @param options.listUpdated Return all the paths that changed during the rebuild. Can be slow if many files change.
+   * @param options.checkGlobs  Check if any files matching these globs change when running the rebuild and report if they did. Performs much faster than `listUpdated`.
+   * @returns                     The latest project version or `null` if something went wrong.
    */
   public async rebuild(
     project: bigint,
     to: bigint | null,
     directory: string,
-    options?: { timeout?: number; ignores?: string[]; listUpdated?: boolean }
-  ): Promise<bigint | null> {
+    options?: { timeout?: number; ignores?: string[]; listUpdated?: boolean; checkGlobs?: string[] }
+  ): Promise<OperationResult> {
     return await trace(
       "dateilager-binary-client.rebuild",
       {
@@ -204,13 +232,14 @@ export class DateiLagerBinaryClient {
           args.push("--ignores", options.ignores.join(","));
         }
 
-        const result = await this._call("rebuild", project, directory, args, options);
-        const { version } = this.parseUpdateResult(result);
-        if (version == "-1") {
-          return null;
+        if (options?.checkGlobs) {
+          for (const glob of options.checkGlobs) {
+            args.push(`--check-glob=${glob}`);
+          }
         }
 
-        return BigInt(version);
+        const result = await this._call("rebuild", project, directory, args, options);
+        return this.parseBuildResult(result, options);
       }
     );
   }
@@ -265,16 +294,39 @@ export class DateiLagerBinaryClient {
     return subprocess;
   }
 
-  private parseUpdateResult(result: ExecaReturnValue<string>) {
-    const lines = result.stdout.split("\n");
+  /**
+   *
+   * @param stream
+   * @param options
+   * @param options.listUpdated
+   * @param options.checkGlobs
+   */
+  private parseBuildResult(stream: ExecaReturnValue<string>, options?: { listUpdated?: boolean; checkGlobs?: any }): OperationResult {
+    const lines = stream.stdout.split("\n");
     const version = lines.pop()!.trim();
 
-    const updates = lines.map((line) => {
-      const [operation, path] = line.split(/ (.+)?/, 2);
-      return { operation: operation as any, path: path as string };
-    })
+    const updates: Update[] = [];
+    let globsMatched = false;
 
-    return { version, updates }
+    for (const line of lines) {
+      if (line.startsWith("GLOB-MATCH")) {
+        globsMatched = true;
+      } else if (options?.listUpdated) {
+        const [operation, path] = line.split(/ (.+)?/, 2);
+        updates.push({ operation: operation as "ADD" | "CHANGE" | "DELETE", path: path! });
+      }
+    }
 
+    const result: OperationResult = {
+      version: BigInt(version),
+    };
+
+    if (options?.checkGlobs) {
+      result.globsMatched = globsMatched;
+    }
+    if (options?.listUpdated) {
+      result.updates = updates;
+    }
+    return result;
   }
 }

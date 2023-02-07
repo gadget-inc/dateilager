@@ -3,6 +3,7 @@ module github.com/gadget-inc/dateilager
 go 1.18
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.6.0
 	github.com/dgraph-io/ristretto v0.1.1
 	github.com/gadget-inc/fsdiff v0.4.4
 	github.com/go-chi/chi/v5 v5.0.7
@@ -23,6 +24,7 @@ require (
 	go.uber.org/zap v1.23.0
 	golang.org/x/oauth2 v0.0.0-20221014153046-6fdb5e3db783
 	golang.org/x/sync v0.0.0-20220929204114-8fcdb60fdcc0
+	golang.org/x/sys v0.0.0-20221013171732-95e765b1cc43
 	google.golang.org/grpc v1.50.0
 	google.golang.org/protobuf v1.28.1
 )
@@ -59,7 +61,6 @@ require (
 	go.uber.org/multierr v1.8.0 // indirect
 	golang.org/x/crypto v0.0.0-20221012134737-56aed061732a // indirect
 	golang.org/x/net v0.0.0-20221014081412-f15817d10f9b // indirect
-	golang.org/x/sys v0.0.0-20221013171732-95e765b1cc43 // indirect
 	golang.org/x/text v0.3.8 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20221014173430-6e2ab493f96b // indirect
