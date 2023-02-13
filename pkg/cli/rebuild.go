@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/pkg/client"
@@ -12,12 +14,14 @@ import (
 
 func NewCmdRebuild() *cobra.Command {
 	var (
-		project   int64
-		to        *int64
-		prefix    string
-		dir       string
-		ignores   string
-		summarize bool
+		project        int64
+		to             *int64
+		prefix         string
+		dir            string
+		ignores        string
+		summarize      bool
+		filePattern    string
+		filePatternIff bool
 	)
 
 	cmd := &cobra.Command{
@@ -35,27 +39,35 @@ func NewCmdRebuild() *cobra.Command {
 				ignoreList = strings.Split(ignores, ",")
 			}
 
-			version, count, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, "", summarize)
+			var pattern *files.FilePattern
+			if filePattern != "" {
+				var err error
+				pattern, err = files.NewFilePattern(filePattern, filePatternIff)
+				if err != nil {
+					return fmt.Errorf("invalid file pattern: %w", err)
+				}
+			}
+
+			result, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, "", pattern, summarize)
 			if err != nil {
 				return fmt.Errorf("could not rebuild project: %w", err)
 			}
 
-			if version == -1 {
-				logger.Debug(ctx, "latest version already checked out",
-					key.Project.Field(project),
-					key.Directory.Field(dir),
-					key.ToVersion.Field(to),
-				)
-			} else {
+			if result.Count > 0 {
 				logger.Info(ctx, "wrote files",
 					key.Project.Field(project),
 					key.Directory.Field(dir),
-					key.Version.Field(version),
-					key.DiffCount.Field(count),
+					key.Version.Field(result.Version),
+					key.DiffCount.Field(result.Count),
 				)
 			}
 
-			fmt.Println(version)
+			encoded, err := json.Marshal(result)
+			if err != nil {
+				return fmt.Errorf("could not marshal result: %w", err)
+			}
+
+			fmt.Println(string(encoded))
 			return nil
 		},
 	}
@@ -65,6 +77,8 @@ func NewCmdRebuild() *cobra.Command {
 	cmd.Flags().StringVar(&dir, "dir", "", "Output directory")
 	cmd.Flags().StringVar(&ignores, "ignores", "", "Comma separated list of ignore paths")
 	cmd.Flags().BoolVar(&summarize, "summarize", true, "Should include the summary file (required for future updates)")
+	cmd.Flags().StringVar(&filePattern, "filepattern", "", "A glob file pattern which drives the patternMatch output boolean")
+	cmd.Flags().BoolVar(&filePatternIff, "iff", false, "Should the file pattern detection trigger if and only if those files have changed")
 	to = cmd.Flags().Int64("to", -1, "To version ID (optional)")
 
 	_ = cmd.MarkFlagRequired("project")

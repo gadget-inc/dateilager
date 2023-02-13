@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/files"
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
@@ -294,5 +295,78 @@ func TestRebuildWithInexistantCacheDir(t *testing.T) {
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"pack/a/1": {content: "pack/a/1 v1"},
 		"pack/a/2": {content: "pack/a/2 v1"},
+	})
+}
+
+func TestRebuildWithFilePatterns(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "ab", "ab v1")
+	writeObject(tc, 1, 1, nil, "bb", "bb v1")
+	writeObject(tc, 1, 1, nil, "cb", "cb v1")
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	pattern, err := files.NewFilePattern("[ab]*", false)
+	require.NoError(t, err, "invalid file pattern: %w", err)
+
+	rebuildWithPattern(tc, c, 1, nil, tmpDir, pattern, true, expectedResponse{
+		version: 1,
+		count:   3,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"ab": {content: "ab v1"},
+		"bb": {content: "bb v1"},
+		"cb": {content: "cb v1"},
+	})
+}
+
+func TestRebuildWithFilePatternsIff(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2)
+	writeObject(tc, 1, 1, nil, "ab", "ab v1")
+	writeObject(tc, 1, 1, nil, "bb", "bb v1")
+	writeObject(tc, 1, 1, nil, "cb", "cb v1")
+	writeObject(tc, 1, 2, nil, "ac", "ac v2")
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	pattern, err := files.NewFilePattern("a*", true)
+	require.NoError(t, err, "invalid file pattern: %w", err)
+
+	rebuildWithPattern(tc, c, 1, i(1), tmpDir, pattern, false, expectedResponse{
+		version: 1,
+		count:   3,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"ab": {content: "ab v1"},
+		"bb": {content: "bb v1"},
+		"cb": {content: "cb v1"},
+	})
+
+	rebuildWithPattern(tc, c, 1, nil, tmpDir, pattern, true, expectedResponse{
+		version: 2,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"ab": {content: "ab v1"},
+		"ac": {content: "ac v2"},
+		"bb": {content: "bb v1"},
+		"cb": {content: "cb v1"},
 	})
 }

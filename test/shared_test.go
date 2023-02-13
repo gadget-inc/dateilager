@@ -15,6 +15,7 @@ import (
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/gadget-inc/dateilager/pkg/api"
@@ -393,11 +394,23 @@ func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64,
 		cacheDir = &newCacheDir
 	}
 
-	version, count, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, *cacheDir, true)
+	result, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, *cacheDir, nil, true)
 	require.NoError(tc.T(), err, "client.Rebuild")
 
-	assert.Equal(tc.T(), expected.version, version, "mismatch rebuild version")
-	assert.Equal(tc.T(), expected.count, count, "mismatch rebuild count")
+	assert.Equal(tc.T(), expected.version, result.Version, "mismatch rebuild version")
+	assert.Equal(tc.T(), expected.count, result.Count, "mismatch rebuild count")
+}
+
+func rebuildWithPattern(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, pattern *files.FilePattern, expectedMatch bool, expected expectedResponse) {
+	newCacheDir := emptyTmpDir(tc.T())
+	defer os.RemoveAll(newCacheDir)
+
+	result, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, newCacheDir, pattern, true)
+	require.NoError(tc.T(), err, "client.Rebuild")
+
+	assert.Equal(tc.T(), expected.version, result.Version, "mismatch rebuild version")
+	assert.Equal(tc.T(), expected.count, result.Count, "mismatch rebuild count")
+	assert.Equal(tc.T(), expectedMatch, result.PatternMatch, "unexpected file pattern match")
 }
 
 func update(tc util.TestCtx, c *client.Client, project int64, dir string, expected expectedResponse) {

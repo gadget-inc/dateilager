@@ -20,7 +20,7 @@ PROTO_FILES := $(shell find internal/pb/ -type f -name '*.proto')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
-.PHONY: install migrate migrate-create clean build release
+.PHONY: install migrate migrate-create clean build lint release
 .PHONY: test test-one test-fuzz test-js lint-js build-js
 .PHONY: reset-db setup-local server server-profile install-js
 .PHONY: client-update client-large-update client-get client-rebuild client-pack
@@ -73,6 +73,9 @@ development/server.key:
 development/server.crt: development/server.key
 
 build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui  development/server.crt
+
+lint:
+	golangci-lint run
 
 release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o $@ $<

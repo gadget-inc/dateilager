@@ -6,12 +6,11 @@ linters:
   # https://golangci-lint.run/usage/linters/#enabled-by-default-linters
   enable:
     - depguard
-    - dogsled
+
     - errcheck
     - exportloopref
     - goconst
     - gocritic
-    - gocyclo
     - gofmt
     - goimports
     - goprintffuncname
@@ -25,13 +24,11 @@ linters:
     - typecheck
     - unconvert
     - unused
-    - varcheck
     - whitespace
-
-  # linters disabled because of go1.18 (see https://github.com/golangci/golangci-lint/issues/2649):
-  # - bodyclose
-  # - noctx
-  # - structcheck
+    - bodyclose
+    - noctx
+    - dogsled
+    - gocyclo
 
   # don't enable:
   # - wsl
@@ -41,5 +38,5 @@ linters:
 # Options for analysis running.
 run:
   skip-files:
-  - "internal/pb/*.pb.go$"
-  - internal/pb/object.go
+    - "internal/pb/*.pb.go$"
+    - internal/pb/object.go
