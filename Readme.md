@@ -18,7 +18,7 @@ You can read more about DateiLager's design in the `docs/` directory. A good pla
 
 ### Requirements
 
-- Go 1.18
+- Go 1.19
 - Postgresql
 - Node v16
 - mkcert (https://github.com/FiloSottile/mkcert)
@@ -33,7 +33,7 @@ $ export DB_HOST=10.0.0.1
 
 ### Install Toolchains
 
-Ensure that you have a working [Go development environment](https://golang.org/doc/install) and that you are running at least Go 1.18.
+Ensure that you have a working [Go development environment](https://golang.org/doc/install) and that you are running at least Go 1.19.
 
 You will also require `npm`.
 

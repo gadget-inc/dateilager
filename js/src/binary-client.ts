@@ -85,6 +85,26 @@ export interface DateiLagerBinaryClientOptions {
 }
 
 /**
+ * The version of the filesystem after the call to rebuild.
+ *
+ * If a file pattern was included then patternDetected can be used to know if that filepattern was seen while rebuilding.
+ */
+export interface RebuildResult {
+  /**
+   * Filesystem version.
+   */
+  version: bigint;
+  /**
+   * Files updated by the rebuild operation.
+   */
+  count: number;
+  /**
+   * Wether or not the file pattern was detected.
+   */
+  patternMatch: boolean;
+}
+
+/**
  * A version of the DateiLager client that uses the compiled binary client instead of the Javascript one.
  *
  * Useful for working directly with a real filesystem instead of in memory objects.
@@ -150,21 +170,23 @@ export class DateiLagerBinaryClient {
   /**
    * Rebuild the local filesystem.
    *
-   * @param project           The id of the project.
-   * @param to                The version of the project to rebuild the filesystem to.
-   * @param directory         The path of the directory to rebuild the filesystem at.
-   * @param options           Object of options.
-   * @param options.timeout   Number of milliseconds to wait before terminating the process.
-   * @param options.ignores   The paths to ignore when rebuilding the FS.
-   * @param options.summarize Should produce the summary file after rebuilding.
-   * @returns                   The latest project version or `null` if something went wrong.
+   * @param project                The id of the project.
+   * @param to                     The version of the project to rebuild the filesystem to.
+   * @param directory              The path of the directory to rebuild the filesystem at.
+   * @param options                Object of options.
+   * @param options.timeout        Number of milliseconds to wait before terminating the process.
+   * @param options.ignores        The paths to ignore when rebuilding the FS.
+   * @param options.summarize      Should produce the summary file after rebuilding.
+   * @param options.filePattern    A glob file pattern which drives the patternDetected output boolean
+   * @param options.filePatternIff Should the file pattern detection trigger if and only if those files have changed
+   * @returns                        The latest project version or `null` if something went wrong.
    */
   public async rebuild(
     project: bigint,
     to: bigint | null,
     directory: string,
-    options?: { timeout?: number; ignores?: string[]; summarize?: boolean }
-  ): Promise<bigint | null> {
+    options?: { timeout?: number; ignores?: string[]; summarize?: boolean; filePattern?: string; filePatternIff?: boolean }
+  ): Promise<RebuildResult> {
     return await trace(
       "dateilager-binary-client.rebuild",
       {
@@ -190,12 +212,17 @@ export class DateiLagerBinaryClient {
           args.push("--summarize=false");
         }
 
-        const result = await this._call("rebuild", project, directory, args, options);
-        if (result.stdout == "-1") {
-          return null;
+        if (options?.filePattern) {
+          args.push(`--filepattern=${options.filePattern}`);
+
+          if (options.filePatternIff) {
+            args.push(`--iff=true`);
+          }
         }
 
-        return BigInt(result.stdout);
+        const result = await this._call("rebuild", project, directory, args, options);
+        const parsed = JSON.parse(result.stdout) as { version: number; count: number; patternMatch: boolean };
+        return { version: BigInt(parsed.version), count: parsed.count, patternMatch: parsed.patternMatch };
       }
     );
   }

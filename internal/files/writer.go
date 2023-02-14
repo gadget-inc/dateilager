@@ -12,7 +12,29 @@ import (
 
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
+	"github.com/gobwas/glob"
 )
+
+type FilePattern struct {
+	Iff     bool
+	pattern glob.Glob
+}
+
+func NewFilePattern(pattern string, iff bool) (*FilePattern, error) {
+	glob, err := glob.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	return &FilePattern{
+		Iff:     iff,
+		pattern: glob,
+	}, nil
+}
+
+func (f *FilePattern) Match(filename string) bool {
+	return f.pattern.Match(filename)
+}
 
 func fileExists(path string) bool {
 	_, err := os.Lstat(path)
@@ -122,14 +144,17 @@ func makeSymlink(linkname string, path string) error {
 	return nil
 }
 
-func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, packPath *string) (uint32, error) {
+func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, packPath *string, pattern *FilePattern) (uint32, bool, error) {
 	var count uint32
 	dir := finalDir
+
+	patternMatch := false
+	patternExclusiveMatch := true
 
 	if packPath != nil && fileExists(filepath.Join(finalDir, *packPath)) {
 		tmpDir, err := os.MkdirTemp(filepath.Join(finalDir, ".dl"), "dateilager_pack_path_")
 		if err != nil {
-			return count, fmt.Errorf("cannot create tmp dir for packed tar: %w", err)
+			return count, false, fmt.Errorf("cannot create tmp dir for packed tar: %w", err)
 		}
 		defer os.RemoveAll(tmpDir)
 		dir = tmpDir
@@ -141,12 +166,22 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 			break
 		}
 		if err != nil {
-			return count, fmt.Errorf("read next TAR header: %w", err)
+			return count, false, fmt.Errorf("read next TAR header: %w", err)
+		}
+
+		if pattern != nil {
+			if !patternMatch && pattern.Match(header.Name) {
+				patternMatch = true
+			}
+
+			if pattern.Iff && patternExclusiveMatch && !pattern.Match(header.Name) {
+				patternExclusiveMatch = false
+			}
 		}
 
 		err = writeObject(dir, cacheObjectsDir, reader, header)
 		if err != nil {
-			return count, err
+			return count, false, err
 		}
 
 		count += 1
@@ -156,16 +191,16 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 		path := filepath.Join(finalDir, *packPath)
 		err := os.RemoveAll(path)
 		if err != nil {
-			return count, fmt.Errorf("cannot remove existing packed path %v: %w", path, err)
+			return count, false, fmt.Errorf("cannot remove existing packed path %v: %w", path, err)
 		}
 
 		if fileExists(filepath.Join(dir, *packPath)) {
 			err = os.Rename(filepath.Join(dir, *packPath), path)
 			if err != nil {
-				return count, fmt.Errorf("cannot rename packed path %v to %v: %w", filepath.Join(dir, *packPath), path, err)
+				return count, false, fmt.Errorf("cannot rename packed path %v to %v: %w", filepath.Join(dir, *packPath), path, err)
 			}
 		}
 	}
 
-	return count, nil
+	return count, patternMatch && patternExclusiveMatch, nil
 }

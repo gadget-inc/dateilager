@@ -232,7 +232,82 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, ignores 
 	return objects, nil
 }
 
-func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, ignores []string, cacheDir string, summarize bool) (int64, uint32, error) {
+type RebuildResult struct {
+	Version      int64  `json:"version"`
+	Count        uint32 `json:"count"`
+	PatternMatch bool   `json:"patternMatch"`
+}
+
+func emptyResult(version int64) RebuildResult {
+	return RebuildResult{
+		Version:      version,
+		Count:        0,
+		PatternMatch: false,
+	}
+}
+
+type rebuildResultTracker struct {
+	version atomic.Int64
+	count   atomic.Uint32
+	match   atomic.Bool
+	pattern *files.FilePattern
+}
+
+func newResultTracker(pattern *files.FilePattern) *rebuildResultTracker {
+	tracker := rebuildResultTracker{
+		version: atomic.Int64{},
+		count:   atomic.Uint32{},
+		match:   atomic.Bool{},
+		pattern: pattern,
+	}
+
+	// If we are matching if and only if, default to true and give precedence to any falsy match
+	// If the diffCount == 0 we need to reset this to false
+	if pattern != nil && pattern.Iff {
+		tracker.match.Store(true)
+	}
+
+	return &tracker
+}
+
+func (t *rebuildResultTracker) checkVersion(version int64) error {
+	old := t.version.Swap(version)
+	if old != version && old != 0 {
+		return fmt.Errorf("invalid response version from GetComrpess, expected %v got %v", old, version)
+	}
+	return nil
+}
+
+func (t *rebuildResultTracker) add(count uint32, match bool) {
+	t.count.Add(count)
+
+	if count > 0 && t.pattern != nil {
+		// When we are doing an if and only if match, we want a falsy value to take precedence
+		// Otherwise, we want the truthy value to take precedence
+		if t.pattern.Iff && !match {
+			t.match.Store(false)
+		}
+
+		if !t.pattern.Iff && match {
+			t.match.Store(true)
+		}
+	}
+}
+
+func (t *rebuildResultTracker) result() RebuildResult {
+	count := t.count.Load()
+	if count == 0 && t.pattern != nil {
+		t.match.Store(false)
+	}
+
+	return RebuildResult{
+		Version:      t.version.Load(),
+		Count:        count,
+		PatternMatch: t.match.Load(),
+	}
+}
+
+func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, ignores []string, cacheDir string, pattern *files.FilePattern, summarize bool) (RebuildResult, error) {
 	ctx, span := telemetry.Start(ctx, "client.rebuild", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Prefix.Attribute(prefix),
@@ -241,14 +316,12 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 	))
 	defer span.End()
 
-	var diffCount uint32
-
 	fromVersion, err := ReadVersionFile(dir)
 	if err != nil {
-		return fromVersion, diffCount, err
+		return emptyResult(fromVersion), err
 	}
 	if toVersion != nil && fromVersion == *toVersion {
-		return *toVersion, diffCount, nil
+		return emptyResult(fromVersion), nil
 	}
 
 	span.SetAttributes(key.FromVersion.Attribute(&fromVersion))
@@ -271,18 +344,20 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 	stream, err := c.fs.GetCompress(ctx, request)
 	if err != nil {
-		return fromVersion, diffCount, fmt.Errorf("connect fs.GetCompress: %w", err)
+		return emptyResult(fromVersion), fmt.Errorf("connect fs.GetCompress: %w", err)
 	}
 
 	// Pull one response before booting workers
 	// This is a short circuit for cases where there are no diffs to apply
 	response, err := stream.Recv()
 	if err == io.EOF {
-		return fromVersion, diffCount, nil
+		return emptyResult(fromVersion), nil
 	}
 	if err != nil {
-		return fromVersion, diffCount, fmt.Errorf("receive fs.GetCompress: %w", err)
+		return emptyResult(fromVersion), fmt.Errorf("receive fs.GetCompress: %w", err)
 	}
+
+	tracker := newResultTracker(pattern)
 
 	tarChan := make(chan *pb.GetCompressResponse, 32)
 	group, ctx := errgroup.WithContext(ctx)
@@ -294,10 +369,10 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		defer close(tarChan)
 
 		for {
-			if toVersion != nil && *toVersion != response.Version {
-				return fmt.Errorf("invalid response version from GetComrpess, expected %v got %v", *toVersion, response.Version)
+			err := tracker.checkVersion(response.Version)
+			if err != nil {
+				return err
 			}
-			toVersion = &response.Version
 
 			select {
 			case <-ctx.Done():
@@ -336,13 +411,13 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 					tarReader.FromBytes(response.Bytes)
 
-					count, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath)
+					count, match, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath, pattern)
 					if err != nil {
 						cancel()
 						return err
 					}
 
-					atomic.AddUint32(&diffCount, count)
+					tracker.add(count, match)
 				}
 			}
 		})
@@ -350,22 +425,24 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 	err = group.Wait()
 	if err != nil {
-		return -1, diffCount, err
+		return emptyResult(fromVersion), err
 	}
 
-	err = WriteVersionFile(dir, *toVersion)
+	result := tracker.result()
+
+	err = WriteVersionFile(dir, result.Version)
 	if err != nil {
-		return -1, diffCount, err
+		return emptyResult(fromVersion), err
 	}
 
 	if summarize {
 		_, err = DiffAndSummarize(ctx, dir)
 		if err != nil {
-			return -1, diffCount, err
+			return emptyResult(fromVersion), err
 		}
 	}
 
-	return *toVersion, diffCount, nil
+	return result, nil
 }
 
 func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int64, uint32, error) {
@@ -503,10 +580,12 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 			return -1, updateCount, err
 		}
 	} else {
-		toVersion, _, err = c.Rebuild(rootCtx, project, "", nil, dir, nil, "", true)
+		result, err := c.Rebuild(rootCtx, project, "", nil, dir, nil, "", nil, true)
 		if err != nil {
 			return -1, updateCount, err
 		}
+
+		toVersion = result.Version
 	}
 
 	return toVersion, updateCount, nil
@@ -714,7 +793,7 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 						}
 					}
 
-					_, err := files.WriteTar(tempDest, CacheObjectsDir(cacheRootDir), tarReader, nil)
+					_, _, err := files.WriteTar(tempDest, CacheObjectsDir(cacheRootDir), tarReader, nil, nil)
 					if err != nil {
 						cancel()
 						return err
