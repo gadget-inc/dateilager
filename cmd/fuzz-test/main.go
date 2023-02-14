@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	stdlog "log"
 	"math/rand"
@@ -452,6 +453,15 @@ type MatchError struct {
 	actualContent   string
 }
 
+func isDirEmpty(path string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	_, err = file.Readdirnames(1)
+	return err == io.EOF
+}
+
 func compareDirs(project int64, expected string, actual string) ([]MatchError, error) {
 	var errors []MatchError
 
@@ -461,6 +471,11 @@ func compareDirs(project int64, expected string, actual string) ([]MatchError, e
 	for path, expectedType := range expectedObjects {
 		actualType, found := actualObjects[path]
 		if !found {
+			// FIXME: This is to handle a special case where we leave empty directories behind
+			//        in the source directory.
+			if actualType == typeDirectory && isDirEmpty(filepath.Join(expected, path)) {
+				continue
+			}
 			errors = append(errors, MatchError{
 				project:      project,
 				path:         path,
@@ -524,9 +539,9 @@ func logMatchErrors(ctx context.Context, matchErrors []MatchError) {
 
 		switch {
 		case matchErr.expectedType == -1:
-			logger.Info(ctx, "missing file in target dir", props...)
+			logger.Info(ctx, "extra file in rebuild dir", props...)
 		case matchErr.actualType == -1:
-			logger.Info(ctx, "missing file in source dir", props...)
+			logger.Info(ctx, "missing file in rebuild dir", props...)
 		case matchErr.expectedType != matchErr.actualType:
 			props = append(props, zap.String("expected", typeStr(matchErr.expectedType)), zap.String("actual", typeStr(matchErr.actualType)))
 			logger.Info(ctx, "object type mismatch", props...)

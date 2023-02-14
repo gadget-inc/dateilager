@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"os"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -108,9 +110,17 @@ func ClientExecute() {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()
 
+	os.RemoveAll("client.prof")
+	file, err := os.Create("client.prof")
+	if err != nil {
+		panic(fmt.Sprintf("cannot open profile path client.prod: %v", err))
+	}
+	_ = pprof.StartCPUProfile(file)
+	defer pprof.StopCPUProfile()
+
 	cmd := NewClientCommand()
 
-	err := cmd.ExecuteContext(ctx)
+	err = cmd.ExecuteContext(ctx)
 
 	client := client.FromContext(cmd.Context())
 	if client != nil {
