@@ -14,7 +14,7 @@
 
 buildGoModule rec {
   pname = "dateilager";
-  version = "0.5.1";
+  version = "0.5.2";
   src = ./.;
   proxyVendor = true; # Fixes: cannot query module due to -mod=vendor running make install
   vendorSha256 = "sha256-CZmCLHfNKXA2BLFbd4V78IrAsMnWN79MGLOvquu+AG0=";
