@@ -67,8 +67,9 @@ func NewCmdGc() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("could not gc project %v: %w", project, err)
 				}
+			default:
+				return fmt.Errorf("Invalid mode type: %s", mode)
 			}
-
 			logger.Info(ctx, "cleaned contents", key.Count.Field(count))
 			return nil
 		},
