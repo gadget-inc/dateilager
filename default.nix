@@ -17,9 +17,9 @@ buildGoModule rec {
   version = "0.5.3";
   src = ./.;
   proxyVendor = true; # Fixes: cannot query module due to -mod=vendor running make install
-  vendorSha256 = "sha256-CZmCLHfNKXA2BLFbd4V78IrAsMnWN79MGLOvquu+AG0=";
+  vendorSha256 = "sha256-nw7OC0EjAy5wbsa/KIGtxsvBgbRfutD2VSXG+78lCdY=";
 
-  outputs = [ "out" "client" "server" "webui" "assets" "migrations" ];
+  outputs = [ "out" "client" "server" "migrations" ];
 
   nativeBuildInputs = [
     git
@@ -63,13 +63,11 @@ buildGoModule rec {
   '';
 
   postInstall = ''
-    mkdir -p "$client/bin" "$server/bin" "$webui/bin"
+    mkdir -p "$client/bin" "$server/bin"
     mv "$out/bin/client" "$client/bin/dateilager-client"
     mv "$out/bin/server" "$server/bin/dateilager-server"
-    mv "$out/bin/webui" "$webui/bin/dateilager-webui"
-    cp -r ${./assets} "$assets"
     cp -r ${./migrations} "$migrations"
-    ln -s "$client/bin/dateilager-client" "$server/bin/dateilager-server" "$webui/bin/dateilager-webui" "$out/bin"
+    ln -s "$client/bin/dateilager-client" "$server/bin/dateilager-server" "$out/bin"
   '';
 
   meta = with lib; {

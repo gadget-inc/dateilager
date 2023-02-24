@@ -5,7 +5,6 @@ go 1.19
 require (
 	github.com/dgraph-io/ristretto v0.1.1
 	github.com/gadget-inc/fsdiff v0.4.4
-	github.com/go-chi/chi/v5 v5.0.7
 	github.com/gobwas/glob v0.2.3
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/jackc/pgx/v5 v5.0.2
