@@ -25,7 +25,7 @@ SERVICE := $(PROJECT).server
 .PHONY: reset-db setup-local server server-profile install-js
 .PHONY: client-update client-large-update client-get client-rebuild client-pack
 .PHONY: client-gc-contents client-gc-project client-gc-random-projects
-.PHONY: webui health upload-container-image gen-docs
+.PHONY: health upload-container-image gen-docs
 .PHONY: load-test-new load-test-get load-test-update
 
 install:
@@ -72,7 +72,7 @@ development/server.key:
 
 development/server.crt: development/server.key
 
-build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/webui  development/server.crt
+build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client development/server.crt
 
 lint:
 	golangci-lint run
@@ -89,14 +89,10 @@ release/%_macos_arm64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 release/migrations.tar.gz: migrations/*
 	tar -zcf $@ migrations
 
-release/assets.tar.gz: assets/*
-	tar -zcf $@ assets
-
 release: build
 release: release/server_linux_amd64 release/server_macos_amd64 release/server_macos_arm64
 release: release/client_linux_amd64 release/client_macos_amd64 release/client_macos_arm64
-release: release/webui_linux_amd64 release/webui_macos_amd64 release/webui_macos_arm64
-release: release/assets.tar.gz release/migrations.tar.gz
+release: release/migrations.tar.gz
 
 test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test: migrate
@@ -181,12 +177,6 @@ client-gc-random-projects: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-gc-random-projects: export DL_SKIP_SSL_VERIFICATION=1
 client-gc-random-projects:
 	go run cmd/client/main.go gc --server $(GRPC_SERVER) --mode random-projects --sample 25 --keep 1
-
-webui: export DL_ENV=dev
-webui: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
-webui: export DL_SKIP_SSL_VERIFICATION=1
-webui:
-	go run cmd/webui/main.go --server $(GRPC_SERVER)
 
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)

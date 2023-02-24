@@ -28,22 +28,6 @@ builds:
     hooks:
       post:
         - tar -zcf dist/migrations.tar.gz migrations
-  - main: ./cmd/webui/main.go
-    id: webui
-    binary: webui
-    env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=v{{.Version}}
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    hooks:
-      post:
-        - tar -zcf dist/assets.tar.gz assets
 
 changelog:
   skip: true
@@ -51,7 +35,6 @@ changelog:
 checksum:
   name_template: "checksums.txt"
   extra_files:
-    - glob: ./dist/assets.tar.gz
     - glob: ./dist/migrations.tar.gz
 
 archives:
@@ -59,5 +42,4 @@ archives:
 
 release:
   extra_files:
-    - glob: ./dist/assets.tar.gz
     - glob: ./dist/migrations.tar.gz
