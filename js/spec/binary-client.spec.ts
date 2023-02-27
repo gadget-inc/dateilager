@@ -93,4 +93,25 @@ describe("binary client operations", () => {
     const fileContent = fs.readFileSync(filepath).toString();
     expect(fileContent).toBe(content);
   });
+
+  it("can gc random-projects and return the count cleaned up", async () => {
+    const result = await binaryClient.gcRandomProjects(90, 2n, -1n, { timeout: 90 });
+
+    expect(JSON.stringify(result)).toMatch('{"count":0}');
+    expect(result.count).toStrictEqual(0);
+  });
+
+  it("can gc a specific project and return the count cleaned up", async () => {
+    const result = await binaryClient.gcProject(1n, 2n, -1n, { timeout: 90 });
+
+    expect(JSON.stringify(result)).toMatch('{"count":0}');
+    expect(result.count).toStrictEqual(0);
+  });
+
+  it("can gc contents and successfully return the count of contents cleaned up", async () => {
+    const result = await binaryClient.gcContents(90, { timeout: 90 });
+
+    expect(JSON.stringify(result)).toMatch('{"count":1}');
+    expect(result.count).toStrictEqual(1);
+  });
 });

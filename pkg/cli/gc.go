@@ -1,13 +1,16 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 
-	"github.com/gadget-inc/dateilager/internal/key"
-	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/spf13/cobra"
 )
+
+type GcResult struct {
+	Count int64 `json:"count"`
+}
 
 func NewCmdGc() *cobra.Command {
 	var (
@@ -70,16 +73,23 @@ func NewCmdGc() *cobra.Command {
 			default:
 				return fmt.Errorf("Invalid mode type: %s", mode)
 			}
-			logger.Info(ctx, "cleaned contents", key.Count.Field(count))
+
+			encoded, err := json.Marshal(GcResult{count})
+			if err != nil {
+				return fmt.Errorf("could not marshal result: %w", err)
+			}
+
+			fmt.Println(string(encoded))
+
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&mode, "mode", "contents", "GC Mode (contents | project | random-projects)")
-	cmd.Flags().Int64Var(&project, "project", -1, "Project ID (used by contents mode)")
-	cmd.Flags().Int64Var(&keep, "keep", -1, "Amount of versions to keep (used by project and random-project mode)")
-	from = cmd.Flags().Int64("from", -1, "Delete as of this version (used by project and random-project mode)")
-	cmd.Flags().Float32Var(&sample, "sample", -1, "Percent of rows to sample (used by contents and random-project mode)")
+	cmd.Flags().Int64Var(&project, "project", -1, "Project ID (used by project mode)")
+	cmd.Flags().Int64Var(&keep, "keep", -1, "Amount of versions to keep (used by project and random-projects mode)")
+	from = cmd.Flags().Int64("from", -1, "Delete as of this version (used by project and random-projects mode)")
+	cmd.Flags().Float32Var(&sample, "sample", -1, "Percent of rows to sample (used by contents and random-projects mode)")
 
 	_ = cmd.MarkFlagRequired("mode")
 

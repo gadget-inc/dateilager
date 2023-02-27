@@ -59,6 +59,13 @@ export interface DateiLagerBinaryClientOptions {
          * @default 0 No timeout.
          */
         rebuild?: number;
+
+        /**
+         * The default number of milliseconds to wait before terminating the gc command.
+         *
+         * @default 0 No timeout.
+         */
+        gc?: number;
       };
 
   /**
@@ -102,6 +109,16 @@ export interface RebuildResult {
    * Wether or not the file pattern was detected.
    */
   patternMatch: boolean;
+}
+
+/**
+ * The Result from calling the Dateilager Garbage Compiler
+ */
+export interface GCResult {
+  /**
+   * The number of records garbage collected
+   */
+  count: bigint;
 }
 
 /**
@@ -156,7 +173,8 @@ export class DateiLagerBinaryClient {
         },
       },
       async () => {
-        const result = await this._call("update", project, directory, ["--dir", directory], options);
+        const args = ["--dir", String(directory), "--project", String(project)];
+        const result = await this._call("update", args, directory, options);
 
         if (result.stdout == "-1") {
           return null;
@@ -220,22 +238,107 @@ export class DateiLagerBinaryClient {
           }
         }
 
-        const result = await this._call("rebuild", project, directory, args, options);
+        args.push("--project", String(project), "--dir", directory);
+        const result = await this._call("rebuild", args, directory, options);
         const parsed = JSON.parse(result.stdout) as { version: number; count: number; patternMatch: boolean };
         return { version: BigInt(parsed.version), count: parsed.count, patternMatch: parsed.patternMatch };
       }
     );
   }
 
+  /**
+   * @param sample          sample size of cleanup
+   * @param keep            The amount of records to keep
+   * @param from            Where to start cleanup
+   * @param options         dict options passed
+   * @param options.timeout timeout limit for the request
+   */
+  public async gcRandomProjects(sample: number, keep: bigint, from?: bigint, options?: { timeout?: number }): Promise<GCResult> {
+    return await trace(
+      "dateilager-binary-client.gc",
+      {
+        attributes: {
+          "db.mode": "random-projects",
+          "dl.keep": String(keep),
+          "dl.from": String(from),
+          "dl.sample": String(sample),
+        },
+      },
+      async () => {
+        const args = ["--mode", "random-projects", "--keep", String(keep), "--sample", String(sample)];
+
+        if (from) args.push("--from", String(from));
+
+        const result = await this._call("gc", args, undefined, options);
+        const parsed = JSON.parse(result.stdout) as { count: bigint };
+        return { count: parsed.count };
+      }
+    );
+  }
+
+  /**
+   *
+   * @param project         The selected project to cleanup
+   * @param keep            The amount of records to keep
+   * @param from            Where to start cleanup
+   * @param options         dict options passed
+   * @param options.timeout timeout limit for the request
+   */
+  public async gcProject(project: bigint, keep: bigint, from?: bigint, options?: { timeout?: number }): Promise<GCResult> {
+    return await trace(
+      "dateilager-binary-client.gc",
+      {
+        attributes: {
+          "db.mode": "mode",
+          "dl.keep": String(keep),
+          "dl.from": String(from),
+        },
+      },
+      async () => {
+        const args = ["--mode", "project", "--keep", String(keep), "--project", String(project)];
+
+        if (from) args.push("--from", String(from));
+
+        const result = await this._call("gc", args, undefined, options);
+        const parsed = JSON.parse(result.stdout) as { count: bigint };
+        return { count: parsed.count };
+      }
+    );
+  }
+
+  /**
+   *
+   * @param sample          sample size of cleanup
+   * @param options         dict options passed
+   * @param options.timeout timeout limit for the request
+   */
+  public async gcContents(sample: number, options?: { timeout?: number }): Promise<GCResult> {
+    return await trace(
+      "dateilager-binary-client.gc",
+      {
+        attributes: {
+          "db.mode": "contents",
+          "dl.sample": String(sample),
+        },
+      },
+      async () => {
+        const args = ["--mode", "contents", "--sample", String(sample)];
+
+        const result = await this._call("gc", args, undefined, options);
+        const parsed = JSON.parse(result.stdout) as { count: bigint };
+        return { count: parsed.count };
+      }
+    );
+  }
+
   /** @internal */
   private async _call(
-    method: "update" | "rebuild",
-    project: bigint,
-    cwd: string,
+    method: "update" | "rebuild" | "gc",
     args: string[],
+    cwd?: string,
     options?: { timeout?: number }
   ): Promise<ExecaReturnValue> {
-    const baseArgs = [method, "--project", String(project), "--server", this._options.server, "--log-encoding", "json"];
+    const baseArgs = [method, "--server", this._options.server, "--log-encoding", "json"];
 
     if (this._options.logger) {
       baseArgs.push("--log-level", this._options.logger.level);
@@ -248,7 +351,6 @@ export class DateiLagerBinaryClient {
 
       baseArgs.push("--tracing", "--otel-context", otelContext);
     }
-
     const subprocess = execa(this._options.command, baseArgs.concat(args), {
       cwd,
       timeout: options?.timeout ?? this._options.timeout[method],
