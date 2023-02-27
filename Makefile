@@ -233,7 +233,7 @@ js/src/pb: $(PROTO_FILES)
 js/dist: js/node_modules js/src/pb
 	cd js && npm run build
 
-test-js: js/node_modules js/src/pb
+test-js: js/node_modules js/src/pb build migrate
 	cd js && npm run test
 
 lint-js: js/node_modules js/src/pb
