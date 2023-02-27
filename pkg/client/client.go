@@ -90,9 +90,11 @@ func NewClient(ctx context.Context, server string, opts ...func(*options)) (*Cli
 		}
 	}
 
-	auth := oauth.NewOauthAccess(&oauth2.Token{
-		AccessToken: o.token,
-	})
+	auth := oauth.TokenSource{
+		TokenSource: oauth2.StaticTokenSource(&oauth2.Token{
+			AccessToken: o.token,
+		}),
+	}
 
 	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
