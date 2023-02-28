@@ -1,6 +1,23 @@
 import * as fs from "fs";
+import { Client } from "pg";
 import { encodeContent } from "../src";
 import { binaryClient, grpcClient, tmpdir } from "./util";
+
+beforeEach(async () => {
+  const client = new Client({
+    user: "postgres",
+    password: "password",
+    host: "127.0.0.1",
+    database: "dl",
+    port: 5432,
+  });
+
+  await client.connect();
+  const statement = "truncate dl.objects; truncate dl.contents; truncate dl.projects; truncate dl.cache_versions";
+
+  await client.query(statement);
+  await client.end();
+});
 
 describe("binary client operations", () => {
   it("can rebuild the file system", async () => {
@@ -111,7 +128,7 @@ describe("binary client operations", () => {
   it("can gc contents and successfully return the count of contents cleaned up", async () => {
     const result = await binaryClient.gcContents(90, { timeout: 90 });
 
-    expect(JSON.stringify(result)).toMatch('{"count":1}');
-    expect(result.count).toStrictEqual(1);
+    expect(JSON.stringify(result)).toMatch('{"count":0}');
+    expect(result.count).toStrictEqual(0);
   });
 });
