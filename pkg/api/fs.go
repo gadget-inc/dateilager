@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -806,6 +807,22 @@ func (f *Fs) GcRandomProjects(ctx context.Context, req *pb.GcRandomProjectsReque
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS gc random projects commit tx: %v", err)
 	}
+
+	conn, err := f.DbConn.TransactionlessConnect(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open conneciton: %w", err)
+	}
+
+	err = db.VacuumAnalyze(ctx, conn, 1, "dl.projects")
+	if err != nil {
+		return nil, fmt.Errorf("vacuum Analyze: %v", err)
+	}
+
+	err = db.VacuumAnalyze(ctx, conn, 1, "dl.contents")
+	if err != nil {
+		return nil, fmt.Errorf("vacuum Analyze: %v", err)
+	}
+
 	logger.Debug(ctx, "FS.GcRandomProjects[Commit]")
 
 	return &pb.GcRandomProjectsResponse{

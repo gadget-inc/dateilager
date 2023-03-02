@@ -10,4 +10,5 @@ type CloseFunc func(context.Context)
 
 type DbConnector interface {
 	Connect(context.Context) (pgx.Tx, CloseFunc, error)
+	TransactionlessConnect(context.Context) (*pgx.Conn, error)
 }

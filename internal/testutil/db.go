@@ -43,6 +43,10 @@ func (d *DbTestConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 	return innerTx, func(context.Context) {}, nil
 }
 
+func (d *DbTestConnector) TransactionlessConnect(ctx context.Context) (*pgx.Conn, error) {
+	return d.conn, nil
+}
+
 func (d *DbTestConnector) close(ctx context.Context) {
 	_ = d.tx.Rollback(ctx)
 	d.conn.Close(ctx)

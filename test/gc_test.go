@@ -42,7 +42,7 @@ func TestGcProjectRemovesObjectsAndContent(t *testing.T) {
 }
 
 func TestGcProjectWithoutDeletes(t *testing.T) {
-	tc := util.NewTestCtx(t, auth.Admin)
+	tc := util.NewTestCtx(t, auth.Admin) // this is the problem. It's a transaction context
 	defer tc.Close()
 
 	writeProject(tc, 1, 3)

@@ -114,6 +114,19 @@ func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 	return tx, func(ctx context.Context) { _ = tx.Rollback(ctx); conn.Release() }, nil
 }
 
+func (d *DbPoolConnector) TransactionlessConnect(ctx context.Context) (*pgx.Conn, error) {
+	conn, err := d.pool.Acquire(ctx)
+	if err != nil {
+		return nil, nil
+	}
+
+	for _, extraType := range d.extraTypes {
+		conn.Conn().TypeMap().RegisterType(extraType)
+	}
+
+	return conn.Conn(), nil
+}
+
 type Server struct {
 	Grpc   *grpc.Server
 	Health *health.Server
