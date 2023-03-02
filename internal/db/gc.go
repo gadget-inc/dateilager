@@ -4,10 +4,20 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gadget-inc/dateilager/internal/key"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func GcProjectObjects(ctx context.Context, tx pgx.Tx, project int64, keep int64, fromVersion int64) ([]Hash, error) {
+	ctx, span := telemetry.Start(ctx, "gc.project-objects", trace.WithAttributes(
+		key.Project.Attribute(project),
+		key.KeepVersions.Attribute(keep),
+		key.FromVersion.Attribute(&fromVersion),
+	))
+	defer span.End()
+
 	hashes := []Hash{}
 
 	rows, err := tx.Query(ctx, `

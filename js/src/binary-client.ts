@@ -118,7 +118,7 @@ export interface GCResult {
   /**
    * The number of records garbage collected
    */
-  count: bigint;
+  count: number;
 }
 
 /**
@@ -270,7 +270,7 @@ export class DateiLagerBinaryClient {
         if (from) args.push("--from", String(from));
 
         const result = await this._call("gc", args, undefined, options);
-        const parsed = JSON.parse(result.stdout) as { count: bigint };
+        const parsed = JSON.parse(result.stdout) as { count: number };
         return { count: parsed.count };
       }
     );
@@ -300,7 +300,7 @@ export class DateiLagerBinaryClient {
         if (from) args.push("--from", String(from));
 
         const result = await this._call("gc", args, undefined, options);
-        const parsed = JSON.parse(result.stdout) as { count: bigint };
+        const parsed = JSON.parse(result.stdout) as { count: number };
         return { count: parsed.count };
       }
     );
@@ -325,7 +325,7 @@ export class DateiLagerBinaryClient {
         const args = ["--mode", "contents", "--sample", String(sample)];
 
         const result = await this._call("gc", args, undefined, options);
-        const parsed = JSON.parse(result.stdout) as { count: bigint };
+        const parsed = JSON.parse(result.stdout) as { count: number };
         return { count: parsed.count };
       }
     );
