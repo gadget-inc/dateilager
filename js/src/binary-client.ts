@@ -253,7 +253,7 @@ export class DateiLagerBinaryClient {
    * @param options         dict options passed
    * @param options.timeout timeout limit for the request
    */
-  public async gcRandomProjects(sample: number, keep: bigint, from?: bigint, options?: { timeout?: number }): Promise<GCResult> {
+  public async gcRandomProjects(sample: number, keep: number, from?: number, options?: { timeout?: number }): Promise<GCResult> {
     return await trace(
       "dateilager-binary-client.gc",
       {
@@ -284,12 +284,12 @@ export class DateiLagerBinaryClient {
    * @param options         dict options passed
    * @param options.timeout timeout limit for the request
    */
-  public async gcProject(project: bigint, keep: bigint, from?: bigint, options?: { timeout?: number }): Promise<GCResult> {
+  public async gcProject(project: number, keep: number, from?: number, options?: { timeout?: number }): Promise<GCResult> {
     return await trace(
       "dateilager-binary-client.gc",
       {
         attributes: {
-          "db.mode": "mode",
+          "db.mode": "project",
           "dl.keep": String(keep),
           "dl.from": String(from),
         },
