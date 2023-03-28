@@ -70,6 +70,10 @@ func NewClientCommand() *cobra.Command {
 
 			ctx, span = telemetry.Start(ctx, "cmd.main")
 
+			if server == "" {
+				return fmt.Errorf("required flag(s) \"server\" not set")
+			}
+
 			cl, err := client.NewClient(ctx, server)
 			if err != nil {
 				return err
@@ -100,6 +104,7 @@ func NewClientCommand() *cobra.Command {
 	cmd.AddCommand(NewCmdSnapshot())
 	cmd.AddCommand(NewCmdUpdate())
 	cmd.AddCommand(NewCmdGc())
+	cmd.AddCommand(NewCmdGetCache())
 
 	return cmd
 }
