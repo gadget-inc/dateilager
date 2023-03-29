@@ -195,6 +195,7 @@ export class DateiLagerBinaryClient {
    * @param options.timeout        Number of milliseconds to wait before terminating the process.
    * @param options.ignores        The paths to ignore when rebuilding the FS.
    * @param options.summarize      Should produce the summary file after rebuilding.
+   * @param options.cacheDir       Path where the cache directory is mounted.
    * @param options.filePattern    A glob file pattern which drives the patternDetected output boolean
    * @param options.filePatternIff Should the file pattern detection trigger if and only if those files have changed
    * @returns                        The latest project version or `null` if something went wrong.
@@ -203,7 +204,14 @@ export class DateiLagerBinaryClient {
     project: bigint,
     to: bigint | null,
     directory: string,
-    options?: { timeout?: number; ignores?: string[]; summarize?: boolean; filePattern?: string; filePatternIff?: boolean }
+    options?: {
+      timeout?: number;
+      ignores?: string[];
+      summarize?: boolean;
+      cacheDir?: string;
+      filePattern?: string;
+      filePatternIff?: boolean;
+    }
   ): Promise<RebuildResult> {
     return await trace(
       "dateilager-binary-client.rebuild",
@@ -228,6 +236,10 @@ export class DateiLagerBinaryClient {
 
         if (options?.summarize === false) {
           args.push("--summarize=false");
+        }
+
+        if (options?.cacheDir) {
+          args.push(`--cachedir=${options.cacheDir}`);
         }
 
         if (options?.filePattern) {
