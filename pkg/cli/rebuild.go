@@ -20,6 +20,7 @@ func NewCmdRebuild() *cobra.Command {
 		dir            string
 		ignores        string
 		summarize      bool
+		cacheDir       string
 		filePattern    string
 		filePatternIff bool
 	)
@@ -48,7 +49,7 @@ func NewCmdRebuild() *cobra.Command {
 				}
 			}
 
-			result, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, "", pattern, summarize)
+			result, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, cacheDir, pattern, summarize)
 			if err != nil {
 				return fmt.Errorf("could not rebuild project: %w", err)
 			}
@@ -77,6 +78,7 @@ func NewCmdRebuild() *cobra.Command {
 	cmd.Flags().StringVar(&dir, "dir", "", "Output directory")
 	cmd.Flags().StringVar(&ignores, "ignores", "", "Comma separated list of ignore paths")
 	cmd.Flags().BoolVar(&summarize, "summarize", true, "Should include the summary file (required for future updates)")
+	cmd.Flags().StringVar(&cacheDir, "cachedir", "", "Path where the cache folder is mounted")
 	cmd.Flags().StringVar(&filePattern, "filepattern", "", "A glob file pattern which drives the patternMatch output boolean")
 	cmd.Flags().BoolVar(&filePatternIff, "iff", false, "Should the file pattern detection trigger if and only if those files have changed")
 	to = cmd.Flags().Int64("to", -1, "To version ID (optional)")
