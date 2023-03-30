@@ -909,6 +909,14 @@ func (c *Client) CloneToProject(ctx context.Context, source int64, target int64,
 }
 
 func parallelWorkerCount() int {
+	envCount := os.Getenv("DL_WRITE_WORKERS")
+	if envCount != "" {
+		count, err := strconv.Atoi(envCount)
+		if err == nil {
+			return count
+		}
+	}
+
 	halfNumCPU := runtime.NumCPU() / 2
 	if halfNumCPU < 1 {
 		halfNumCPU = 1
