@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
@@ -67,7 +68,8 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 			return err
 		}
 		hashHex := hex.EncodeToString(content)
-		return makeSymlink(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
+		return hardlinkDir(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
+
 	case tar.TypeReg:
 		dir := filepath.Dir(path)
 		_, err := retryFileErrors(dir, func() (interface{}, error) {
@@ -109,6 +111,7 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 
 	case tar.TypeSymlink:
 		return makeSymlink(header.Linkname, path)
+
 	case 'D':
 		err := os.Remove(path)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -125,8 +128,8 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 	return nil
 }
 
-func makeSymlink(linkname string, path string) error {
-	dir := filepath.Dir(path)
+func makeSymlink(oldname, newname string) error {
+	dir := filepath.Dir(newname)
 	_, err := retryFileErrors(dir, func() (interface{}, error) {
 		return nil, os.MkdirAll(dir, 0777)
 	})
@@ -134,14 +137,46 @@ func makeSymlink(linkname string, path string) error {
 		return fmt.Errorf("mkdir -p %v: %w", dir, err)
 	}
 
-	_, err = retryFileErrors(path, func() (interface{}, error) {
-		return nil, os.Symlink(linkname, path)
+	_, err = retryFileErrors(newname, func() (interface{}, error) {
+		return nil, os.Symlink(oldname, newname)
 	})
 	if err != nil {
-		return fmt.Errorf("ln -s %v %v: %w", linkname, path, err)
+		return fmt.Errorf("ln -s %v %v: %w", oldname, newname, err)
 	}
 
 	return nil
+}
+
+func hardlinkDir(olddir, newdir string) error {
+	if fileExists(newdir) {
+		err := os.RemoveAll(newdir)
+		if err != nil {
+			return fmt.Errorf("cannot remove existing cached path %v: %w", newdir, err)
+		}
+	}
+
+	return filepath.Walk(olddir, func(oldpath string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		newpath := filepath.Join(newdir, strings.TrimPrefix(oldpath, olddir))
+
+		if info.IsDir() {
+			err := os.MkdirAll(newpath, info.Mode())
+			if err != nil {
+				return fmt.Errorf("cannot create dir %v: %w", newpath, err)
+			}
+			return nil
+		}
+
+		err = os.Link(oldpath, newpath)
+		if err != nil {
+			return fmt.Errorf("ln %v %v: %w", oldpath, newpath, err)
+		}
+
+		return nil
+	})
 }
 
 func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, packPath *string, pattern *FilePattern) (uint32, bool, error) {

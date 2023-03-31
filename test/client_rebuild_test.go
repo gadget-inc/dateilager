@@ -254,8 +254,10 @@ func TestRebuildWithCache(t *testing.T) {
 	bCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), hb.Hex(), "pack/b")
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
-		"pack/a": {fileType: typeSymlink, content: aCachePath},
-		"pack/b": {fileType: typeSymlink, content: bCachePath},
+		"pack/a/1": {content: "pack/a/1 v1"},
+		"pack/a/2": {content: "pack/a/2 v1"},
+		"pack/b/1": {content: "pack/b/1 v1"},
+		"pack/b/2": {content: "pack/b/2 v1"},
 	})
 
 	assertFileContent := func(path string, expectedContent string) {
