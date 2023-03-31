@@ -23,8 +23,8 @@ SERVICE := $(PROJECT).server
 .PHONY: install migrate migrate-create clean build lint release
 .PHONY: test test-one test-fuzz test-js lint-js build-js
 .PHONY: reset-db setup-local server server-profile install-js
-.PHONY: client-update client-large-update client-get client-rebuild client-pack
-.PHONY: client-gc-contents client-gc-project client-gc-random-projects
+.PHONY: client-update client-large-update client-get client-rebuild client-rebuild-with-cache
+.PHONY: client-getcache client-gc-contents client-gc-project client-gc-random-projects
 .PHONY: health upload-container-image gen-docs
 .PHONY: load-test-new load-test-get load-test-update
 
@@ -162,6 +162,16 @@ ifndef to_version
 else
 	go run cmd/client/main.go rebuild --server $(GRPC_SERVER) --project 1 --to $(to_version) --prefix "$(prefix)" --dir $(dir)
 endif
+
+client-rebuild-with-cache: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-rebuild-with-cache: export DL_SKIP_SSL_VERIFICATION=1
+client-rebuild-with-cache:
+	go run cmd/client/main.go rebuild --server $(GRPC_SERVER) --project 1 --prefix "$(prefix)" --dir $(dir) --cachedir input/cache
+
+client-getcache: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-getcache: export DL_SKIP_SSL_VERIFICATION=1
+client-getcache:
+	go run cmd/client/main.go getcache --server $(GRPC_SERVER) --path input/cache
 
 client-gc-contents: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-gc-contents: export DL_SKIP_SSL_VERIFICATION=1
