@@ -61,6 +61,7 @@ module.exports = {
       files: "**/spec/**",
       rules: {
         "jsdoc/require-jsdoc": ["off"],
+        "@typescript-eslint/no-non-null-assertion": ["off"],
       },
     },
   ],

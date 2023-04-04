@@ -15,6 +15,8 @@ service Fs {
 
     rpc GetCompress(GetCompressRequest) returns (stream GetCompressResponse);
 
+    rpc GetUnary(GetUnaryRequest) returns (GetUnaryResponse);
+
     rpc Update(stream UpdateRequest) returns (UpdateResponse);
 
     rpc Inspect(InspectRequest) returns (InspectResponse);
@@ -107,6 +109,18 @@ message GetCompressResponse {
     Format format = 2;
     bytes bytes = 3;
     optional string pack_path = 4;
+}
+
+message GetUnaryRequest {
+    int64 project = 1;
+    optional int64 from_version = 2;
+    optional int64 to_version = 3;
+    repeated ObjectQuery queries = 4;
+}
+
+message GetUnaryResponse {
+    int64 version = 1;
+    repeated Objekt objects = 2;
 }
 
 message UpdateRequest {
