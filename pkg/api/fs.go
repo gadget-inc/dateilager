@@ -398,6 +398,89 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	return nil
 }
 
+func (f *Fs) GetUnary(ctx context.Context, req *pb.GetUnaryRequest) (*pb.GetUnaryResponse, error) {
+	trace.SpanFromContext(ctx).SetAttributes(
+		key.Project.Attribute(req.Project),
+		key.FromVersion.Attribute(req.FromVersion),
+		key.ToVersion.Attribute(req.ToVersion),
+	)
+
+	project, err := requireProjectAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if project > -1 && req.Project != project {
+		return nil, status.Errorf(codes.PermissionDenied, "Mismatch project authorization and request")
+	}
+
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
+	}
+	defer close(ctx)
+
+	vrange, err := db.NewVersionRange(ctx, tx, req.Project, req.FromVersion, req.ToVersion)
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, status.Errorf(codes.NotFound, "FS get missing latest version: %v", err)
+	}
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS get latest version: %v", err)
+	}
+
+	logger.Debug(ctx, "FS.GetUnary[Init]",
+		key.Project.Field(req.Project),
+		key.FromVersion.Field(&vrange.From),
+		key.ToVersion.Field(&vrange.To),
+	)
+
+	packManager, err := db.NewPackManager(ctx, tx, req.Project)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS create packed cache: %v", err)
+	}
+
+	var response pb.GetUnaryResponse
+
+	for _, query := range req.Queries {
+		err = validateObjectQuery(query)
+		if err != nil {
+			return nil, err
+		}
+
+		logger.Debug(ctx, "FS.GetUnary[Query]",
+			key.Project.Field(req.Project),
+			key.FromVersion.Field(&vrange.From),
+			key.ToVersion.Field(&vrange.To),
+			key.QueryPath.Field(query.Path),
+			key.QueryIsPrefix.Field(query.IsPrefix),
+			key.QueryIgnores.Field(query.Ignores),
+		)
+
+		objects, err := db.GetObjects(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "FS get objects: %v", err)
+		}
+
+		for {
+			object, err := objects()
+			if err == db.SKIP {
+				continue
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "FS get next object: %v", err)
+			}
+
+			response.Version = vrange.To
+			response.Objects = append(response.Objects, object)
+		}
+	}
+
+	return &response, nil
+}
+
 func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	ctx := stream.Context()
 	shouldUpdateVersion := false

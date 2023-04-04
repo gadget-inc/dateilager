@@ -6,7 +6,7 @@ import { GrpcTransport } from "@protobuf-ts/grpc-transport";
 import type { ClientStreamingCall, RpcOptions } from "@protobuf-ts/runtime-rpc";
 import { TextDecoder, TextEncoder } from "util";
 import { trace, tracer } from "./internal/telemetry";
-import type { CloneToProjectResponse, Objekt, Project, UpdateRequest, UpdateResponse } from "./pb/fs_pb";
+import type { CloneToProjectResponse, GetUnaryResponse, Objekt, Project, UpdateRequest, UpdateResponse } from "./pb/fs_pb";
 import { FsClient } from "./pb/fs_pb.client";
 
 export type { Objekt, Project };
@@ -216,6 +216,44 @@ export class DateiLagerGrpcClient {
     } finally {
       span.end();
     }
+  }
+
+  /**
+   * Get objects.
+   *
+   * @param project The id of the project.
+   * @param path    The path to get objects under.
+   * @param ignores The paths under {@link path} to ignore.
+   * @param from    The project version to start from.
+   * @param to      The project version to end at.
+   * @returns         All the objects under {@link path}.
+   * @example
+   * const response = await client.getObjects(1n, "");
+   * for (const object of response.objects) {
+   *   console.log("[getObjects] path: " + object.path);
+   *   console.log("[getObjects] content:\n" + object.content);
+   * }
+   */
+  public async getObjects(project: bigint, path: string, ignores: string[] = [], from?: bigint, to?: bigint): Promise<GetUnaryResponse> {
+    return await trace(
+      "dateilager-grpc-client.get-unary",
+      {
+        attributes: {
+          "dl.project": String(project),
+          "dl.path": path,
+          "dl.ignores": ignores,
+          "dl.from_version": String(from),
+          "dl.to_version": String(to),
+        },
+      },
+      async () => {
+        const call = this._client.getUnary(
+          { project, fromVersion: from, toVersion: to, queries: [{ path, ignores, isPrefix: true }] },
+          this._rpcOptions()
+        );
+        return await call.response;
+      }
+    );
   }
 
   /**
