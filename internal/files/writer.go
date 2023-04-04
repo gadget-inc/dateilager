@@ -58,7 +58,7 @@ func retryFileErrors[R any](path string, fn retryableFileOperation[R]) (R, error
 	return result, err
 }
 
-func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, header *tar.Header) error {
+func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, header *tar.Header, existingDirs map[string]bool) error {
 	path := filepath.Join(rootDir, header.Name)
 
 	switch header.Typeflag {
@@ -72,11 +72,17 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 
 	case tar.TypeReg:
 		dir := filepath.Dir(path)
-		_, err := retryFileErrors(dir, func() (interface{}, error) {
-			return nil, os.MkdirAll(dir, 0777)
-		})
-		if err != nil {
-			return fmt.Errorf("mkdir -p %v: %w", dir, err)
+		createdDir := false
+
+		if _, exists := existingDirs[dir]; !exists {
+			_, err := retryFileErrors(dir, func() (interface{}, error) {
+				createdDir = true
+				return nil, os.MkdirAll(dir, 0777)
+			})
+			if err != nil {
+				return fmt.Errorf("mkdir -p %v: %w", dir, err)
+			}
+			existingDirs[dir] = true
 		}
 
 		file, err := retryFileErrors(path, func() (*os.File, error) {
@@ -91,22 +97,36 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 			return fmt.Errorf("failed to pre allocate %v: %w", path, err)
 		}
 		err = reader.CopyContent(file)
-		file.Close()
 		if err != nil {
 			return fmt.Errorf("write %v to disk: %w", path, err)
 		}
-		err = os.Chmod(path, os.FileMode(header.Mode))
-		if err != nil {
-			return fmt.Errorf("chmod %v on disk: %w", path, err)
+
+		// If we created the dir while writing this file, we know it is a new file with the correct mode
+		if !createdDir {
+			info, err := file.Stat()
+			if err != nil {
+				return fmt.Errorf("stat %v: %w", path, err)
+			}
+
+			if info.Mode() != os.FileMode(header.Mode) {
+				err = file.Chmod(os.FileMode(header.Mode))
+				if err != nil {
+					return fmt.Errorf("chmod %v on disk: %w", path, err)
+				}
+			}
 		}
 
-	case tar.TypeDir:
-		_, err := retryFileErrors(path, func() (interface{}, error) {
-			return nil, os.MkdirAll(path, 0777)
-		})
+		file.Close()
 
-		if err != nil {
-			return fmt.Errorf("mkdir -p %v: %w", path, err)
+	case tar.TypeDir:
+		if _, exists := existingDirs[path]; !exists {
+			_, err := retryFileErrors(path, func() (interface{}, error) {
+				return nil, os.MkdirAll(path, 0777)
+			})
+			if err != nil {
+				return fmt.Errorf("mkdir -p %v: %w", path, err)
+			}
+			existingDirs[path] = true
 		}
 
 	case tar.TypeSymlink:
@@ -186,6 +206,8 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 	patternMatch := false
 	patternExclusiveMatch := true
 
+	existingDirs := make(map[string]bool)
+
 	if packPath != nil && fileExists(filepath.Join(finalDir, *packPath)) {
 		tmpDir, err := os.MkdirTemp(filepath.Join(finalDir, ".dl"), "dateilager_pack_path_")
 		if err != nil {
@@ -214,7 +236,7 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 			}
 		}
 
-		err = writeObject(dir, cacheObjectsDir, reader, header)
+		err = writeObject(dir, cacheObjectsDir, reader, header, existingDirs)
 		if err != nil {
 			return count, false, err
 		}
