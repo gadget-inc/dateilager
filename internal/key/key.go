@@ -7,6 +7,7 @@ import (
 )
 
 const (
+	CacheVersions     = Int64SliceKey("dl.cache_versions")
 	Count             = Int64Key("dl.count")
 	DiffCount         = Uint32Key("dl.diff_count")
 	Directory         = StringKey("dl.directory")
@@ -135,4 +136,14 @@ func (fk Float32Key) Field(value float32) zap.Field {
 
 func (fk Float32Key) Attribute(value float32) attribute.KeyValue {
 	return attribute.Float64(string(fk), float64(value))
+}
+
+type Int64SliceKey string
+
+func (isk Int64SliceKey) Field(value []int64) zap.Field {
+	return zap.Int64s(string(isk), value)
+}
+
+func (isk Int64SliceKey) Attribute(value []int64) attribute.KeyValue {
+	return attribute.Int64Slice(string(isk), value)
 }

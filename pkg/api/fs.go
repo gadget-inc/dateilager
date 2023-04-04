@@ -349,6 +349,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 		key.Project.Field(req.Project),
 		key.FromVersion.Field(&vrange.From),
 		key.ToVersion.Field(&vrange.To),
+		key.CacheVersions.Field(req.AvailableCacheVersions),
 	)
 
 	for _, query := range req.Queries {
