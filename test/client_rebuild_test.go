@@ -222,6 +222,33 @@ func TestRebuildWithUpdatedObjectToDirectory(t *testing.T) {
 	})
 }
 
+func TestRebuildWithPackedObjects(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writePackedFiles(tc, 1, 1, nil, "pack/a")
+	writePackedFiles(tc, 1, 1, nil, "pack/b")
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   4,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"pack/a/1": {content: "pack/a/1 v1"},
+		"pack/a/2": {content: "pack/a/2 v1"},
+		"pack/b/1": {content: "pack/b/1 v1"},
+		"pack/b/2": {content: "pack/b/2 v1"},
+	})
+}
+
 func TestRebuildWithCache(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
@@ -370,5 +397,44 @@ func TestRebuildWithFilePatternsIff(t *testing.T) {
 		"ac": {content: "ac v2"},
 		"bb": {content: "bb v1"},
 		"cb": {content: "cb v1"},
+	})
+}
+
+func TestRebuildWithMissingMetadataDir(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "ab", "ab v1")
+	writePackedFiles(tc, 1, 1, nil, "pack/a")
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   3,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"ab":       {content: "ab v1"},
+		"pack/a/1": {content: "pack/a/1 v1"},
+		"pack/a/2": {content: "pack/a/2 v1"},
+	})
+
+	os.RemoveAll(filepath.Join(tmpDir, ".dl"))
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   3,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"ab":       {content: "ab v1"},
+		"pack/a/1": {content: "pack/a/1 v1"},
+		"pack/a/2": {content: "pack/a/2 v1"},
 	})
 }

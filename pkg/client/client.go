@@ -359,6 +359,11 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		return emptyResult(fromVersion), fmt.Errorf("receive fs.GetCompress: %w", err)
 	}
 
+	err = ensureMetadataDir(dir)
+	if err != nil {
+		return emptyResult(fromVersion), err
+	}
+
 	tracker := newResultTracker(pattern)
 
 	tarChan := make(chan *pb.GetCompressResponse, 32)
