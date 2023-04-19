@@ -117,12 +117,15 @@ func (qb *queryBuilder) removedObjectsCTE() string {
 			AND o.stop_version > __start_version__
 			AND o.stop_version <= __stop_version__
 			%s
-			AND (
+			AND NOT (
 			    -- Skip removing files if they are in the updated_objects list
-			    (RIGHT(o.path, 1) != '/' AND o.path NOT IN (SELECT path FROM updated_objects))
+			    (RIGHT(o.path, 1) != '/' AND o.path IN (SELECT path FROM updated_objects))
 			    OR
 			    -- Skip removing empty directories if any updated_objects are within that directory
-			    (RIGHT(o.path, 1) = '/' AND NOT EXISTS (SELECT true FROM updated_objects WHERE STARTS_WITH(path, o.path)))
+			    (RIGHT(o.path, 1) = '/' AND EXISTS (SELECT true FROM updated_objects WHERE STARTS_WITH(path, o.path)))
+			    OR
+			    -- Skip removing files that have transformed into directories
+			    (RIGHT(o.path, 1) != '/' AND EXISTS (SELECT true FROM updated_objects WHERE STARTS_WITH(path, CONCAT(o.path, '/'))))
 			)
 			ORDER BY o.path
 	`

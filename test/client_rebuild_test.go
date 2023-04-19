@@ -438,3 +438,37 @@ func TestRebuildWithMissingMetadataDir(t *testing.T) {
 		"pack/a/2": {content: "pack/a/2 v1"},
 	})
 }
+
+func TestRebuildFileBecomesADir(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2)
+	writeObject(tc, 1, 1, i(2), "a.html", "a v1")
+	writeObject(tc, 1, 2, nil, "a.html/foo", "a v2")
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	fmt.Printf("tmpdir located at %s\n", tmpDir)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"a.html": {content: "a v1"},
+	})
+
+	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
+		version: 2,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"a.html/foo": {content: "a v2"},
+	})
+}
