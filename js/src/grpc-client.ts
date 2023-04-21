@@ -1,5 +1,5 @@
 import type { ClientOptions } from "@grpc/grpc-js";
-import { ChannelCredentials, credentials, Metadata } from "@grpc/grpc-js";
+import { Channel, ChannelCredentials, credentials, Metadata } from "@grpc/grpc-js";
 import type { Span } from "@opentelemetry/api";
 import { context as contextAPI, trace as traceAPI } from "@opentelemetry/api";
 import { GrpcTransport } from "@protobuf-ts/grpc-transport";
@@ -80,7 +80,7 @@ export class DateiLagerGrpcClient {
     this._transport = new GrpcTransport({
       host: typeof options.server === "string" ? options.server : `${options.server.host}:${options.server.port}`,
       channelCredentials: credentials.combineChannelCredentials(
-        ChannelCredentials.createSsl(),
+        ChannelCredentials.createInsecure(),
         credentials.createFromMetadataGenerator((_, callback) => {
           tokenFn()
             .then((token) => {
