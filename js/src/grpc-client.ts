@@ -1,5 +1,5 @@
 import type { ClientOptions } from "@grpc/grpc-js";
-import { Channel, ChannelCredentials, credentials, Metadata } from "@grpc/grpc-js";
+import { ChannelCredentials, credentials, Metadata } from "@grpc/grpc-js";
 import type { Span } from "@opentelemetry/api";
 import { context as contextAPI, trace as traceAPI } from "@opentelemetry/api";
 import { GrpcTransport } from "@protobuf-ts/grpc-transport";
@@ -19,18 +19,18 @@ export interface DateiLagerGrpcClientOptions {
    * The address of the dateilager server.
    */
   server:
-    | string
-    | {
-        /**
-         * The host of the dateilager server.
-         */
-        host: string;
+  | string
+  | {
+    /**
+     * The host of the dateilager server.
+     */
+    host: string;
 
-        /**
-         * The port of the dateilager server.
-         */
-        port: number;
-      };
+    /**
+     * The port of the dateilager server.
+     */
+    port: number;
+  };
 
   /**
    * The token that will be sent as authorization metadata to the dateilager server.
@@ -63,7 +63,7 @@ export class DateiLagerGrpcClient {
   private readonly _client: FsClient;
 
   /** @internal */
-  private readonly _transport: GrpcTransport;
+  readonly _transport: GrpcTransport;
 
   /** @internal */
   private readonly _rpcOptions: () => RpcOptions | undefined;
@@ -80,7 +80,7 @@ export class DateiLagerGrpcClient {
     this._transport = new GrpcTransport({
       host: typeof options.server === "string" ? options.server : `${options.server.host}:${options.server.port}`,
       channelCredentials: credentials.combineChannelCredentials(
-        ChannelCredentials.createInsecure(),
+        ChannelCredentials.createSsl(),
         credentials.createFromMetadataGenerator((_, callback) => {
           tokenFn()
             .then((token) => {
