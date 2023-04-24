@@ -13,18 +13,18 @@ export interface DateiLagerBinaryClientOptions {
    * The address of the dateilager server.
    */
   server:
-    | string
-    | {
-        /**
-         * The host of the dateilager server.
-         */
-        host: string;
+  | string
+  | {
+    /**
+     * The host of the dateilager server.
+     */
+    host: string;
 
-        /**
-         * The port of the dateilager server.
-         */
-        port: number;
-      };
+    /**
+     * The port of the dateilager server.
+     */
+    port: number;
+  };
 
   /**
    * The token that will be sent as authorization metadata to the dateilager server.
@@ -44,29 +44,34 @@ export interface DateiLagerBinaryClientOptions {
    * @default 0 No timeout.
    */
   timeout?:
-    | number
-    | {
-        /**
-         * The default number of milliseconds to wait before terminating the update command.
-         *
-         * @default 0 No timeout.
-         */
-        update?: number;
+  | number
+  | {
+    /**
+     * The default number of milliseconds to wait before terminating the update command.
+     *
+     * @default 0 No timeout.
+     */
+    update?: number;
 
-        /**
-         * The default number of milliseconds to wait before terminating the rebuild command.
-         *
-         * @default 0 No timeout.
-         */
-        rebuild?: number;
+    /**
+     * The default number of milliseconds to wait before terminating the rebuild command.
+     *
+     * @default 0 No timeout.
+     */
+    rebuild?: number;
 
-        /**
-         * The default number of milliseconds to wait before terminating the gc command.
-         *
-         * @default 0 No timeout.
-         */
-        gc?: number;
-      };
+    get?: number;
+
+    /**
+     * The default number of milliseconds to wait before terminating the gc command.
+     *
+     * @default 0 No timeout.
+     */
+    gc?: number;
+
+
+
+  };
 
   /**
    * Whether the dateilager binary client should enable tracing.
@@ -141,18 +146,44 @@ export class DateiLagerBinaryClient {
       timeout:
         typeof options.timeout === "number"
           ? {
-              update: options.timeout,
-              rebuild: options.timeout,
-            }
+            update: options.timeout,
+            rebuild: options.timeout,
+          }
           : {
-              update: 0,
-              rebuild: 0,
-              ...options.timeout,
-            },
+            update: 0,
+            rebuild: 0,
+            ...options.timeout,
+          },
       tracing: options.tracing ?? false,
       logger: options.logger,
     };
   }
+
+
+  public async get(project: bigint, prefix?: string, from?: number, to?: number, options?: { timeout?: number }): Promise<string | null> {
+    return await trace(
+      "dateilager-binary-client.get",
+      {
+        attributes: {
+          "dl.project": String(project),
+          "dl.prefix": prefix,
+          "dl.from": String(from),
+          "dl.to": String(to)
+        },
+      },
+
+      async () => {
+        const args = ["--project", String(project)]
+        if (prefix) args.push("--prefix", String(prefix));
+        if (from) args.push("--from", String(from));
+        if (to) args.push("--to", String(to));
+
+        const result = await this._call("get", args, undefined, options);
+        return String(result.stdout)
+      }
+    )
+  }
+
 
   /**
    * Update objects in a project based on the differences in a local directory.
@@ -345,7 +376,7 @@ export class DateiLagerBinaryClient {
 
   /** @internal */
   private async _call(
-    method: "update" | "rebuild" | "gc",
+    method: "update" | "rebuild" | "gc" | "get",
     args: string[],
     cwd?: string,
     options?: { timeout?: number }

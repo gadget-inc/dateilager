@@ -1,5 +1,5 @@
 import type { ClientOptions } from "@grpc/grpc-js";
-import { ChannelCredentials, credentials, Metadata } from "@grpc/grpc-js";
+import { ChannelCredentials, Client, credentials, Metadata } from "@grpc/grpc-js";
 import type { Span } from "@opentelemetry/api";
 import { context as contextAPI, trace as traceAPI } from "@opentelemetry/api";
 import { GrpcTransport } from "@protobuf-ts/grpc-transport";
@@ -44,6 +44,8 @@ export interface DateiLagerGrpcClientOptions {
    */
   grpcClientOptions?: ClientOptions;
 
+
+
   /**
    * Options that will be passed to every remote procedure call.
    *
@@ -59,11 +61,14 @@ export interface DateiLagerGrpcClientOptions {
  * convenience functions, such as getObject, should be implemented within the client.
  */
 export class DateiLagerGrpcClient {
-  /** @internal */
-  private readonly _client: FsClient;
+  readonly grpcClient: Client;
 
   /** @internal */
   readonly _transport: GrpcTransport;
+
+  /** @internal */
+  private readonly _client: FsClient;
+
 
   /** @internal */
   private readonly _rpcOptions: () => RpcOptions | undefined;
@@ -77,30 +82,40 @@ export class DateiLagerGrpcClient {
   public constructor(options: DateiLagerGrpcClientOptions) {
     const tokenFn = typeof options.token === "string" ? () => Promise.resolve(options.token as string) : options.token;
 
+    // note we need to pass the proxy info here
+    const clientOptions = {
+      "grpc.keepalive_time_ms": 5_000,
+      "grpc.keepalive_timeout_ms": 1_000,
+      "grpc.keepalive_permit_without_calls": 1,
+      "grpc.lb_policy_name": "round_robin", //added this guy yay but can be passed below as a grpcClientOptions via the options
+      ...options.grpcClientOptions,
+    };
+
+
+    const channelCredentials = credentials.combineChannelCredentials(
+      ChannelCredentials.createSsl(),
+      credentials.createFromMetadataGenerator((_, callback) => {
+        tokenFn()
+          .then((token) => {
+            const meta = new Metadata();
+            meta.add("authorization", `Bearer ${token}`);
+            callback(null, meta);
+          })
+          .catch(callback);
+      })
+    )
+
+    const clusterIP = "dateilager-headless.dateilager-production.svc.cluster.local"
     this._transport = new GrpcTransport({
-      host: typeof options.server === "string" ? options.server : `${options.server.host}:${options.server.port}`,
-      channelCredentials: credentials.combineChannelCredentials(
-        ChannelCredentials.createSsl(),
-        credentials.createFromMetadataGenerator((_, callback) => {
-          tokenFn()
-            .then((token) => {
-              const meta = new Metadata();
-              meta.add("authorization", `Bearer ${token}`);
-              callback(null, meta);
-            })
-            .catch(callback);
-        })
-      ),
-      clientOptions: {
-        "grpc.keepalive_time_ms": 5_000,
-        "grpc.keepalive_timeout_ms": 1_000,
-        "grpc.keepalive_permit_without_calls": 1,
-        ...options.grpcClientOptions,
-      },
+      host: clusterIP,
+      channelCredentials,
+      clientOptions
     });
 
     this._client = new FsClient(this._transport);
 
+    const address = clusterIP;
+    this.grpcClient = new Client(address, channelCredentials, clientOptions);
     this._rpcOptions = options.rpcOptions instanceof Function ? options.rpcOptions : () => options.rpcOptions as RpcOptions | undefined;
   }
 
