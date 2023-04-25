@@ -88,6 +88,7 @@ export class DateiLagerGrpcClient {
       "grpc.keepalive_timeout_ms": 1_000,
       "grpc.keepalive_permit_without_calls": 1,
       "grpc.lb_policy_name": "round_robin", //added this guy yay but can be passed below as a grpcClientOptions via the options
+      "grpc.ssl_target_name_override": "dateilager.gadget-services.net",
       ...options.grpcClientOptions,
     };
 
@@ -105,7 +106,7 @@ export class DateiLagerGrpcClient {
       })
     )
 
-    const clusterIP = "dateilager-headless.dateilager-production.svc.cluster.local"
+    const clusterIP = "dateilager-headless.dateilager-production.svc.cluster.local:5051"
     this._transport = new GrpcTransport({
       host: clusterIP,
       channelCredentials,
