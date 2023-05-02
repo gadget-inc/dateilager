@@ -34,6 +34,7 @@ const (
 	TotalObjectsCount = Int64Key("dl.total_objects_count")
 	Version           = Int64Key("dl.version")
 	Worker            = IntKey("dl.worker")
+	WorkerCount       = IntKey("dl.worker_count")
 	Ignores           = StringSliceKey("dl.ignores")
 	CloneToProject    = Int64Key("dl.clone_to_project")
 )

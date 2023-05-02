@@ -397,7 +397,10 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		}
 	})
 
-	for i := 0; i < parallelWorkerCount(); i++ {
+	workerCount := parallelWorkerCount()
+	span.SetAttributes(key.WorkerCount.Attribute(workerCount))
+
+	for i := 0; i < workerCount; i++ {
 		// create the attribute here when `i` is different
 		attr := key.Worker.Attribute(i)
 
@@ -481,7 +484,10 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 	group, ctx := errgroup.WithContext(rootCtx)
 	ctx, cancel := context.WithCancel(ctx)
 
-	for i := 0; i < parallelWorkerCount(); i++ {
+	workerCount := parallelWorkerCount()
+	span.SetAttributes(key.WorkerCount.Attribute(workerCount))
+
+	for i := 0; i < workerCount; i++ {
 		// create the attribute here when `i` is different
 		attr := key.Worker.Attribute(i)
 
@@ -764,7 +770,10 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 		}
 	})
 
-	for i := 0; i < parallelWorkerCount(); i++ {
+	workerCount := parallelWorkerCount()
+	span.SetAttributes(key.WorkerCount.Attribute(workerCount))
+
+	for i := 0; i < workerCount; i++ {
 		// create the attribute here when `i` is different
 		attr := key.Worker.Attribute(i)
 
