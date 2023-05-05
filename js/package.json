@@ -30,10 +30,10 @@
     "test": "DL_SKIP_SSL_VERIFICATION=1 NODE_EXTRA_CA_CERTS=\"$(mkcert -CAROOT)/rootCA.pem\" jest"
   },
   "dependencies": {
-    "@grpc/grpc-js": "^1.7.0",
+    "@grpc/grpc-js": "^1.8.14",
     "@opentelemetry/api": "^1.2.0",
-    "@protobuf-ts/grpc-transport": "^2.8.1",
-    "@protobuf-ts/runtime-rpc": "^2.8.1",
+    "@protobuf-ts/grpc-transport": "^2.9.0",
+    "@protobuf-ts/runtime-rpc": "^2.9.0",
     "execa": "^5.1.1"
   },
   "devDependencies": {
