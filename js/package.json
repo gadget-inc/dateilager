@@ -38,7 +38,7 @@
   },
   "devDependencies": {
     "@gadgetinc/prettier-config": "*",
-    "@protobuf-ts/plugin": "^2.8.1",
+    "@protobuf-ts/plugin": "^2.9.0",
     "@swc/core": "^1.2.249",
     "@swc/jest": "^0.2.22",
     "@types/jest": "^29.0.0",
