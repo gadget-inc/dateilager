@@ -451,7 +451,6 @@ func TestRebuildFileBecomesADir(t *testing.T) {
 	defer close()
 
 	tmpDir := emptyTmpDir(t)
-	fmt.Printf("tmpdir located at %s\n", tmpDir)
 	defer os.RemoveAll(tmpDir)
 
 	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
