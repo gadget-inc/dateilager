@@ -48,6 +48,9 @@ jobs:
       - name: Start DateiLager server
         run: make server &
 
+      - name: Wait for DateiLager server
+        run: sleep 5
+
       - name: Run fuzz tests
         run: make test-fuzz
 
@@ -71,6 +74,9 @@ jobs:
 
       - name: Start DateiLager server
         run: make server &
+
+      - name: Wait for DateiLager server
+        run: sleep 5
 
       - name: Run JS tests
         run: make test-js

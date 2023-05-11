@@ -278,7 +278,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 			return err
 		}
 
-		logger.Debug(ctx, "FS.Get[Query]",
+		logger.Info(ctx, "FS.Get[Query]",
 			key.Project.Field(req.Project),
 			key.FromVersion.Field(&vrange.From),
 			key.ToVersion.Field(&vrange.To),
@@ -358,7 +358,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 			return err
 		}
 
-		logger.Debug(ctx, "FS.GetCompress[Query]",
+		logger.Info(ctx, "FS.GetCompress[Query]",
 			key.Project.Field(req.Project),
 			key.FromVersion.Field(&vrange.From),
 			key.ToVersion.Field(&vrange.To),
@@ -448,7 +448,7 @@ func (f *Fs) GetUnary(ctx context.Context, req *pb.GetUnaryRequest) (*pb.GetUnar
 			return nil, err
 		}
 
-		logger.Debug(ctx, "FS.GetUnary[Query]",
+		logger.Info(ctx, "FS.GetUnary[Query]",
 			key.Project.Field(req.Project),
 			key.FromVersion.Field(&vrange.From),
 			key.ToVersion.Field(&vrange.To),
@@ -484,9 +484,7 @@ func (f *Fs) GetUnary(ctx context.Context, req *pb.GetUnaryRequest) (*pb.GetUnar
 
 func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	ctx := stream.Context()
-	shouldUpdateVersion := false
-	latestVersion := int64(-1)
-	nextVersion := int64(-1)
+
 	project, err := requireProjectAuth(ctx)
 	if err != nil {
 		return err
@@ -502,9 +500,11 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	defer contentEncoder.Close()
 
 	var packManager *db.PackManager
-	buffer := make(map[string][]*pb.Object)
 
-	err = telemetry.Trace(ctx, "update-objects", func(ctx context.Context, span trace.Span) error {
+	var objectBuffer []*pb.Object
+	packedBuffer := make(map[string][]*pb.Object)
+
+	err = telemetry.Trace(ctx, "receive-update-objects", func(ctx context.Context, span trace.Span) error {
 		for {
 			req, err := stream.Recv()
 			if err == io.EOF {
@@ -515,22 +515,16 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 				return status.Errorf(errStatus.Code(), "FS receive update request: %v", err)
 			}
 
-			if nextVersion == -1 {
-				if project == -1 {
-					project = req.Project
-				}
+			// project can be -1 if the client authenticated using an Admin token
+			if project == -1 {
+				project = req.Project
+			}
+			if project != req.Project {
+				return status.Errorf(codes.InvalidArgument, "initial project %v, next project %v: %v", project, req.Project, ErrMultipleProjectsPerUpdate)
+			}
 
-				latestVersion, err = db.LockLatestVersion(ctx, tx, project)
-				if errors.Is(err, db.ErrNotFound) {
-					return status.Errorf(codes.NotFound, "FS update missing latest version: %v", err)
-				}
-				if err != nil {
-					return status.Errorf(codes.Internal, "FS update lock latest version: %v", err)
-				}
-
-				nextVersion = latestVersion + 1
-				logger.Debug(ctx, "FS.Update[Init]", key.Project.Field(project), key.Version.Field(nextVersion))
-
+			// We can only create the pack manager once we have the project ID and that requires a least one stream message
+			if packManager == nil {
 				packManager, err = db.NewPackManager(ctx, tx, project)
 				if err != nil {
 					return status.Errorf(codes.Internal, "FS create packed cache: %v", err)
@@ -538,32 +532,59 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 
 				span.SetAttributes(
 					key.Project.Attribute(project),
-					key.Version.Attribute(nextVersion),
 				)
-			}
-
-			if project != req.Project {
-				return status.Errorf(codes.InvalidArgument, "initial project %v, next project %v: %v", project, req.Project, ErrMultipleProjectsPerUpdate)
 			}
 
 			packParent := packManager.IsPathPacked(req.Object.Path)
 			if packParent != nil {
-				buffer[*packParent] = append(buffer[*packParent], req.Object)
+				packedBuffer[*packParent] = append(packedBuffer[*packParent], req.Object)
 				continue
 			}
 
+			objectBuffer = append(objectBuffer, req.Object)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// No updates were received from the stream which prevented us from detecting the project and version
+	if len(objectBuffer) == 0 && len(packedBuffer) == 0 {
+		logger.Info(ctx, "FS.Update[Empty]")
+		return stream.SendAndClose(&pb.UpdateResponse{Version: -1})
+	}
+
+	latestVersion := int64(-1)
+	nextVersion := int64(-1)
+	shouldUpdateVersion := false
+
+	err = telemetry.Trace(ctx, "update-objects", func(ctx context.Context, span trace.Span) error {
+		latestVersion, err = db.LockLatestVersion(ctx, tx, project)
+		if errors.Is(err, db.ErrNotFound) {
+			return status.Errorf(codes.NotFound, "FS update missing latest version: %v", err)
+		}
+		if err != nil {
+			return status.Errorf(codes.Internal, "FS update lock latest version: %v", err)
+		}
+
+		nextVersion = latestVersion + 1
+		logger.Info(ctx, "FS.Update[Init]", key.Project.Field(project), key.Version.Field(nextVersion))
+
+		for _, object := range objectBuffer {
 			logger.Debug(ctx, "FS.Update[Object]",
 				key.Project.Field(project),
 				key.Version.Field(nextVersion),
-				key.ObjectPath.Field(req.Object.Path),
+				key.ObjectPath.Field(object.Path),
 			)
 
-			if req.Object.Deleted {
-				err = db.DeleteObject(ctx, tx, project, nextVersion, req.Object.Path)
+			if object.Deleted {
+				err = db.DeleteObject(ctx, tx, project, nextVersion, object.Path)
 				shouldUpdateVersion = true
 			} else {
 				var contentChanged bool
-				contentChanged, err = db.UpdateObject(ctx, tx, contentEncoder, project, nextVersion, req.Object)
+				contentChanged, err = db.UpdateObject(ctx, tx, contentEncoder, project, nextVersion, object)
 
 				if contentChanged {
 					shouldUpdateVersion = true
@@ -577,24 +598,12 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 
 		return nil
 	})
-
 	if err != nil {
 		return err
 	}
 
-	// No updates were received from the stream which prevented us from detecting the project and version
-	if nextVersion == -1 {
-		err = tx.Rollback(ctx)
-		if err != nil {
-			return status.Errorf(codes.Internal, "FS rollback empty update: %v", err)
-		}
-
-		logger.Debug(ctx, "FS.Update[Empty]")
-		return stream.SendAndClose(&pb.UpdateResponse{Version: -1})
-	}
-
 	err = telemetry.Trace(ctx, "update-packed-objects", func(ctx context.Context, span trace.Span) error {
-		for parent, objects := range buffer {
+		for parent, objects := range packedBuffer {
 			logger.Debug(ctx, "FS.Update[PackedObject]",
 				key.Project.Field(project),
 				key.Version.Field(nextVersion),
@@ -615,7 +624,6 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 
 		return nil
 	})
-
 	if err != nil {
 		return err
 	}
