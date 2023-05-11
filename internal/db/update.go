@@ -38,22 +38,6 @@ func DeleteObject(ctx context.Context, tx pgx.Tx, project int64, version int64, 
 	return nil
 }
 
-func DeleteObjects(ctx context.Context, tx pgx.Tx, project int64, version int64, path string) error {
-	pathPredicate := fmt.Sprintf("%s%%", path)
-	_, err := tx.Exec(ctx, `
-		UPDATE dl.objects
-		SET stop_version = $1
-		WHERE project = $2
-		  AND path LIKE $3
-		  AND stop_version IS NULL
-	`, version, project, pathPredicate)
-	if err != nil {
-		return fmt.Errorf("delete objects, project %v, version %v, path %v: %w", project, version, pathPredicate, err)
-	}
-
-	return nil
-}
-
 // UpdateObject returns true if content changed, false otherwise
 func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, project int64, version int64, object *pb.Object) (bool, error) {
 	content := object.Content
