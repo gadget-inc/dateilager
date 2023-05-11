@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gadget-inc/dateilager/internal/buffers"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
@@ -419,9 +420,12 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 						return nil
 					}
 
-					tarReader.FromBytes(response.Bytes)
+					buf := buffers.GetWith(response.Bytes)
+					tarReader.FromBuffer(buf)
 
 					count, match, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath, pattern)
+					buffers.Put(buf)
+
 					if err != nil {
 						cancel()
 						return err
@@ -792,7 +796,6 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 						return nil
 					}
 
-					tarReader.FromBytes(response.Bytes)
 					hashHex := hex.EncodeToString(response.Hash)
 					tempDest := filepath.Join(tmpObjectDir, hashHex)
 					finalDest := filepath.Join(objectDir, hashHex)
@@ -809,7 +812,12 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 						}
 					}
 
+					buf := buffers.GetWith(response.Bytes)
+					tarReader.FromBuffer(buf)
+
 					_, _, err := files.WriteTar(tempDest, CacheObjectsDir(cacheRootDir), tarReader, nil, nil)
+					buffers.Put(buf)
+
 					if err != nil {
 						cancel()
 						return err

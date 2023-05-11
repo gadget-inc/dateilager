@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/gadget-inc/dateilager/internal/buffers"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/jackc/pgx/v5"
 )
@@ -80,9 +81,12 @@ func NewVersionRange(ctx context.Context, tx pgx.Tx, project int64, from *int64,
 }
 
 func unpackObjects(content []byte) ([]*pb.Object, error) {
+	buf := buffers.GetWith(content)
+	defer buffers.Put(buf)
+
 	var objects []*pb.Object
 	tarReader := NewTarReader()
-	tarReader.FromBytes(content)
+	tarReader.FromBuffer(buf)
 
 	for {
 		header, err := tarReader.Next()

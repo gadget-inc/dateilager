@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"sort"
 
+	"github.com/gadget-inc/dateilager/internal/buffers"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/klauspost/compress/s2"
 )
@@ -151,8 +152,8 @@ func NewTarReader() *TarReader {
 	}
 }
 
-func (t *TarReader) FromBytes(content []byte) {
-	t.s2Reader.Reset(bytes.NewBuffer(content))
+func (t *TarReader) FromBuffer(buf *bytes.Buffer) {
+	t.s2Reader.Reset(buf)
 	t.tarReader = tar.NewReader(t.s2Reader)
 }
 
@@ -216,8 +217,11 @@ func updateObjects(before []byte, updates []*pb.Object) ([]byte, error) {
 	seenPaths := make(map[string]bool)
 	idxHint := 0
 
+	buf := buffers.GetWith(before)
+	defer buffers.Put(buf)
+
 	reader := NewTarReader()
-	reader.FromBytes(before)
+	reader.FromBuffer(buf)
 	readerObjectsRemaining := true
 
 	sort.Slice(updates, func(i, j int) bool { return updates[i].Path < updates[j].Path })

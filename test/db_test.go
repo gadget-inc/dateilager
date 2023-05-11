@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/gadget-inc/dateilager/internal/buffers"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/jackc/pgx/v5"
 
@@ -169,8 +170,10 @@ func TestGetCacheWithMultipleVersions(t *testing.T) {
 		if err == db.SKIP {
 			continue
 		}
+
+		buf := buffers.GetWith(tar)
 		tarReader := db.NewTarReader()
-		tarReader.FromBytes(tar)
+		tarReader.FromBuffer(buf)
 
 		for {
 			header, err := tarReader.Next()
@@ -189,6 +192,8 @@ func TestGetCacheWithMultipleVersions(t *testing.T) {
 
 			paths = append(paths, header.Name)
 		}
+
+		buffers.Put(buf)
 	}
 	assert.Equal(t, []string{"pack/a", "pack/b"}, paths)
 }
