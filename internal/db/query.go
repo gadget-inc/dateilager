@@ -79,10 +79,8 @@ func NewVersionRange(ctx context.Context, tx pgx.Tx, project int64, from *int64,
 	return vrange, nil
 }
 
-func unpackObjects(content []byte) ([]*pb.Object, error) {
+func unpackObjects(tarReader *TarReader) ([]*pb.Object, error) {
 	var objects []*pb.Object
-	tarReader := NewTarReader()
-	tarReader.FromBytes(content)
 
 	for {
 		header, err := tarReader.Next()
@@ -194,6 +192,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManag
 	}
 
 	var packBuffer []*pb.Object
+	tarReader := NewTarReader()
 
 	return func() (*pb.Object, error) {
 		if len(packBuffer) > 0 {
@@ -225,7 +224,8 @@ func GetObjects(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManag
 		}
 
 		if dbObject.packed {
-			packBuffer, err = unpackObjects(content)
+			tarReader.FromBytes(content)
+			packBuffer, err = unpackObjects(tarReader)
 			if err != nil {
 				return nil, err
 			}

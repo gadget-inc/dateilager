@@ -137,22 +137,26 @@ func (o *TarObject) TarType() byte {
 }
 
 type TarReader struct {
+	buffer    *bytes.Buffer
 	s2Reader  *s2.Reader
 	tarReader *tar.Reader
 }
 
 func NewTarReader() *TarReader {
-	var buffer bytes.Buffer
-	s2Reader := s2.NewReader(&buffer)
+	buffer := &bytes.Buffer{}
+	s2Reader := s2.NewReader(buffer)
 
 	return &TarReader{
+		buffer:    buffer,
 		s2Reader:  s2Reader,
 		tarReader: tar.NewReader(s2Reader),
 	}
 }
 
 func (t *TarReader) FromBytes(content []byte) {
-	t.s2Reader.Reset(bytes.NewBuffer(content))
+	t.buffer.Reset()
+	t.buffer.Write(content)
+	t.s2Reader.Reset(t.buffer)
 	t.tarReader = tar.NewReader(t.s2Reader)
 }
 
