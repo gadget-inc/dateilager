@@ -611,8 +611,7 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 				key.ObjectsCount.Field(len(objects)),
 			)
 
-			var contentChanged bool
-			contentChanged, err = db.UpdatePackedObjects(ctx, tx, project, nextVersion, parent, objects)
+			contentChanged, err := db.UpdatePackedObjects(ctx, tx, project, nextVersion, parent, objects)
 			if err != nil {
 				return status.Errorf(codes.Internal, "FS update packed objects for %v: %v", parent, err)
 			}
