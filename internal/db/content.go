@@ -16,7 +16,7 @@ import (
 const (
 	KB              = 1024
 	MB              = KB * KB
-	DecoderPoolSize = 1000
+	DecoderPoolSize = 200
 )
 
 type Hash struct {
