@@ -47,11 +47,11 @@
 
             ## Pinned packages from nixpkgs
 
-            go = pkgs.go_1_19;
+            go = pkgs.go_1_20;
 
-            nodejs = pkgs.nodejs-16_x;
+            nodejs = pkgs.nodejs-18_x;
 
-            postgresql = pkgs.postgresql_13;
+            postgresql = pkgs.postgresql_14;
 
             ## DateiLager outputs
 

@@ -254,8 +254,6 @@ func GetTars(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, project int6
 		return nil, fmt.Errorf("get tars query, project %v vrange %v: %w", project, vrange, err)
 	}
 
-	tarWriter := NewTarWriter()
-
 	idx := 0
 	chunkIdx := 0
 	chunk, err := loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize)
@@ -263,13 +261,19 @@ func GetTars(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, project int6
 		return nil, fmt.Errorf("failed to load chunk: %w", err)
 	}
 
+	tarWriter := NewTarWriter()
+
 	return func() ([]byte, *string, error) {
 		if idx >= len(dbObjects) {
 			if tarWriter.Size() > 0 {
 				bytes, err := tarWriter.BytesAndReset()
+				if err != nil {
+					tarWriter.Close()
+				}
 				return bytes, nil, err
 			}
 
+			tarWriter.Close()
 			return nil, nil, io.EOF
 		}
 
@@ -277,6 +281,7 @@ func GetTars(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, project int6
 			chunkIdx = 0
 			chunk, err = loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize)
 			if err != nil {
+				tarWriter.Close()
 				return nil, nil, fmt.Errorf("failed to load chunk: %w", err)
 			}
 		}
@@ -294,11 +299,15 @@ func GetTars(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, project int6
 		tarObject := dbObject.ToTarObject(content)
 		err = tarWriter.WriteObject(&tarObject)
 		if err != nil {
+			tarWriter.Close()
 			return nil, nil, err
 		}
 
 		if tarWriter.Size() > TargetTarSize {
 			bytes, err := tarWriter.BytesAndReset()
+			if err != nil {
+				tarWriter.Close()
+			}
 			return bytes, nil, err
 		}
 
