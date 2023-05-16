@@ -207,6 +207,7 @@ func writePackedFiles(tc util.TestCtx, project int64, start int64, stop *int64, 
 
 func packObjects(tc util.TestCtx, objects map[string]expectedObject) []byte {
 	contentWriter := db.NewTarWriter()
+	defer contentWriter.Close()
 
 	for path, info := range objects {
 		mode := info.mode

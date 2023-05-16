@@ -98,6 +98,10 @@ func (t *TarWriter) WriteObject(object *TarObject) error {
 	return nil
 }
 
+func (t *TarWriter) Close() error {
+	return errors.Join(t.s2Writer.Close(), t.tarWriter.Close())
+}
+
 type TarObject struct {
 	path    string
 	mode    int64
@@ -181,6 +185,8 @@ func (t *TarReader) CopyContent(buffer io.Writer) error {
 
 func packObjects(objects ObjectStream) ([]byte, error) {
 	contentWriter := NewTarWriter()
+	defer contentWriter.Close()
+
 	empty := true
 
 	for {

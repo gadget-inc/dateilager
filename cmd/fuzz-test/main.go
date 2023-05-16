@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/gadget-inc/dateilager/internal/logger"
 	dlc "github.com/gadget-inc/dateilager/pkg/client"
@@ -674,8 +673,6 @@ func main() {
 	if err != nil {
 		stdlog.Fatal("failed to init logger", err)
 	}
-
-	rand.Seed(time.Now().UTC().UnixNano())
 
 	err = cmd.ExecuteContext(ctx)
 	if err != nil {
