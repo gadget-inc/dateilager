@@ -41,6 +41,7 @@ func TestCombined(t *testing.T) {
 		"a": {content: "a v2"},
 		"c": {content: "c v2"},
 	})
+
 	err := fs.Update(updateStream)
 	require.NoError(t, err, "fs.Update")
 
@@ -54,6 +55,31 @@ func TestCombined(t *testing.T) {
 		"b": {content: "b v1"},
 		"c": {content: "c v2"},
 	})
+}
+
+func TestCombined2(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "someDir/a", "a v1")
+
+	numa := int64(3)
+	writeEmptyDir(tc, 1, 2, &numa, "someDir/")
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   1,
+	})
+
+	debugObjects(tc)
+
 }
 
 func TestCombinedWithIdenticalObjects(t *testing.T) {
