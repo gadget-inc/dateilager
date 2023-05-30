@@ -137,6 +137,10 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 		if errors.Is(err, fs.ErrNotExist) {
 			break
 		}
+		// Temp: account for a handful of projects that have invalid deleted empty directory rows
+		if errors.Is(err, fs.ErrExist) {
+			break
+		}
 		if err != nil {
 			return fmt.Errorf("remove %v from disk: %w", path, err)
 		}
