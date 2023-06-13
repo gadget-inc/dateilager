@@ -6,11 +6,13 @@ import (
 
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type DbTestConnector struct {
-	conn *pgx.Conn
-	tx   pgx.Tx
+	conn    *pgx.Conn
+	tx      pgx.Tx
+	innerTx pgx.Tx
 }
 
 func newDbTestConnector(ctx context.Context, uri string) (*DbTestConnector, error) {
@@ -40,7 +42,16 @@ func (d *DbTestConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 	if err != nil {
 		return nil, nil, err
 	}
+	d.innerTx = innerTx
 	return innerTx, func(context.Context) {}, nil
+}
+
+func (d *DbTestConnector) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+	if d.innerTx != nil {
+		return d.innerTx.Exec(ctx, sql, args...)
+	} else {
+		return d.tx.Exec(ctx, sql, args...)
+	}
 }
 
 func (d *DbTestConnector) close(ctx context.Context) {

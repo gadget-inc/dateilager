@@ -19,6 +19,7 @@ import (
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -40,7 +41,7 @@ const (
 	INITIAL_WINDOW_SIZE      = 1 * MB
 	INITIAL_CONN_WINDOW_SIZE = 2 * INITIAL_WINDOW_SIZE
 	MAX_MESSAGE_SIZE         = 300 * MB
-	MAX_POOL_SIZE            = 30
+	MAX_POOL_SIZE            = 60
 )
 
 type DbPoolConnector struct {
@@ -112,6 +113,10 @@ func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 	}
 
 	return tx, func(ctx context.Context) { _ = tx.Rollback(ctx); conn.Release() }, nil
+}
+
+func (d *DbPoolConnector) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+	return d.pool.Exec(ctx, sql, args...)
 }
 
 type Server struct {

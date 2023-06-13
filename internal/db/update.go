@@ -39,7 +39,7 @@ func DeleteObject(ctx context.Context, tx pgx.Tx, project int64, version int64, 
 }
 
 // UpdateObject returns true if content changed, false otherwise
-func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, project int64, version int64, object *pb.Object) (bool, error) {
+func UpdateObject(ctx context.Context, tx pgx.Tx, conn DbConnector, encoder *ContentEncoder, project int64, version int64, object *pb.Object) (bool, error) {
 	content := object.Content
 	if content == nil {
 		content = []byte("")
@@ -49,6 +49,16 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 	encoded, err := encoder.Encode(content)
 	if err != nil {
 		return false, fmt.Errorf("encode updated content, project %v, version %v, path %v: %w", project, version, object.Path, err)
+	}
+
+	// insert the content outside the transaction to avoid deadlocks and to keep smaller transactions
+	_, err = conn.Exec(ctx, `
+		INSERT INTO dl.contents (hash, bytes)
+		VALUES (($1, $2), $3)
+		ON CONFLICT DO NOTHING
+	`, hash.H1, hash.H2, encoded)
+	if err != nil {
+		return false, fmt.Errorf("insert objects content, hash %x-%x: %w", hash.H1, hash.H2, err)
 	}
 
 	rows, err := tx.Query(ctx, `
@@ -69,8 +79,6 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 		return false, nil
 	}
 
-	batch := &pgx.Batch{}
-
 	previousPaths := []string{object.Path}
 	pathChunks := strings.Split(object.Path, "/")
 
@@ -78,7 +86,7 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 		previousPaths = append(previousPaths, fmt.Sprintf("%s/", strings.Join(pathChunks[:i], "/")))
 	}
 
-	batch.Queue(`
+	_, err = tx.Exec(ctx, `
 		UPDATE dl.objects SET stop_version = $1
 		WHERE project = $2
 		  AND path = ANY($3)
@@ -86,31 +94,15 @@ func UpdateObject(ctx context.Context, tx pgx.Tx, encoder *ContentEncoder, proje
 		  AND start_version != $4
 	`, version, project, previousPaths, version)
 
-	batch.Queue(`
-		INSERT INTO dl.contents (hash, bytes)
-		VALUES (($1, $2), $3)
-		ON CONFLICT
-		   DO NOTHING
-	`, hash.H1, hash.H2, encoded)
-
-	results := tx.SendBatch(ctx, batch)
-	defer results.Close()
-
-	_, err = results.Exec()
 	if err != nil {
 		return false, fmt.Errorf("update previous object, project %v, version %v, path %v: %w", project, version, object.Path, err)
-	}
-
-	_, err = results.Exec()
-	if err != nil {
-		return false, fmt.Errorf("insert updated content, hash %x-%x: %w", hash.H1, hash.H2, err)
 	}
 
 	return true, nil
 }
 
 // UpdatePackedObjects returns true if content changed, false otherwise
-func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version int64, parent string, updates []*pb.Object) (bool, error) {
+func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, conn DbConnector, project int64, version int64, parent string, updates []*pb.Object) (bool, error) {
 	var hash Hash
 	var content []byte
 
@@ -163,17 +155,21 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 	`, version, project, parent)
 
 	if shouldInsert {
+		// insert the content outside the transaction to avoid deadlocks and to keep smaller transactions
+		_, err = conn.Exec(ctx, `
+			INSERT INTO dl.contents (hash, bytes)
+			VALUES (($1, $2), $3)
+			ON CONFLICT DO NOTHING
+		`, newHash.H1, newHash.H2, updated)
+
+		if err != nil {
+			return false, fmt.Errorf("insert packed content, hash %x-%x: %w", newHash.H1, newHash.H2, err)
+		}
+
 		batch.Queue(`
 			INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 			VALUES ($1, $2, NULL, $3, ($4, $5), $6, $7, $8)
 		`, project, version, parent, newHash.H1, newHash.H2, 0, len(updated), true)
-
-		batch.Queue(`
-			INSERT INTO dl.contents (hash, bytes)
-			VALUES (($1, $2), $3)
-			ON CONFLICT
-			   DO NOTHING
-		`, newHash.H1, newHash.H2, updated)
 	}
 
 	results := tx.SendBatch(ctx, batch)
@@ -188,11 +184,6 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, project int64, version 
 		_, err = results.Exec()
 		if err != nil {
 			return false, fmt.Errorf("insert new packed object, project %v, version %v, parent %v: %w", project, version, parent, err)
-		}
-
-		_, err = results.Exec()
-		if err != nil {
-			return false, fmt.Errorf("insert packed content, hash %x-%x: %w", newHash.H1, newHash.H2, err)
 		}
 	}
 
