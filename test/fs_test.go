@@ -1092,3 +1092,52 @@ func TestGetCacheWithoutAvailableCacheVersion(t *testing.T) {
 	assert.Equal(t, 0, len(stream.results), "expected 0 TAR files")
 	verifyTarResults(t, stream.results, map[string]expectedObject{})
 }
+
+func TestProjectRollback(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, i(4), "a", "a v1")
+	writeObject(tc, 1, 1, i(3), "b", "b v1")
+	writeObject(tc, 1, 2, i(3), "c", "c v2")
+	writeObject(tc, 1, 3, nil, "b", "b v3")
+	writeObject(tc, 1, 3, nil, "d", "d v3")
+	writeObject(tc, 1, 4, nil, "a", "a v4")
+
+	fs := tc.FsApi()
+
+	_, err := fs.Rollback(tc.Context(), &pb.RollbackRequest{
+		Project: 1,
+		Version: 3,
+	})
+	require.NoError(t, err, "fs.Rollback")
+
+	stream := &mockGetServer{ctx: tc.Context()}
+
+	err = fs.Get(prefixQuery(1, nil, ""), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"a": {content: "a v1"},
+		"b": {content: "b v3"},
+		"d": {content: "d v3"},
+	})
+
+	_, err = fs.Rollback(tc.Context(), &pb.RollbackRequest{
+		Project: 1,
+		Version: 2,
+	})
+	require.NoError(t, err, "fs.Rollback")
+
+	stream = &mockGetServer{ctx: tc.Context()}
+
+	err = fs.Get(prefixQuery(1, nil, ""), stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyStreamResults(t, stream.results, map[string]expectedObject{
+		"a": {content: "a v1"},
+		"b": {content: "b v1"},
+		"c": {content: "c v2"},
+	})
+}
