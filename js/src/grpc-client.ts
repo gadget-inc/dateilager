@@ -336,6 +336,16 @@ export class DateiLagerGrpcClient {
   }
 
   /**
+   * Rollback a project.
+   *
+   * @param project The id of the project.
+   * @param version The version to rollback to.
+   */
+  public async rollbackProject(project: bigint, version: bigint): Promise<void> {
+    await this._client.rollback({ project, version }, this._rpcOptions());
+  }
+
+  /**
    * Snapshot the current state of the dateilager server.
    *
    * @returns All the projects on the dateilager server.

@@ -19,6 +19,8 @@ service Fs {
 
     rpc Update(stream UpdateRequest) returns (UpdateResponse);
 
+    rpc Rollback(RollbackRequest) returns (RollbackResponse);
+
     rpc Inspect(InspectRequest) returns (InspectResponse);
 
     rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
@@ -131,6 +133,13 @@ message UpdateRequest {
 message UpdateResponse {
     int64 version = 1;
 }
+
+message RollbackRequest {
+    int64 project = 1;
+    int64 version = 2;
+}
+
+message RollbackResponse {}
 
 message InspectRequest {
     int64 project = 1;

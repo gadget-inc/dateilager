@@ -646,6 +646,38 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	return stream.SendAndClose(&pb.UpdateResponse{Version: nextVersion})
 }
 
+func (f *Fs) Rollback(ctx context.Context, req *pb.RollbackRequest) (*pb.RollbackResponse, error) {
+	trace.SpanFromContext(ctx).SetAttributes(
+		key.Project.Attribute(req.Project),
+	)
+
+	err := requireAdminAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
+	}
+	defer close(ctx)
+
+	logger.Debug(ctx, "FS.Rollback[Project]", key.Project.Field(req.Project), key.Version.Field(req.Version))
+
+	err = db.ResetProject(ctx, tx, req.Project, req.Version)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS rollback project %v: %v", req.Project, err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS rollback commit tx: %v", err)
+	}
+	logger.Debug(ctx, "FS.Rollback[Commit]")
+
+	return &pb.RollbackResponse{}, nil
+}
+
 func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectResponse, error) {
 	trace.SpanFromContext(ctx).SetAttributes(
 		key.Project.Attribute(req.Project),

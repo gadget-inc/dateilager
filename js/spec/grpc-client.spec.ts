@@ -52,6 +52,38 @@ describe("grpc client operations", () => {
     expect(receivedObjects).toEqual(objects);
   });
 
+  it("can rollback a project", async () => {
+    await grpcClient.newProject(1337n, []);
+    const originalValue = encodeContent("a v1");
+    const updatedValue = encodeContent("a v2");
+
+    let version = await grpcClient.updateObject(1337n, {
+      path: "a",
+      mode: 0o755n,
+      content: originalValue,
+      size: BigInt(originalValue.length),
+      deleted: false,
+    });
+
+    expect(version).toBe(1n);
+
+    version = await grpcClient.updateObject(1337n, {
+      path: "a",
+      mode: 0o755n,
+      content: updatedValue,
+      size: BigInt(updatedValue.length),
+      deleted: false,
+    });
+
+    expect(version).toBe(2n);
+
+    await grpcClient.rollbackProject(1337n, 1n);
+
+    const result = await grpcClient.getObject(1337n, "a");
+
+    expect(result?.content?.toString()).toBe("a v1");
+  });
+
   it("can GC updated objects", async () => {
     await grpcClient.newProject(1337n, []);
 
