@@ -14,15 +14,15 @@ import (
 
 func NewCmdRebuild() *cobra.Command {
 	var (
-		project        int64
-		to             *int64
-		prefix         string
-		dir            string
-		ignores        string
-		summarize      bool
-		cacheDir       string
-		filePattern    string
-		filePatternIff bool
+		project          int64
+		to               *int64
+		prefix           string
+		dir              string
+		ignores          string
+		summarize        bool
+		cacheDir         string
+		fileMatchInclude string
+		fileMatchExclude string
 	)
 
 	cmd := &cobra.Command{
@@ -40,16 +40,12 @@ func NewCmdRebuild() *cobra.Command {
 				ignoreList = strings.Split(ignores, ",")
 			}
 
-			var pattern *files.FilePattern
-			if filePattern != "" {
-				var err error
-				pattern, err = files.NewFilePattern(filePattern, filePatternIff)
-				if err != nil {
-					return fmt.Errorf("invalid file pattern: %w", err)
-				}
+			matcher, err := files.NewFileMatcher(fileMatchInclude, fileMatchExclude)
+			if err != nil {
+				return err
 			}
 
-			result, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, cacheDir, pattern, summarize)
+			result, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, cacheDir, matcher, summarize)
 			if err != nil {
 				return fmt.Errorf("could not rebuild project: %w", err)
 			}
@@ -79,8 +75,8 @@ func NewCmdRebuild() *cobra.Command {
 	cmd.Flags().StringVar(&ignores, "ignores", "", "Comma separated list of ignore paths")
 	cmd.Flags().BoolVar(&summarize, "summarize", true, "Should include the summary file (required for future updates)")
 	cmd.Flags().StringVar(&cacheDir, "cachedir", "", "Path where the cache folder is mounted")
-	cmd.Flags().StringVar(&filePattern, "filepattern", "", "A glob file pattern which drives the patternMatch output boolean")
-	cmd.Flags().BoolVar(&filePatternIff, "iff", false, "Should the file pattern detection trigger if and only if those files have changed")
+	cmd.Flags().StringVar(&fileMatchInclude, "matchinclude", "", "Set fileMatch to true if the written files are matched by this glob pattern")
+	cmd.Flags().StringVar(&fileMatchExclude, "matchexclude", "", "Set fileMatch to false if the written files are matched by this glob pattern")
 	to = cmd.Flags().Int64("to", -1, "To version ID (optional)")
 
 	_ = cmd.MarkFlagRequired("project")

@@ -327,14 +327,13 @@ func TestRebuildWithInexistantCacheDir(t *testing.T) {
 	})
 }
 
-func TestRebuildWithFilePatterns(t *testing.T) {
+func TestRebuildWithFileMatcherInclude(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
 	writeProject(tc, 1, 1)
 	writeObject(tc, 1, 1, nil, "ab", "ab v1")
 	writeObject(tc, 1, 1, nil, "bb", "bb v1")
-	writeObject(tc, 1, 1, nil, "cb", "cb v1")
 
 	c, _, close := createTestClient(tc)
 	defer close()
@@ -342,22 +341,37 @@ func TestRebuildWithFilePatterns(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	pattern, err := files.NewFilePattern("[ab]*", false)
+	matcher, err := files.NewFileMatcher("[ab]*", "")
 	require.NoError(t, err, "invalid file pattern: %w", err)
 
-	rebuildWithPattern(tc, c, 1, nil, tmpDir, pattern, true, expectedResponse{
+	rebuildWithMatcher(tc, c, 1, nil, tmpDir, matcher, true, expectedResponse{
 		version: 1,
-		count:   3,
+		count:   2,
 	})
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"ab": {content: "ab v1"},
 		"bb": {content: "bb v1"},
-		"cb": {content: "cb v1"},
+	})
+
+	otherDir := emptyTmpDir(t)
+	defer os.RemoveAll(otherDir)
+
+	matcher, err = files.NewFileMatcher("a*", "")
+	require.NoError(t, err, "invalid file pattern: %w", err)
+
+	rebuildWithMatcher(tc, c, 1, nil, otherDir, matcher, false, expectedResponse{
+		version: 1,
+		count:   2,
+	})
+
+	verifyDir(t, otherDir, 1, map[string]expectedFile{
+		"ab": {content: "ab v1"},
+		"bb": {content: "bb v1"},
 	})
 }
 
-func TestRebuildWithFilePatternsIff(t *testing.T) {
+func TestRebuildWithFileMatcherExclude(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
@@ -373,10 +387,10 @@ func TestRebuildWithFilePatternsIff(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	pattern, err := files.NewFilePattern("a*", true)
+	matcher, err := files.NewFileMatcher("", "ac")
 	require.NoError(t, err, "invalid file pattern: %w", err)
 
-	rebuildWithPattern(tc, c, 1, i(1), tmpDir, pattern, false, expectedResponse{
+	rebuildWithMatcher(tc, c, 1, i(1), tmpDir, matcher, true, expectedResponse{
 		version: 1,
 		count:   3,
 	})
@@ -387,16 +401,59 @@ func TestRebuildWithFilePatternsIff(t *testing.T) {
 		"cb": {content: "cb v1"},
 	})
 
-	rebuildWithPattern(tc, c, 1, nil, tmpDir, pattern, true, expectedResponse{
+	rebuildWithMatcher(tc, c, 1, nil, tmpDir, matcher, false, expectedResponse{
 		version: 2,
 		count:   1,
 	})
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"ab": {content: "ab v1"},
-		"ac": {content: "ac v2"},
 		"bb": {content: "bb v1"},
 		"cb": {content: "cb v1"},
+		"ac": {content: "ac v2"},
+	})
+}
+
+func TestRebuildWithFileMatcherIncludeAndExclude(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2)
+	writeObject(tc, 1, 1, nil, "ab", "ab v1")
+	writeObject(tc, 1, 1, nil, "bb", "bb v1")
+	writeObject(tc, 1, 1, nil, "cb", "cb v1")
+	writeObject(tc, 1, 2, nil, "ac", "ac v2")
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	matcher, err := files.NewFileMatcher("[a|b|c]*", "ac")
+	require.NoError(t, err, "invalid file pattern: %w", err)
+
+	rebuildWithMatcher(tc, c, 1, i(1), tmpDir, matcher, true, expectedResponse{
+		version: 1,
+		count:   3,
+	})
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"ab": {content: "ab v1"},
+		"bb": {content: "bb v1"},
+		"cb": {content: "cb v1"},
+	})
+
+	rebuildWithMatcher(tc, c, 1, nil, tmpDir, matcher, false, expectedResponse{
+		version: 2,
+		count:   1,
+	})
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"ab": {content: "ab v1"},
+		"bb": {content: "bb v1"},
+		"cb": {content: "cb v1"},
+		"ac": {content: "ac v2"},
 	})
 }
 
