@@ -106,9 +106,9 @@ export interface RebuildResult {
    */
   count: number;
   /**
-   * Wether or not the file pattern was detected.
+   * Whether or not the file match was detected.
    */
-  patternMatch: boolean;
+  fileMatch: boolean;
 }
 
 /**
@@ -188,17 +188,17 @@ export class DateiLagerBinaryClient {
   /**
    * Rebuild the local filesystem.
    *
-   * @param project                The id of the project.
-   * @param to                     The version of the project to rebuild the filesystem to.
-   * @param directory              The path of the directory to rebuild the filesystem at.
-   * @param options                Object of options.
-   * @param options.timeout        Number of milliseconds to wait before terminating the process.
-   * @param options.ignores        The paths to ignore when rebuilding the FS.
-   * @param options.summarize      Should produce the summary file after rebuilding.
-   * @param options.cacheDir       Path where the cache directory is mounted.
-   * @param options.filePattern    A glob file pattern which drives the patternDetected output boolean
-   * @param options.filePatternIff Should the file pattern detection trigger if and only if those files have changed
-   * @returns                        The latest project version or `null` if something went wrong.
+   * @param project              The id of the project.
+   * @param to                   The version of the project to rebuild the filesystem to.
+   * @param directory            The path of the directory to rebuild the filesystem at.
+   * @param options              Object of options.
+   * @param options.timeout      Number of milliseconds to wait before terminating the process.
+   * @param options.ignores      The paths to ignore when rebuilding the FS.
+   * @param options.summarize    Should produce the summary file after rebuilding.
+   * @param options.cacheDir     Path where the cache directory is mounted.
+   * @param options.matchInclude Set fileMatch to true if the written files are matched by this glob pattern
+   * @param options.matchExclude Set fileMatch to false if the written files are matched by this glob pattern
+   * @returns                      The latest project version or `null` if something went wrong.
    */
   public async rebuild(
     project: bigint,
@@ -209,8 +209,8 @@ export class DateiLagerBinaryClient {
       ignores?: string[];
       summarize?: boolean;
       cacheDir?: string;
-      filePattern?: string;
-      filePatternIff?: boolean;
+      matchInclude?: string;
+      matchExclude?: string;
     }
   ): Promise<RebuildResult> {
     return await trace(
@@ -242,18 +242,18 @@ export class DateiLagerBinaryClient {
           args.push(`--cachedir=${options.cacheDir}`);
         }
 
-        if (options?.filePattern) {
-          args.push(`--filepattern=${options.filePattern}`);
+        if (options?.matchInclude) {
+          args.push(`--matchinclude=${options.matchInclude}`);
+        }
 
-          if (options.filePatternIff) {
-            args.push(`--iff=true`);
-          }
+        if (options?.matchExclude) {
+          args.push(`--matchexclude=${options.matchExclude}`);
         }
 
         args.push("--project", String(project), "--dir", directory);
         const result = await this._call("rebuild", args, directory, options);
-        const parsed = JSON.parse(result.stdout) as { version: number; count: number; patternMatch: boolean };
-        return { version: BigInt(parsed.version), count: parsed.count, patternMatch: parsed.patternMatch };
+        const parsed = JSON.parse(result.stdout) as { version: number; count: number; fileMatch: boolean };
+        return { version: BigInt(parsed.version), count: parsed.count, fileMatch: parsed.fileMatch };
       }
     );
   }

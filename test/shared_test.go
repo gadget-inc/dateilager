@@ -402,16 +402,16 @@ func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64,
 	assert.Equal(tc.T(), expected.count, result.Count, "mismatch rebuild count")
 }
 
-func rebuildWithPattern(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, pattern *files.FilePattern, expectedMatch bool, expected expectedResponse) {
+func rebuildWithMatcher(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, matcher *files.FileMatcher, expectedMatch bool, expected expectedResponse) {
 	newCacheDir := emptyTmpDir(tc.T())
 	defer os.RemoveAll(newCacheDir)
 
-	result, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, newCacheDir, pattern, true)
+	result, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, newCacheDir, matcher, true)
 	require.NoError(tc.T(), err, "client.Rebuild")
 
 	assert.Equal(tc.T(), expected.version, result.Version, "mismatch rebuild version")
 	assert.Equal(tc.T(), expected.count, result.Count, "mismatch rebuild count")
-	assert.Equal(tc.T(), expectedMatch, result.PatternMatch, "unexpected file pattern match")
+	assert.Equal(tc.T(), expectedMatch, result.FileMatch, "unexpected file match")
 }
 
 func update(tc util.TestCtx, c *client.Client, project int64, dir string, expected expectedResponse) {

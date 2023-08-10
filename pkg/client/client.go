@@ -235,16 +235,16 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, ignores 
 }
 
 type RebuildResult struct {
-	Version      int64  `json:"version"`
-	Count        uint32 `json:"count"`
-	PatternMatch bool   `json:"patternMatch"`
+	Version   int64  `json:"version"`
+	Count     uint32 `json:"count"`
+	FileMatch bool   `json:"fileMatch"`
 }
 
 func emptyResult(version int64) RebuildResult {
 	return RebuildResult{
-		Version:      version,
-		Count:        0,
-		PatternMatch: false,
+		Version:   version,
+		Count:     0,
+		FileMatch: false,
 	}
 }
 
@@ -252,22 +252,18 @@ type rebuildResultTracker struct {
 	version atomic.Int64
 	count   atomic.Uint32
 	match   atomic.Bool
-	pattern *files.FilePattern
+	matcher *files.FileMatcher
 }
 
-func newResultTracker(pattern *files.FilePattern) *rebuildResultTracker {
+func newResultTracker(matcher *files.FileMatcher) *rebuildResultTracker {
 	tracker := rebuildResultTracker{
 		version: atomic.Int64{},
 		count:   atomic.Uint32{},
 		match:   atomic.Bool{},
-		pattern: pattern,
+		matcher: matcher,
 	}
 
-	// If we are matching if and only if, default to true and give precedence to any falsy match
-	// If the diffCount == 0 we need to reset this to false
-	if pattern != nil && pattern.Iff {
-		tracker.match.Store(true)
-	}
+	tracker.match.Store(true)
 
 	return &tracker
 }
@@ -283,33 +279,25 @@ func (t *rebuildResultTracker) checkVersion(version int64) error {
 func (t *rebuildResultTracker) add(count uint32, match bool) {
 	t.count.Add(count)
 
-	if count > 0 && t.pattern != nil {
-		// When we are doing an if and only if match, we want a falsy value to take precedence
-		// Otherwise, we want the truthy value to take precedence
-		if t.pattern.Iff && !match {
-			t.match.Store(false)
-		}
-
-		if !t.pattern.Iff && match {
-			t.match.Store(true)
-		}
+	if count > 0 && !match {
+		t.match.Store(false)
 	}
 }
 
 func (t *rebuildResultTracker) result() RebuildResult {
 	count := t.count.Load()
-	if count == 0 && t.pattern != nil {
+	if count == 0 {
 		t.match.Store(false)
 	}
 
 	return RebuildResult{
-		Version:      t.version.Load(),
-		Count:        count,
-		PatternMatch: t.match.Load(),
+		Version:   t.version.Load(),
+		Count:     count,
+		FileMatch: t.match.Load(),
 	}
 }
 
-func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, ignores []string, cacheDir string, pattern *files.FilePattern, summarize bool) (RebuildResult, error) {
+func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, ignores []string, cacheDir string, matcher *files.FileMatcher, summarize bool) (RebuildResult, error) {
 	ctx, span := telemetry.Start(ctx, "client.rebuild", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Prefix.Attribute(prefix),
@@ -364,7 +352,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		return emptyResult(fromVersion), err
 	}
 
-	tracker := newResultTracker(pattern)
+	tracker := newResultTracker(matcher)
 
 	tarChan := make(chan *pb.GetCompressResponse, 32)
 	group, ctx := errgroup.WithContext(ctx)
@@ -421,7 +409,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 					tarReader.FromBytes(response.Bytes)
 
-					count, match, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath, pattern)
+					count, match, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath, matcher)
 					if err != nil {
 						cancel()
 						return err

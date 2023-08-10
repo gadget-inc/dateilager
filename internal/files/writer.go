@@ -16,25 +16,47 @@ import (
 	"github.com/gobwas/glob"
 )
 
-type FilePattern struct {
-	Iff     bool
-	pattern glob.Glob
+type FileMatcher struct {
+	include *glob.Glob
+	exclude *glob.Glob
 }
 
-func NewFilePattern(pattern string, iff bool) (*FilePattern, error) {
-	glob, err := glob.Compile(pattern)
-	if err != nil {
-		return nil, err
+func NewFileMatcher(include, exclude string) (*FileMatcher, error) {
+	matcher := FileMatcher{}
+
+	if include != "" {
+		includeGlob, err := glob.Compile(include)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing include file match: %w", err)
+		}
+		matcher.include = &includeGlob
 	}
 
-	return &FilePattern{
-		Iff:     iff,
-		pattern: glob,
-	}, nil
+	if exclude != "" {
+		excludeGlob, err := glob.Compile(exclude)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing exclude file match: %w", err)
+		}
+		matcher.exclude = &excludeGlob
+	}
+
+	return &matcher, nil
 }
 
-func (f *FilePattern) Match(filename string) bool {
-	return f.pattern.Match(filename)
+func (f *FileMatcher) Match(filename string) bool {
+	result := false
+
+	if f.include != nil {
+		result = (*f.include).Match(filename)
+	} else {
+		result = true
+	}
+
+	if result && f.exclude != nil {
+		result = !(*f.exclude).Match(filename)
+	}
+
+	return result
 }
 
 func fileExists(path string) bool {
@@ -203,12 +225,11 @@ func hardlinkDir(olddir, newdir string) error {
 	})
 }
 
-func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, packPath *string, pattern *FilePattern) (uint32, bool, error) {
+func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, packPath *string, matcher *FileMatcher) (uint32, bool, error) {
 	var count uint32
 	dir := finalDir
 
-	patternMatch := false
-	patternExclusiveMatch := true
+	fileMatch := true
 
 	existingDirs := make(map[string]bool)
 
@@ -230,14 +251,8 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 			return count, false, fmt.Errorf("read next TAR header: %w", err)
 		}
 
-		if pattern != nil {
-			if !patternMatch && pattern.Match(header.Name) {
-				patternMatch = true
-			}
-
-			if pattern.Iff && patternExclusiveMatch && !pattern.Match(header.Name) {
-				patternExclusiveMatch = false
-			}
+		if matcher != nil && !matcher.Match(header.Name) {
+			fileMatch = false
 		}
 
 		err = writeObject(dir, cacheObjectsDir, reader, header, existingDirs)
@@ -263,5 +278,5 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 		}
 	}
 
-	return count, patternMatch && patternExclusiveMatch, nil
+	return count, fileMatch, nil
 }

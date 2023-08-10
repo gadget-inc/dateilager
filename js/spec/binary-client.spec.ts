@@ -47,7 +47,7 @@ describe("binary client operations", () => {
     expect(fileContent).toBe(content);
   });
 
-  it("can rebuild the file system with a file pattern", async () => {
+  it("can rebuild the file system with a file matcher", async () => {
     const project = 1337n;
     const path = "hello.txt";
     const content = "hello world";
@@ -64,9 +64,9 @@ describe("binary client operations", () => {
     });
 
     const dir = tmpdir();
-    const result = await binaryClient.rebuild(project, null, dir, { filePattern: "hello*" });
+    const result = await binaryClient.rebuild(project, null, dir, { matchInclude: "hello*" });
     expect(result?.version).toBe(1n);
-    expect(result?.patternMatch).toBe(true);
+    expect(result?.fileMatch).toBe(true);
 
     const filepath = `${dir}/${path}`;
     expect(fs.existsSync(filepath)).toBe(true);
@@ -75,7 +75,7 @@ describe("binary client operations", () => {
     expect(fileContent).toBe(content);
   });
 
-  it("can rebuild the file system with an iff file pattern", async () => {
+  it("can rebuild the file system with a file matcher exclude pattern", async () => {
     const project = 1337n;
     const path = "hello.txt";
     const content = "hello world";
@@ -100,9 +100,9 @@ describe("binary client operations", () => {
     });
 
     const dir = tmpdir();
-    const result = await binaryClient.rebuild(project, null, dir, { filePattern: "hello*", filePatternIff: true });
+    const result = await binaryClient.rebuild(project, null, dir, { matchExclude: "bar*" });
     expect(result?.version).toBe(2n);
-    expect(result?.patternMatch).toBe(false);
+    expect(result?.fileMatch).toBe(false);
 
     const filepath = `${dir}/bar.txt`;
     expect(fs.existsSync(filepath)).toBe(true);
@@ -130,5 +130,63 @@ describe("binary client operations", () => {
 
     expect(JSON.stringify(result)).toMatch('{"count":0}');
     expect(result.count).toStrictEqual(0);
+  });
+});
+
+describe("Gadget file match tests", () => {
+  const writeFilesWithMatcher = async (project: bigint, include: string, exclude: string, paths: string[]): Promise<boolean> => {
+    const content = "example";
+    const encodedContent = encodeContent(content);
+
+    await grpcClient.newProject(project, []);
+
+    for (const path of paths) {
+      await grpcClient.updateObject(project, {
+        path,
+        mode: 0o755n,
+        content: encodedContent,
+        size: BigInt(encodedContent.length),
+        deleted: false,
+      });
+    }
+
+    const dir = tmpdir();
+    const result = await binaryClient.rebuild(project, null, dir, { matchInclude: include, matchExclude: exclude });
+
+    fs.rmSync(dir, { recursive: true });
+
+    return result.fileMatch;
+  };
+
+  it("can support Gadget's pattern", async () => {
+    let result = await writeFilesWithMatcher(5n, "frontend/**", "frontend/vite.config.[jt]s", [
+      "frontend/example.js",
+      "frontend/other.css",
+      "frontend/third.jsx",
+    ]);
+    expect(result).toBe(true);
+
+    result = await writeFilesWithMatcher(6n, "frontend/**", "frontend/vite.config.[jt]s", [
+      "frontend/example.js",
+      "frontend/other.css",
+      "frontend/third.jsx",
+      "frontend/vite.config.js",
+    ]);
+    expect(result).toBe(false);
+
+    result = await writeFilesWithMatcher(7n, "frontend/**", "frontend/vite.config.[jt]s", [
+      "frontend/example.js",
+      "frontend/other.css",
+      "frontend/third.jsx",
+      "frontend/vite.config.ts",
+    ]);
+    expect(result).toBe(false);
+
+    result = await writeFilesWithMatcher(8n, "frontend/**", "frontend/vite.config.[jt]s", [
+      "frontend/example.js",
+      "frontend/other.css",
+      "model/effect.js",
+    ]);
+    expect(result).toBe(false);
   });
 });
