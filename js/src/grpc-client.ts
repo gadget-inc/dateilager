@@ -261,21 +261,27 @@ export class DateiLagerGrpcClient {
    *
    * @param project The id of the project.
    * @param path    The path of the object.
+   * @param from    The project version to start from.
+   * @param to      The project version to end at.
    * @returns         The object at the given path or undefined if it does not exist.
    */
-  public async getObject(project: bigint, path: string): Promise<Objekt | undefined> {
+  public async getObject(project: bigint, path: string, from?: bigint, to?: bigint): Promise<Objekt | undefined> {
     return await trace(
       "dateilager-grpc-client.get-object",
       {
         attributes: {
           "dl.project": String(project),
           "dl.path": path,
+          "dl.from_version": String(from),
+          "dl.to_version": String(to),
         },
       },
       async () => {
         const call = this._client.get(
           {
             project,
+            fromVersion: from,
+            toVersion: to,
             queries: [
               {
                 path,
