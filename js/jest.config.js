@@ -12,6 +12,8 @@ const config = {
 
   // A list of paths to modules that run some code to configure or set up the testing framework before each test file in the suite is executed.
   setupFilesAfterEnv: ["<rootDir>/spec/jest.setup.ts"],
+
+  workerThreads: true,
 };
 
 module.exports = config;

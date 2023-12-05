@@ -8,7 +8,7 @@ DB_PASS ?= password
 DB_URI := postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl
 
 GRPC_PORT ?= 5051
-GRPC_SERVER ?= localhost:$(GRPC_PORT)
+GRPC_HOST ?= localhost
 
 DEV_TOKEN_ADMIN ?= v2.public.eyJzdWIiOiJhZG1pbiIsImlhdCI6IjIwMjEtMTAtMTVUMTE6MjA6MDAuMDM0WiJ9WtEey8KfQQRy21xoHq1C5KQatEevk8RxS47k4bRfMwVCPHumZmVuk6ADcfDHTmSnMtEGfFXdxnYOhRP6Clb_Dw
 DEV_TOKEN_PROJECT_1 ?= v2.public.eyJzdWIiOiIxIiwiaWF0IjoiMjAyMS0xMC0xNVQxMToyMDowMC4wMzVaIn2MQ14RfIGpoEycCuvRu9J3CZp6PppUXf5l5w8uKKydN3C31z6f6GgOEPNcnwODqBnX7Pjarpz4i2uzWEqLgQYD
@@ -109,7 +109,7 @@ endif
 test-fuzz: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 test-fuzz: export DL_SKIP_SSL_VERIFICATION=1
 test-fuzz: reset-db
-	go run cmd/fuzz-test/main.go --server $(GRPC_SERVER) --iterations 1000 --projects 5
+	go run cmd/fuzz-test/main.go --host $(GRPC_HOST) --iterations 1000 --projects 5
 
 reset-db: migrate
 	psql $(DB_URI) -c "truncate dl.objects; truncate dl.contents; truncate dl.projects; truncate dl.cache_versions;"
@@ -129,64 +129,64 @@ client-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
 client-update: export DL_SKIP_SSL_VERIFICATION=1
 client-update:
 	development/scripts/simple_input.sh 1
-	go run cmd/client/main.go update --server $(GRPC_SERVER) --project 1 --dir input/simple
+	go run cmd/client/main.go update --host $(GRPC_HOST) --project 1 --dir input/simple
 	development/scripts/simple_input.sh 2
-	go run cmd/client/main.go update --server $(GRPC_SERVER) --project 1 --dir input/simple
+	go run cmd/client/main.go update --host $(GRPC_HOST) --project 1 --dir input/simple
 	development/scripts/simple_input.sh 3
-	go run cmd/client/main.go update --server $(GRPC_SERVER) --project 1 --dir input/simple
+	go run cmd/client/main.go update --host $(GRPC_HOST) --project 1 --dir input/simple
 
 client-large-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
 client-large-update: export DL_SKIP_SSL_VERIFICATION=1
 client-large-update:
 	development/scripts/complex_input.sh 1
-	go run cmd/client/main.go update --server $(GRPC_SERVER) --project 1  --dir input/complex
+	go run cmd/client/main.go update --host $(GRPC_HOST) --project 1  --dir input/complex
 	development/scripts/complex_input.sh 2
-	go run cmd/client/main.go update --server $(GRPC_SERVER) --project 1 --dir input/complex
+	go run cmd/client/main.go update --host $(GRPC_HOST) --project 1 --dir input/complex
 	development/scripts/complex_input.sh 3
-	go run cmd/client/main.go update --server $(GRPC_SERVER) --project 1 --dir input/complex
+	go run cmd/client/main.go update --host $(GRPC_HOST) --project 1 --dir input/complex
 
 client-get: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
 client-get: export DL_SKIP_SSL_VERIFICATION=1
 client-get:
 ifndef to_version
-	go run cmd/client/main.go get --server $(GRPC_SERVER) --project 1 --prefix "$(prefix)"
+	go run cmd/client/main.go get --host $(GRPC_HOST) --project 1 --prefix "$(prefix)"
 else
-	go run cmd/client/main.go get --server $(GRPC_SERVER) --project 1 --to $(to_version) --prefix "$(prefix)"
+	go run cmd/client/main.go get --host $(GRPC_HOST) --project 1 --to $(to_version) --prefix "$(prefix)"
 endif
 
 client-rebuild: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-rebuild: export DL_SKIP_SSL_VERIFICATION=1
 client-rebuild:
 ifndef to_version
-	go run cmd/client/main.go rebuild --server $(GRPC_SERVER) --project 1 --prefix "$(prefix)" --dir $(dir)
+	go run cmd/client/main.go rebuild --host $(GRPC_HOST) --project 1 --prefix "$(prefix)" --dir $(dir)
 else
-	go run cmd/client/main.go rebuild --server $(GRPC_SERVER) --project 1 --to $(to_version) --prefix "$(prefix)" --dir $(dir)
+	go run cmd/client/main.go rebuild --host $(GRPC_HOST) --project 1 --to $(to_version) --prefix "$(prefix)" --dir $(dir)
 endif
 
 client-rebuild-with-cache: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-rebuild-with-cache: export DL_SKIP_SSL_VERIFICATION=1
 client-rebuild-with-cache:
-	go run cmd/client/main.go rebuild --server $(GRPC_SERVER) --project 1 --prefix "$(prefix)" --dir $(dir) --cachedir input/cache
+	go run cmd/client/main.go rebuild --host $(GRPC_HOST) --project 1 --prefix "$(prefix)" --dir $(dir) --cachedir input/cache
 
 client-getcache: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-getcache: export DL_SKIP_SSL_VERIFICATION=1
 client-getcache:
-	go run cmd/client/main.go getcache --server $(GRPC_SERVER) --path input/cache
+	go run cmd/client/main.go getcache --host $(GRPC_HOST) --path input/cache
 
 client-gc-contents: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-gc-contents: export DL_SKIP_SSL_VERIFICATION=1
 client-gc-contents:
-	go run cmd/client/main.go gc --server $(GRPC_SERVER) --mode contents --sample 25
+	go run cmd/client/main.go gc --host $(GRPC_HOST) --mode contents --sample 25
 
 client-gc-project: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-gc-project: export DL_SKIP_SSL_VERIFICATION=1
 client-gc-project:
-	go run cmd/client/main.go gc --server $(GRPC_SERVER) --mode project --project 1 --keep 1
+	go run cmd/client/main.go gc --host $(GRPC_HOST) --mode project --project 1 --keep 1
 
 client-gc-random-projects: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-gc-random-projects: export DL_SKIP_SSL_VERIFICATION=1
 client-gc-random-projects:
-	go run cmd/client/main.go gc --server $(GRPC_SERVER) --mode random-projects --sample 25 --keep 1
+	go run cmd/client/main.go gc --host $(GRPC_HOST) --mode random-projects --sample 25 --keep 1
 
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)

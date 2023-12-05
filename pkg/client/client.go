@@ -55,7 +55,8 @@ func NewClientConn(conn *grpc.ClientConn) *Client {
 }
 
 type options struct {
-	token string
+	headlessHost string
+	token        string
 }
 
 func WithToken(token string) func(*options) {
@@ -64,9 +65,15 @@ func WithToken(token string) func(*options) {
 	}
 }
 
-func NewClient(ctx context.Context, server string, opts ...func(*options)) (*Client, error) {
+func WithheadlessHost(host string) func(*options) {
+	return func(o *options) {
+		o.headlessHost = host
+	}
+}
+
+func NewClient(ctx context.Context, host string, port uint16, opts ...func(*options)) (*Client, error) {
 	ctx, span := telemetry.Start(ctx, "client.new", trace.WithAttributes(
-		key.Server.Attribute(server),
+		key.Server.Attribute(host),
 	))
 	defer span.End()
 
@@ -75,13 +82,17 @@ func NewClient(ctx context.Context, server string, opts ...func(*options)) (*Cli
 		return nil, fmt.Errorf("load system cert pool: %w", err)
 	}
 
-	sslVerification := os.Getenv("DL_SKIP_SSL_VERIFICATION")
-	creds := credentials.NewTLS(&tls.Config{RootCAs: pool, InsecureSkipVerify: sslVerification == "1"})
-
 	o := &options{}
 	for _, opt := range opts {
 		opt(o)
 	}
+
+	sslVerification := os.Getenv("DL_SKIP_SSL_VERIFICATION")
+	creds := credentials.NewTLS(&tls.Config{
+		RootCAs:            pool,
+		InsecureSkipVerify: sslVerification == "1",
+		ServerName:         host,
+	})
 
 	if o.token == "" {
 		o.token, err = getToken()
@@ -98,6 +109,11 @@ func NewClient(ctx context.Context, server string, opts ...func(*options)) (*Cli
 
 	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
+
+	server := fmt.Sprintf("%s:%d", host, port)
+	if o.headlessHost != "" {
+		server = fmt.Sprintf("%s:%d", o.headlessHost, port)
+	}
 
 	conn, err := grpc.DialContext(connectCtx, server,
 		grpc.WithTransportCredentials(creds),
@@ -117,6 +133,27 @@ func NewClient(ctx context.Context, server string, opts ...func(*options)) (*Cli
 		}),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+		grpc.WithDefaultServiceConfig(`
+			{
+				"loadBalancingConfig": [{ "round_robin": {} }],
+				"methodConfig": [
+					{
+						"name": [
+							{ "service": "pb.Fs", "method": "Get" },
+							{ "service": "pb.Fs", "method": "GetUnary" },
+							{ "service": "pb.Fs", "method": "GetCompress" }
+						],
+						"retryPolicy": {
+							"maxAttempts": 3,
+							"initialBackoff": "0.1s",
+							"maxBackoff": "1s",
+							"backoffMultiplier": 2,
+							"retryableStatusCodes": ["UNAVAILABLE", "DEADLINE_EXCEEDED"]
+						}
+					}
+				]
+			}
+		`),
 	)
 	if err != nil {
 		return nil, err

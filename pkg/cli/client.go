@@ -27,11 +27,13 @@ var (
 
 func NewClientCommand() *cobra.Command {
 	var (
-		level       *zapcore.Level
-		encoding    string
-		tracing     bool
-		otelContext string
-		server      string
+		level        *zapcore.Level
+		encoding     string
+		tracing      bool
+		otelContext  string
+		host         string
+		port         uint16
+		headlessHost string
 	)
 
 	cmd := &cobra.Command{
@@ -70,11 +72,11 @@ func NewClientCommand() *cobra.Command {
 
 			ctx, span = telemetry.Start(ctx, "cmd.main")
 
-			if server == "" {
-				return fmt.Errorf("required flag(s) \"server\" not set")
+			if host == "" {
+				return fmt.Errorf("required flag(s) \"host\" not set")
 			}
 
-			cl, err := client.NewClient(ctx, server)
+			cl, err := client.NewClient(ctx, host, port, client.WithheadlessHost(headlessHost))
 			if err != nil {
 				return err
 			}
@@ -94,7 +96,9 @@ func NewClientCommand() *cobra.Command {
 	flags.StringVar(&encoding, "log-encoding", "console", "Log encoding (console | json)")
 	flags.BoolVar(&tracing, "tracing", false, "Whether tracing is enabled")
 	flags.StringVar(&otelContext, "otel-context", "", "Open Telemetry context")
-	flags.StringVar(&server, "server", "", "Server GRPC address")
+	flags.StringVar(&host, "host", "", "GRPC server hostname")
+	flags.Uint16Var(&port, "port", 5051, "GRPC server port")
+	flags.StringVar(&headlessHost, "headless-host", "", "Alternative headless hostname to use for round robin connections")
 
 	cmd.AddCommand(NewCmdGet())
 	cmd.AddCommand(NewCmdInspect())
