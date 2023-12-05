@@ -622,7 +622,8 @@ func newCommand() *cobra.Command {
 	var (
 		projects   int
 		iterations int
-		server     string
+		host       string
+		port       uint16
 	)
 
 	cmd := &cobra.Command{
@@ -634,7 +635,7 @@ func newCommand() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			client, err := dlc.NewClient(ctx, server)
+			client, err := dlc.NewClient(ctx, host, port)
 			if err != nil {
 				return err
 			}
@@ -646,7 +647,8 @@ func newCommand() *cobra.Command {
 	flags := cmd.PersistentFlags()
 	flags.IntVar(&projects, "projects", 5, "How many projects to create")
 	flags.IntVar(&iterations, "iterations", 1000, "How many FS operations to apply")
-	flags.StringVar(&server, "server", "", "Server GRPC address")
+	flags.StringVar(&host, "host", "", "GRPC server hostname")
+	flags.Uint16Var(&port, "port", 5051, "GRPC server port")
 
 	return cmd
 }

@@ -12,19 +12,22 @@ export interface DateiLagerBinaryClientOptions {
   /**
    * The address of the dateilager server.
    */
-  server:
-    | string
-    | {
-        /**
-         * The host of the dateilager server.
-         */
-        host: string;
+  server: {
+    /**
+     * The host of the dateilager server.
+     */
+    host: string;
 
-        /**
-         * The port of the dateilager server.
-         */
-        port: number;
-      };
+    /**
+     * The port of the dateilager server.
+     */
+    port?: number;
+
+    /**
+     * The GRPC headless service hostname, used for load balancing across multiple servers.
+     */
+    headlessHost?: string;
+  };
 
   /**
    * The token that will be sent as authorization metadata to the dateilager server.
@@ -135,7 +138,9 @@ export class DateiLagerBinaryClient {
    */
   public constructor(options: DateiLagerBinaryClientOptions) {
     this._options = {
-      server: typeof options.server === "string" ? options.server : `${options.server.host}:${options.server.port}`,
+      host: options.server.host,
+      port: options.server.port ?? 5051,
+      headlessHost: options.server.headlessHost,
       token: typeof options.token === "string" ? () => Promise.resolve(options.token as string) : options.token,
       command: options.command ?? "dateilager-client",
       timeout:
@@ -350,10 +355,14 @@ export class DateiLagerBinaryClient {
     cwd?: string,
     options?: { timeout?: number }
   ): Promise<ExecaReturnValue> {
-    const baseArgs = [method, "--server", this._options.server, "--log-encoding", "json"];
+    const baseArgs = [method, "--host", this._options.host, "--port", String(this._options.port), "--log-encoding", "json"];
 
     if (this._options.logger) {
       baseArgs.push("--log-level", this._options.logger.level);
+    }
+
+    if (this._options.headlessHost) {
+      baseArgs.push("--headless-host", this._options.headlessHost);
     }
 
     if (this._options.tracing) {

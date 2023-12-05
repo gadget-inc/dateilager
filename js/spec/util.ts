@@ -11,7 +11,9 @@ export const grpcClient = new DateiLagerGrpcClient({
 });
 
 export const binaryClient = new DateiLagerBinaryClient({
-  server: "localhost:5051",
+  server: {
+    host: "localhost",
+  },
   token: devAdminToken,
   command: path.join(__dirname, "..", "..", "bin", "client"),
 });
