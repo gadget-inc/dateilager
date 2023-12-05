@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+export DL_ENV="${DL_ENV:-dev}"
+
 log() {
     echo "$(date +"%H:%M:%S") - $(printf '%s' "$@")" 1>&2
 }
@@ -16,7 +18,7 @@ error() {
 wait_for_postgres() {
     local dburi="${1}"
 
-    log "wait for postgres"
+    log "wait for postgres ${dburi}"
 
     until psql "${dburi}" -c '\q' 2> /dev/null; do
         sleep 1
@@ -74,7 +76,7 @@ main() {
     local secrets="${HOME}/secrets"
 
     log "start dateilager server"
-    "${HOME}/server" -dburi "${appdb}" -port "${port}" -log "${log_level}" -cert "${secrets}/server.crt" -key "${secrets}/server.key" -paseto "${secrets}/paseto.pub"
+    "${HOME}/server" --dburi "${appdb}" --port "${port}" --log-level "${log_level}" --cert "${secrets}/tls/server.crt" --key "${secrets}/tls/server.key" --paseto "${secrets}/paseto/paseto.pub"
 }
 
 main "$@"

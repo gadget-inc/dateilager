@@ -25,7 +25,7 @@ SERVICE := $(PROJECT).server
 .PHONY: reset-db setup-local server server-profile install-js
 .PHONY: client-update client-large-update client-get client-rebuild client-rebuild-with-cache
 .PHONY: client-getcache client-gc-contents client-gc-project client-gc-random-projects
-.PHONY: health upload-container-image gen-docs
+.PHONY: health upload-container-image run-container gen-docs
 .PHONY: load-test-new load-test-get load-test-update
 
 install:
@@ -200,6 +200,10 @@ else
 	docker push gcr.io/gadget-core-production/dateilager:$(version)
 	docker push gcr.io/gadget-core-production/dateilager:latest
 endif
+
+run-container: release
+	docker build -t dl-local:latest .
+	docker run --rm -it -p 127.0.0.1:$(GRPC_PORT):$(GRPC_PORT)/tcp -v ./development:/home/main/secrets/tls -v ./development:/home/main/secrets/paseto dl-local:latest $(GRPC_PORT) "postgres://$(DB_USER):$(DB_PASS)@host.docker.internal:5432" dl
 
 gen-docs:
 	go run cmd/gen-docs/main.go
