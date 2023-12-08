@@ -40,3 +40,33 @@ func TestClientNewProjectEmptyPackPattern(t *testing.T) {
 		"c": {content: "c v1"},
 	})
 }
+
+func TestClientNewProjectDuplicateReportsError(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin, 1)
+	defer tc.Close()
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	err := c.NewProject(tc.Context(), 1, nil, nil)
+	require.NoError(t, err, "NewProject")
+
+	/** Create Project Again**/
+
+	tcSecond := util.NewTestCtx(t, auth.Admin, 1)
+	defer tc.Close()
+
+	cSecond, _, closeSecond := createTestClient(tc)
+	defer closeSecond()
+
+	errSecond := cSecond.NewProject(tcSecond.Context(), 1, nil, nil)
+
+	want := "Project with this id already exists"
+
+	if errSecond.Error() != want {
+		t.Errorf("got %s want %s", errSecond, want)
+	}
+
+	require.NoError(t, err, "NewProject")
+
+}
