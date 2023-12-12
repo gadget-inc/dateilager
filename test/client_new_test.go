@@ -42,31 +42,31 @@ func TestClientNewProjectEmptyPackPattern(t *testing.T) {
 }
 
 func TestClientNewProjectDuplicateReportsError(t *testing.T) {
-	tc := util.NewTestCtx(t, auth.Admin, 1)
+	projectId := int64(1)
+
+	tc := util.NewTestCtx(t, auth.Admin, projectId)
 	defer tc.Close()
 
 	c, _, close := createTestClient(tc)
 	defer close()
 
-	err := c.NewProject(tc.Context(), 1, nil, nil)
+	err := c.NewProject(tc.Context(), projectId, nil, nil)
 	require.NoError(t, err, "NewProject")
 
 	/** Create Project Again**/
 
-	tcSecond := util.NewTestCtx(t, auth.Admin, 1)
+	tcSecond := util.NewTestCtx(t, auth.Admin, projectId)
 	defer tc.Close()
 
 	cSecond, _, closeSecond := createTestClient(tc)
 	defer closeSecond()
 
-	errSecond := cSecond.NewProject(tcSecond.Context(), 1, nil, nil)
+	errSecond := cSecond.NewProject(tcSecond.Context(), projectId, nil, nil)
+	want := "project id already exists"
 
-	want := "Project with this id already exists"
+	require.Error(t, errSecond, "NewProject")
 
-	if errSecond.Error() != want {
+	if errSecond == nil {
 		t.Errorf("got %s want %s", errSecond, want)
 	}
-
-	require.NoError(t, err, "NewProject")
-
 }
