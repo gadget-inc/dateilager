@@ -79,7 +79,11 @@ func (f *Fs) NewProject(ctx context.Context, req *pb.NewProjectRequest) (*pb.New
 
 	err = db.CreateProject(ctx, tx, req.Id, req.PackPatterns)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS new project %v, %v", req.Id, err)
+		rpcErrorCode := codes.Internal
+		if err.Error() == "project id already exists" {
+			rpcErrorCode = codes.AlreadyExists
+		}
+		return nil, status.Errorf(rpcErrorCode, "FS new project %v, %v", req.Id, err)
 	}
 
 	if req.Template != nil {

@@ -3,6 +3,10 @@ import { decodeContent, encodeContent } from "../src";
 import { grpcClient } from "./util";
 
 describe("grpc client operations", () => {
+  afterEach(async () => {
+    await grpcClient.deleteProject(1337n);
+  });
+
   it("can create and read an object", async () => {
     await grpcClient.newProject(1337n, []);
     const content = encodeContent("a v1");
@@ -101,5 +105,16 @@ describe("grpc client operations", () => {
     const result = await grpcClient.gcProject(1337n, 5n, 2n);
 
     expect(result).toBe(12n);
+  });
+
+  it("throws a proper error when recreating the same project", async () => {
+    await grpcClient.newProject(1337n, []);
+
+    try {
+      await grpcClient.newProject(1337n, []);
+      expect(true).toBe(false);
+    } catch (error) {
+      expect((error as Error).message).toBe("project id 1337 already exists");
+    }
   });
 });
