@@ -134,9 +134,8 @@ export class DateiLagerGrpcClient {
     } catch (error) {
       if (error instanceof RpcError && error.code == "ALREADY_EXISTS") {
         throw new ProjectAlreadyExistsError(`project id ${project} already exists`);
-      } else {
-        throw error;
       }
+      throw error;
     }
   }
 
