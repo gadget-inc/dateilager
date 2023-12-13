@@ -3,12 +3,12 @@ import { ChannelCredentials, credentials, Metadata } from "@grpc/grpc-js";
 import type { Span } from "@opentelemetry/api";
 import { context as contextAPI, trace as traceAPI } from "@opentelemetry/api";
 import { GrpcTransport } from "@protobuf-ts/grpc-transport";
-import type { ClientStreamingCall, RpcOptions } from "@protobuf-ts/runtime-rpc";
+import { RpcError, type ClientStreamingCall, type RpcOptions } from "@protobuf-ts/runtime-rpc";
 import { TextDecoder, TextEncoder } from "util";
 import { trace, tracer } from "./internal/telemetry";
 import type { CloneToProjectResponse, GetUnaryResponse, Objekt, Project, UpdateRequest, UpdateResponse } from "./pb/fs_pb";
 import { FsClient } from "./pb/fs_pb.client";
-
+import { ProjectAlreadyExistsError } from "./utils/errors";
 export type { Objekt, Project };
 
 /**
@@ -119,17 +119,24 @@ export class DateiLagerGrpcClient {
    * @param template     The id of the project to start from.
    */
   public async newProject(project: bigint, packPatterns: string[], template?: bigint): Promise<void> {
-    await trace(
-      "dateilager-grpc-client.new-project",
-      {
-        attributes: {
-          "dl.project": String(project),
-          "dl.pack_patterns": packPatterns,
-          "dl.template": String(template),
+    try {
+      await trace(
+        "dateilager-grpc-client.new-project",
+        {
+          attributes: {
+            "dl.project": String(project),
+            "dl.pack_patterns": packPatterns,
+            "dl.template": String(template),
+          },
         },
-      },
-      () => this._client.newProject({ id: project, packPatterns, template }, this._rpcOptions())
-    );
+        () => this._client.newProject({ id: project, packPatterns, template }, this._rpcOptions())
+      );
+    } catch (error) {
+      if (error instanceof RpcError && error.code == "ALREADY_EXISTS") {
+        throw new ProjectAlreadyExistsError(`project id ${project} already exists`);
+      }
+      throw error;
+    }
   }
 
   /**

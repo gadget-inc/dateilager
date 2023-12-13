@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/gadget-inc/dateilager/internal/pb"
@@ -13,6 +14,13 @@ func CreateProject(ctx context.Context, tx pgx.Tx, project int64, packPatterns [
 		INSERT INTO dl.projects (id, latest_version, pack_patterns)
 		VALUES ($1, 0, $2)
 	`, project, packPatterns)
+
+	var projectExistsError = errors.New("ERROR: duplicate key value violates unique constraint \"projects_pkey\" (SQLSTATE 23505)")
+
+	if err != nil && err.Error() == projectExistsError.Error() {
+		return fmt.Errorf("project id already exists")
+	}
+
 	if err != nil {
 		return fmt.Errorf("create project %v, packPatterns %v: %w", project, packPatterns, err)
 	}
