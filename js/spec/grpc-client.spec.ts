@@ -110,11 +110,13 @@ describe("grpc client operations", () => {
   it("throws a proper error when recreating the same project", async () => {
     await grpcClient.newProject(1337n, []);
 
+    let errorCaught;
     try {
       await grpcClient.newProject(1337n, []);
       expect(true).toBe(false);
     } catch (error) {
-      expect((error as Error).message).toBe("project id 1337 already exists");
+      errorCaught = error;
     }
+    expect((errorCaught as Error).message).toBe("project id 1337 already exists");
   });
 });
