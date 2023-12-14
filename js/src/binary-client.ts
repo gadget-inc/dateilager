@@ -380,23 +380,55 @@ export class DateiLagerBinaryClient {
 
     if (this._options.logger && subprocess.stderr) {
       readline.createInterface(subprocess.stderr).on("line", (line) => {
-        try {
-          // we purposefully extract and ignore the `ts` field
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { level, msg, ts, ...fields } = JSON.parse(line) as {
-            [key: string]: unknown;
-            level: "debug" | "info" | "warn" | "error";
-            msg: string;
-            ts: string | number;
-          };
+        this.mikesStdErrHandler(line)
+        // try {
+        //   // we purposefully extract and ignore the `ts` field
+        //   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        //   const { level, msg, ts, ...fields } = JSON.parse(line) as {
+        //     [key: string]: unknown;
+        //     level: "debug" | "info" | "warn" | "error";
+        //     msg: string;
+        //     ts: string | number;
+        //   };
 
-          this._options.logger?.log(level, msg, fields);
-        } catch (error) {
-          this._options.logger?.log("warn", "failed to log line", { error, line });
-        }
+        //   this._options.logger?.log(level, msg, fields);
+        // } catch (error) {
+        //   this._options.logger?.log("warn", "failed to log line", { error, line });
+        // }
       });
     }
 
     return subprocess;
+  }
+
+  mikesStdErrHandler(line: string) {
+    try {
+      // we purposefully extract and ignore the `ts` field
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { level, msg, ts, ...fields } = JSON.parse(line) as {
+        [key: string]: unknown;
+        level: "debug" | "info" | "warn" | "error";
+        msg: string;
+        ts: string | number;
+      };
+
+      this._options.logger?.log(level, msg, fields);
+    } catch (error) {
+      const stdOutChopped = line.split(":");
+      if (stdOutChopped.length > 3) {
+        const errorName = stdOutChopped.slice(1, 2).join().trim();
+        const stack = stdOutChopped.slice(2).join().trim();
+
+        this._options.logger?.log("warn", "failed to log line", {
+          error: {
+            name: errorName,
+            stack: stack,
+          },
+          line,
+        });
+      } else {
+        this._options.logger?.log("warn", "failed to log line", { error, line });
+      }
+    }
   }
 }

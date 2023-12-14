@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { Client } from "pg";
 import { encodeContent } from "../src";
-import { binaryClient, grpcClient, tmpdir } from "./util";
+import { binaryClient, binaryClientWithLogger, grpcClient, tmpdir } from "./util";
 
 beforeEach(async () => {
   const client = new Client({
@@ -188,5 +188,24 @@ describe("Gadget file match tests", () => {
       "model/effect.js",
     ]);
     expect(result).toBe(false);
+  });
+});
+
+describe.only("The client handles and formats errors coming out of the subprocess call", () => {
+  it("stderr from the subprocess properly handles non-JSON output streams", async () => {
+    const project = 1337n;
+    await grpcClient.newProject(project, []);
+
+    //spy on this output to confirm the tests
+
+    // const spy = jest.spyOn(console, "log");
+    try {
+      const bClientWithLogger = binaryClientWithLogger;
+      await bClientWithLogger.gcProject(1337, 0);
+    } catch (err) {}
+
+    // console.log(spy.mock.calls, "calls to spy");
+
+    // expect(spy.mock.calls).not.toContain("line");
   });
 });
