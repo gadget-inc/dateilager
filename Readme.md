@@ -153,12 +153,13 @@ console.log("[updateObject] version: " + version);
 
 ## Release
 
-When you're ready to release a new version, perform the following steps:
+When you're ready to release a new version, perform the following steps. Ensure you are on doing these steps on the `main` branch
 
 1. Update the version in `default.nix`
 2. Update the version in `js/package.json`
 3. Update the version in `js/package-lock.json` (run `cd js && npm install`)
 4. Commit the changes (e.g. `git commit -am "Bump version to 0.0.x"`)
+5. Push the changes upstream to main (e.g. `git push origin HEAD`)
 
 New versions are released and hosted on Github. (https://github.com/gadget-inc/dateilager/releases)
 
