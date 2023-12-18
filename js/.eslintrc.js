@@ -69,5 +69,5 @@ module.exports = {
     "import/extensions": [".js", ".jsx", ".ts", ".tsx"],
     jsdoc: { ignoreInternal: true },
   },
-  ignorePatterns: ["/node_modules/", "/dist/"],
+  ignorePatterns: ["/node_modules/", "/dist/", "gitpkg.config.js"],
 };

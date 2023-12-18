@@ -27,6 +27,7 @@
     "build": "rm -rf dist && tsc --project tsconfig.cjs.json && tsc --project tsconfig.esm.json",
     "fmt": "prettier --write . && eslint --fix .",
     "lint": "prettier --check . && eslint . && tsc --project tsconfig.eslint.json && tsc --project spec/tsconfig.json",
+    "prerelease": "gitpkg publish",
     "test": "DL_SKIP_SSL_VERIFICATION=1 NODE_EXTRA_CA_CERTS=\"$(mkcert -CAROOT)/rootCA.pem\" jest --runInBand"
   },
   "dependencies": {
@@ -51,6 +52,7 @@
     "eslint-plugin-import": "^2.26.0",
     "eslint-plugin-jest": "^27.0.2",
     "eslint-plugin-jsdoc": "^39.3.6",
+    "gitpkg": "^1.0.0-beta.4",
     "jest": "^29.7.0",
     "pg": "^8.9.0",
     "prettier": "^2.7.1",
