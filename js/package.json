@@ -27,8 +27,8 @@
     "build": "rm -rf dist && tsc --project tsconfig.cjs.json && tsc --project tsconfig.esm.json",
     "fmt": "prettier --write . && eslint --fix .",
     "lint": "prettier --check . && eslint . && tsc --project tsconfig.eslint.json && tsc --project spec/tsconfig.json",
-    "test": "DL_SKIP_SSL_VERIFICATION=1 NODE_EXTRA_CA_CERTS=\"$(mkcert -CAROOT)/rootCA.pem\" jest --runInBand",
-    "prerelease": "gitpkg publish"
+    "prerelease": "gitpkg publish",
+    "test": "DL_SKIP_SSL_VERIFICATION=1 NODE_EXTRA_CA_CERTS=\"$(mkcert -CAROOT)/rootCA.pem\" jest --runInBand"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.9.12",
