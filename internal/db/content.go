@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"strconv"
 
 	"github.com/dgraph-io/ristretto"
 	"github.com/jackc/pgx/v5"
@@ -141,9 +143,18 @@ type ContentLookup struct {
 }
 
 func NewContentLookup() (*ContentLookup, error) {
+	cacheSize := int64(1_000)
+	cacheSizeEnv := os.Getenv("DL_CACHE_SIZE")
+	if cacheSizeEnv != "" {
+		size, err := strconv.ParseInt(cacheSizeEnv, 10, 64)
+		if err == nil {
+			cacheSize = size
+		}
+	}
+
 	cache, err := ristretto.NewCache(&ristretto.Config{
 		NumCounters: 100_000,
-		MaxCost:     1_000 * MB,
+		MaxCost:     cacheSize * MB,
 		BufferItems: 64,
 	})
 	if err != nil {
