@@ -69,7 +69,10 @@ func GcContentHashes(ctx context.Context, tx pgx.Tx, hashes []Hash) (int64, erro
 		return 0, nil
 	}
 
-	tag, err := tx.Exec(ctx, `
+	rowsAffected := int64(0)
+
+	for _, hashChunk := range chunk(hashes, 500) {
+		tag, err := tx.Exec(ctx, `
 		WITH missing AS (
 			SELECT c.hash
 			FROM dl.contents c
@@ -80,10 +83,21 @@ func GcContentHashes(ctx context.Context, tx pgx.Tx, hashes []Hash) (int64, erro
 		)
 		DELETE FROM dl.contents
 		WHERE hash IN (SELECT hash FROM missing)
-	`, hashes)
-	if err != nil {
-		return 0, fmt.Errorf("GcContentHashes query, hash count %v: %w", len(hashes), err)
+	`, hashChunk)
+		if err != nil {
+			return 0, fmt.Errorf("GcContentHashes query, hash count %v: %w", len(hashChunk), err)
+		}
+
+		rowsAffected += tag.RowsAffected()
 	}
 
-	return tag.RowsAffected(), nil
+	return rowsAffected, nil
+}
+
+func chunk[T any](items []T, chunkSize int) [][]T {
+	chunks := make([][]T, 0, (len(items)/chunkSize)+1)
+	for chunkSize < len(items) {
+		items, chunks = items[chunkSize:], append(chunks, items[0:chunkSize:chunkSize])
+	}
+	return append(chunks, items)
 }
