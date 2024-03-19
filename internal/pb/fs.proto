@@ -19,6 +19,8 @@ service Fs {
 
     rpc Update(stream UpdateRequest) returns (UpdateResponse);
 
+    rpc CommitUpdate(CommitUpdateRequest) returns (CommitUpdateResponse);
+
     rpc Rollback(RollbackRequest) returns (RollbackResponse);
 
     rpc Inspect(InspectRequest) returns (InspectResponse);
@@ -128,9 +130,20 @@ message GetUnaryResponse {
 message UpdateRequest {
     int64 project = 1;
     Objekt object = 2;
+    bool is_staged = 3;
 }
 
 message UpdateResponse {
+    int64 version = 1;
+    bool is_staged = 2;
+}
+
+message CommitUpdateRequest {
+    int64 project = 1;
+    int64 version = 2;
+}
+
+message CommitUpdateResponse {
     int64 version = 1;
 }
 

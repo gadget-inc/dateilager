@@ -247,6 +247,12 @@ func writeFile(t *testing.T, dir string, path string, content string) {
 	require.NoError(t, err, "write file %v", path)
 }
 
+func removeFile(t *testing.T, dir string, path string) {
+	fullPath := filepath.Join(dir, path)
+	err := os.Remove(fullPath)
+	require.NoError(t, err, "remove file %v", path)
+}
+
 func emptyTmpDir(t *testing.T) string {
 	dir, err := os.MkdirTemp("", "dateilager_tests_")
 	require.NoError(t, err, "create temp dir")
@@ -415,7 +421,15 @@ func rebuildWithMatcher(tc util.TestCtx, c *client.Client, project int64, toVers
 }
 
 func update(tc util.TestCtx, c *client.Client, project int64, dir string, expected expectedResponse) {
-	version, count, err := c.Update(tc.Context(), project, dir)
+	version, count, err := c.Update(tc.Context(), project, dir, false)
+	require.NoError(tc.T(), err, "client.Update")
+
+	assert.Equal(tc.T(), expected.version, version, "mismatch update version")
+	assert.Equal(tc.T(), expected.count, count, "mismatch update count")
+}
+
+func stagedUpdate(tc util.TestCtx, c *client.Client, project int64, dir string, expected expectedResponse) {
+	version, count, err := c.Update(tc.Context(), project, dir, true)
 	require.NoError(tc.T(), err, "client.Update")
 
 	assert.Equal(tc.T(), expected.version, version, "mismatch update version")

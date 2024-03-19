@@ -26,6 +26,7 @@ const (
 	Fs_GetCompress_FullMethodName      = "/pb.Fs/GetCompress"
 	Fs_GetUnary_FullMethodName         = "/pb.Fs/GetUnary"
 	Fs_Update_FullMethodName           = "/pb.Fs/Update"
+	Fs_CommitUpdate_FullMethodName     = "/pb.Fs/CommitUpdate"
 	Fs_Rollback_FullMethodName         = "/pb.Fs/Rollback"
 	Fs_Inspect_FullMethodName          = "/pb.Fs/Inspect"
 	Fs_Snapshot_FullMethodName         = "/pb.Fs/Snapshot"
@@ -48,6 +49,7 @@ type FsClient interface {
 	GetCompress(ctx context.Context, in *GetCompressRequest, opts ...grpc.CallOption) (Fs_GetCompressClient, error)
 	GetUnary(ctx context.Context, in *GetUnaryRequest, opts ...grpc.CallOption) (*GetUnaryResponse, error)
 	Update(ctx context.Context, opts ...grpc.CallOption) (Fs_UpdateClient, error)
+	CommitUpdate(ctx context.Context, in *CommitUpdateRequest, opts ...grpc.CallOption) (*CommitUpdateResponse, error)
 	Rollback(ctx context.Context, in *RollbackRequest, opts ...grpc.CallOption) (*RollbackResponse, error)
 	Inspect(ctx context.Context, in *InspectRequest, opts ...grpc.CallOption) (*InspectResponse, error)
 	Snapshot(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*SnapshotResponse, error)
@@ -201,6 +203,15 @@ func (x *fsUpdateClient) CloseAndRecv() (*UpdateResponse, error) {
 	return m, nil
 }
 
+func (c *fsClient) CommitUpdate(ctx context.Context, in *CommitUpdateRequest, opts ...grpc.CallOption) (*CommitUpdateResponse, error) {
+	out := new(CommitUpdateResponse)
+	err := c.cc.Invoke(ctx, Fs_CommitUpdate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *fsClient) Rollback(ctx context.Context, in *RollbackRequest, opts ...grpc.CallOption) (*RollbackResponse, error) {
 	out := new(RollbackResponse)
 	err := c.cc.Invoke(ctx, Fs_Rollback_FullMethodName, in, out, opts...)
@@ -316,6 +327,7 @@ type FsServer interface {
 	GetCompress(*GetCompressRequest, Fs_GetCompressServer) error
 	GetUnary(context.Context, *GetUnaryRequest) (*GetUnaryResponse, error)
 	Update(Fs_UpdateServer) error
+	CommitUpdate(context.Context, *CommitUpdateRequest) (*CommitUpdateResponse, error)
 	Rollback(context.Context, *RollbackRequest) (*RollbackResponse, error)
 	Inspect(context.Context, *InspectRequest) (*InspectResponse, error)
 	Snapshot(context.Context, *SnapshotRequest) (*SnapshotResponse, error)
@@ -352,6 +364,9 @@ func (UnimplementedFsServer) GetUnary(context.Context, *GetUnaryRequest) (*GetUn
 }
 func (UnimplementedFsServer) Update(Fs_UpdateServer) error {
 	return status.Errorf(codes.Unimplemented, "method Update not implemented")
+}
+func (UnimplementedFsServer) CommitUpdate(context.Context, *CommitUpdateRequest) (*CommitUpdateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CommitUpdate not implemented")
 }
 func (UnimplementedFsServer) Rollback(context.Context, *RollbackRequest) (*RollbackResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Rollback not implemented")
@@ -531,6 +546,24 @@ func (x *fsUpdateServer) Recv() (*UpdateRequest, error) {
 		return nil, err
 	}
 	return m, nil
+}
+
+func _Fs_CommitUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CommitUpdateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FsServer).CommitUpdate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Fs_CommitUpdate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FsServer).CommitUpdate(ctx, req.(*CommitUpdateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Fs_Rollback_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -720,6 +753,10 @@ var Fs_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetUnary",
 			Handler:    _Fs_GetUnary_Handler,
+		},
+		{
+			MethodName: "CommitUpdate",
+			Handler:    _Fs_CommitUpdate_Handler,
 		},
 		{
 			MethodName: "Rollback",

@@ -480,7 +480,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 	return result, nil
 }
 
-func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int64, uint32, error) {
+func (c *Client) Update(rootCtx context.Context, project int64, dir string, isStaged bool) (int64, uint32, error) {
 	rootCtx, span := telemetry.Start(rootCtx, "client.update", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Directory.Attribute(dir),
@@ -589,8 +589,9 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 				count += 1
 
 				err := stream.Send(&pb.UpdateRequest{
-					Project: project,
-					Object:  object,
+					Project:  project,
+					Object:   object,
+					IsStaged: isStaged,
 				})
 				if err != nil {
 					cancel()
@@ -627,6 +628,23 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 	}
 
 	return toVersion, updateCount, nil
+}
+
+func (c *Client) CommitUpdate(ctx context.Context, project, version int64) error {
+	ctx, span := telemetry.Start(ctx, "client.commit", trace.WithAttributes(
+		key.Project.Attribute(project),
+	))
+	defer span.End()
+
+	_, err := c.fs.CommitUpdate(ctx, &pb.CommitUpdateRequest{
+		Project: project,
+		Version: version,
+	})
+	if err != nil {
+		return fmt.Errorf("commit update, project %v, version %v: %w", project, version, err)
+	}
+
+	return nil
 }
 
 func (c *Client) Inspect(ctx context.Context, project int64) (*pb.InspectResponse, error) {

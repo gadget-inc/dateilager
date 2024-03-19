@@ -220,7 +220,7 @@ func TestUpdateFailsWithTooLargeObject(t *testing.T) {
 	}
 
 	writeFile(t, tmpDir, "a", sb.String())
-	_, _, err := c.Update(tc.Context(), 1, tmpDir)
+	_, _, err := c.Update(tc.Context(), 1, tmpDir, false)
 
 	assert.Error(tc.T(), err)
 }

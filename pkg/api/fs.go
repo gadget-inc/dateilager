@@ -20,6 +20,7 @@ import (
 
 var (
 	ErrMultipleProjectsPerUpdate = errors.New("multiple objects in one update")
+	ErrMixedIsStagedPerUpdate    = errors.New("mixed is_staged values in one update")
 )
 
 func requireAdminAuth(ctx context.Context) error {
@@ -505,6 +506,8 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 
 	var packManager *db.PackManager
 
+	isStaged := false
+
 	var objectBuffer []*pb.Object
 	packedBuffer := make(map[string][]*pb.Object)
 
@@ -545,6 +548,12 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 				continue
 			}
 
+			if req.IsStaged {
+				isStaged = true
+			} else if isStaged {
+				return status.Errorf(codes.InvalidArgument, "invalid is_staged: %v", ErrMixedIsStagedPerUpdate)
+			}
+
 			objectBuffer = append(objectBuffer, req.Object)
 		}
 
@@ -574,21 +583,22 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		}
 
 		nextVersion = latestVersion + 1
-		logger.Info(ctx, "FS.Update[Init]", key.Project.Field(project), key.Version.Field(nextVersion))
+		logger.Info(ctx, "FS.Update[Init]", key.Project.Field(project), key.Version.Field(nextVersion), key.IsStaged.Field(isStaged))
 
 		for _, object := range objectBuffer {
 			logger.Debug(ctx, "FS.Update[Object]",
 				key.Project.Field(project),
 				key.Version.Field(nextVersion),
 				key.ObjectPath.Field(object.Path),
+				key.IsStaged.Field(isStaged),
 			)
 
 			if object.Deleted {
-				err = db.DeleteObject(ctx, tx, project, nextVersion, object.Path)
+				err = db.DeleteObject(ctx, tx, project, nextVersion, object.Path, isStaged)
 				shouldUpdateVersion = true
 			} else {
 				var contentChanged bool
-				contentChanged, err = db.UpdateObject(ctx, tx, f.DbConn, contentEncoder, project, nextVersion, object)
+				contentChanged, err = db.UpdateObject(ctx, tx, f.DbConn, contentEncoder, project, nextVersion, object, isStaged)
 
 				if contentChanged {
 					shouldUpdateVersion = true
@@ -613,9 +623,10 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 				key.Version.Field(nextVersion),
 				key.ObjectsParent.Field(parent),
 				key.ObjectsCount.Field(len(objects)),
+				key.IsStaged.Field(isStaged),
 			)
 
-			contentChanged, err := db.UpdatePackedObjects(ctx, tx, f.DbConn, project, nextVersion, parent, objects)
+			contentChanged, err := db.UpdatePackedObjects(ctx, tx, f.DbConn, project, nextVersion, parent, objects, isStaged)
 			if err != nil {
 				return status.Errorf(codes.Internal, "FS update packed objects for %v: %v", parent, err)
 			}
@@ -632,12 +643,14 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	}
 
 	if !shouldUpdateVersion {
-		return stream.SendAndClose(&pb.UpdateResponse{Version: latestVersion})
+		return stream.SendAndClose(&pb.UpdateResponse{Version: latestVersion, IsStaged: isStaged})
 	}
 
-	err = db.UpdateLatestVersion(ctx, tx, project, nextVersion)
-	if err != nil {
-		return status.Errorf(codes.Internal, "FS update latest version: %v", err)
+	if !isStaged {
+		err = db.UpdateLatestVersion(ctx, tx, project, nextVersion)
+		if err != nil {
+			return status.Errorf(codes.Internal, "FS update latest version: %v", err)
+		}
 	}
 
 	err = tx.Commit(ctx)
@@ -645,9 +658,66 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return status.Errorf(codes.Internal, "FS update commit tx: %v", err)
 	}
 
-	logger.Debug(ctx, "FS.Update[Commit]", key.Project.Field(project), key.Version.Field(nextVersion))
+	logger.Debug(ctx, "FS.Update[Commit]", key.Project.Field(project), key.Version.Field(nextVersion), key.IsStaged.Field(isStaged))
 
-	return stream.SendAndClose(&pb.UpdateResponse{Version: nextVersion})
+	return stream.SendAndClose(&pb.UpdateResponse{Version: nextVersion, IsStaged: isStaged})
+}
+
+func (f *Fs) CommitUpdate(ctx context.Context, req *pb.CommitUpdateRequest) (*pb.CommitUpdateResponse, error) {
+	trace.SpanFromContext(ctx).SetAttributes(
+		key.Project.Attribute(req.Project),
+	)
+
+	project, err := requireProjectAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if project > -1 && req.Project != project {
+		return nil, status.Errorf(codes.PermissionDenied, "Mismatch project authorization and request")
+	}
+
+	tx, close, err := f.DbConn.Connect(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
+	}
+	defer close(ctx)
+
+	latestVersion, err := db.LockLatestVersion(ctx, tx, req.Project)
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, status.Errorf(codes.NotFound, "FS commit missing latest version: %v", err)
+	}
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS commit lock latest version: %v", err)
+	}
+
+	nextVersion := latestVersion + 1
+	if nextVersion != req.Version {
+		return nil, status.Errorf(codes.InvalidArgument, "FS commit invalid, latest version %v is greater than or equal to the commit version %v", latestVersion, req.Version)
+	}
+
+	logger.Info(ctx, "FS.Commit[Init]", key.Project.Field(req.Project), key.Version.Field(nextVersion))
+
+	err = telemetry.Trace(ctx, "commit-staged-objects", func(ctx context.Context, span trace.Span) error {
+		return db.CommitStagedObjects(ctx, tx, req.Project, nextVersion)
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS commit staged objects: %v", err)
+	}
+
+	err = db.UpdateLatestVersion(ctx, tx, req.Project, nextVersion)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS commit latest version: %v", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "FS commit commit tx: %v", err)
+	}
+
+	logger.Debug(ctx, "FS.Commit[Commit]", key.Project.Field(project), key.Version.Field(nextVersion))
+
+	return &pb.CommitUpdateResponse{}, nil
 }
 
 func (f *Fs) Rollback(ctx context.Context, req *pb.RollbackRequest) (*pb.RollbackResponse, error) {

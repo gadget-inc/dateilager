@@ -13,6 +13,7 @@ const (
 	Directory         = StringKey("dl.directory")
 	Environment       = StringKey("dl.environment")
 	FromVersion       = Int64pKey("dl.from_version")
+	IsStaged          = BoolKey("dl.is_staged")
 	KeepVersions      = Int64Key("dl.keep_versions")
 	LatestVersion     = Int64Key("dl.latest_version")
 	LiveObjectsCount  = Int64Key("dl.live_objects_count")

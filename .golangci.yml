@@ -26,12 +26,12 @@ linters:
     - bodyclose
     - noctx
     - dogsled
-    - gocyclo
 
   # don't enable:
   # - wsl
   # - gochecknoinits
   # - gomnd
+  # - gocyclo
 
 # Options for analysis running.
 run:

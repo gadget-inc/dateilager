@@ -20,6 +20,8 @@ PROTO_FILES := $(shell find internal/pb/ -type f -name '*.proto')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
+export DL_SKIP_SSL_VERIFICATION := 1
+
 .PHONY: install migrate migrate-create clean build lint release
 .PHONY: test test-one test-fuzz test-js lint-js build-js
 .PHONY: reset-db setup-local server server-profile install-js
@@ -107,12 +109,11 @@ else
 endif
 
 test-fuzz: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
-test-fuzz: export DL_SKIP_SSL_VERIFICATION=1
 test-fuzz: reset-db
 	go run cmd/fuzz-test/main.go --host $(GRPC_HOST) --iterations 1000 --projects 5
 
 reset-db: migrate
-	psql $(DB_URI) -c "truncate dl.objects; truncate dl.contents; truncate dl.projects; truncate dl.cache_versions;"
+	psql $(DB_URI) -c "truncate dl.objects; truncate dl.contents; truncate dl.projects; truncate dl.cache_versions; truncate dl.staged_objects"
 
 setup-local: reset-db
 	psql $(DB_URI) -c "insert into dl.projects (id, latest_version, pack_patterns) values (1, 0, '{\"node_modules/.*/\"}');"
@@ -126,7 +127,6 @@ server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT) --profile cpu.prof --log-level info
 
 client-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
-client-update: export DL_SKIP_SSL_VERIFICATION=1
 client-update:
 	development/scripts/simple_input.sh 1
 	go run cmd/client/main.go update --host $(GRPC_HOST) --project 1 --dir input/simple
@@ -136,7 +136,6 @@ client-update:
 	go run cmd/client/main.go update --host $(GRPC_HOST) --project 1 --dir input/simple
 
 client-large-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
-client-large-update: export DL_SKIP_SSL_VERIFICATION=1
 client-large-update:
 	development/scripts/complex_input.sh 1
 	go run cmd/client/main.go update --host $(GRPC_HOST) --project 1  --dir input/complex
@@ -145,8 +144,18 @@ client-large-update:
 	development/scripts/complex_input.sh 3
 	go run cmd/client/main.go update --host $(GRPC_HOST) --project 1 --dir input/complex
 
+client-staged-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
+client-staged-update:
+	development/scripts/simple_input.sh 1
+	go run cmd/client/main.go update --host $(GRPC_HOST) --project 1 --dir input/simple
+	development/scripts/simple_input.sh 2
+	go run cmd/client/main.go update --host $(GRPC_HOST) --project 1 --dir input/simple --staged
+
+client-commit: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
+client-commit:
+	go run cmd/client/main.go commit --host $(GRPC_HOST) --project 1 --version 2
+
 client-get: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
-client-get: export DL_SKIP_SSL_VERIFICATION=1
 client-get:
 ifndef to_version
 	go run cmd/client/main.go get --host $(GRPC_HOST) --project 1 --prefix "$(prefix)"
@@ -155,7 +164,6 @@ else
 endif
 
 client-rebuild: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
-client-rebuild: export DL_SKIP_SSL_VERIFICATION=1
 client-rebuild:
 ifndef to_version
 	go run cmd/client/main.go rebuild --host $(GRPC_HOST) --project 1 --prefix "$(prefix)" --dir $(dir)
@@ -164,27 +172,22 @@ else
 endif
 
 client-rebuild-with-cache: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
-client-rebuild-with-cache: export DL_SKIP_SSL_VERIFICATION=1
 client-rebuild-with-cache:
 	go run cmd/client/main.go rebuild --host $(GRPC_HOST) --project 1 --prefix "$(prefix)" --dir $(dir) --cachedir input/cache
 
 client-getcache: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
-client-getcache: export DL_SKIP_SSL_VERIFICATION=1
 client-getcache:
 	go run cmd/client/main.go getcache --host $(GRPC_HOST) --path input/cache
 
 client-gc-contents: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
-client-gc-contents: export DL_SKIP_SSL_VERIFICATION=1
 client-gc-contents:
 	go run cmd/client/main.go gc --host $(GRPC_HOST) --mode contents --sample 25
 
 client-gc-project: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
-client-gc-project: export DL_SKIP_SSL_VERIFICATION=1
 client-gc-project:
 	go run cmd/client/main.go gc --host $(GRPC_HOST) --mode project --project 1 --keep 1
 
 client-gc-random-projects: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
-client-gc-random-projects: export DL_SKIP_SSL_VERIFICATION=1
 client-gc-random-projects:
 	go run cmd/client/main.go gc --host $(GRPC_HOST) --mode random-projects --sample 25 --keep 1
 

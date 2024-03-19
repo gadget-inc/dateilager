@@ -78,8 +78,11 @@ func GcContentHashes(ctx context.Context, tx pgx.Tx, hashes []Hash) (int64, erro
 			FROM dl.contents c
 			LEFT JOIN dl.objects o
 				   ON c.hash = o.hash
+			LEFT JOIN dl.staged_objects so
+				   ON c.hash = so.hash
 			WHERE c.hash = ANY($1::hash[])
-			AND o.hash IS NULL
+			  AND o.hash IS NULL
+			  AND so.hash IS NULL
 		)
 		DELETE FROM dl.contents
 		WHERE hash IN (SELECT hash FROM missing)
