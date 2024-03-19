@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -33,8 +34,11 @@ func NewClientCommand() *cobra.Command {
 		otelContext  string
 		host         string
 		port         uint16
+		timeout      uint16
 		headlessHost string
 	)
+
+	var cancel context.CancelFunc
 
 	cmd := &cobra.Command{
 		Use:               "client",
@@ -56,6 +60,12 @@ func NewClientCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
+
+			fmt.Fprintf(os.Stderr, "timeout: %v\n", timeout)
+			if timeout != 0 {
+				ctx, cancel = context.WithTimeout(cmd.Context(), time.Duration(timeout)*time.Second)
+				fmt.Fprintf(os.Stderr, "duration: %v\n", time.Duration(timeout)*time.Second)
+			}
 
 			if tracing {
 				shutdownTelemetry = telemetry.Init(ctx, telemetry.Client)
@@ -88,6 +98,12 @@ func NewClientCommand() *cobra.Command {
 
 			return nil
 		},
+		PersistentPostRunE: func(cmd *cobra.Command, _ []string) error {
+			if cancel != nil {
+				cancel()
+			}
+			return nil
+		},
 	}
 
 	flags := cmd.PersistentFlags()
@@ -99,6 +115,7 @@ func NewClientCommand() *cobra.Command {
 	flags.StringVar(&otelContext, "otel-context", "", "Open Telemetry context")
 	flags.StringVar(&host, "host", "", "GRPC server hostname")
 	flags.Uint16Var(&port, "port", 5051, "GRPC server port")
+	flags.Uint16Var(&timeout, "timeout", 0, "GRPC client timeout")
 	flags.StringVar(&headlessHost, "headless-host", "", "Alternative headless hostname to use for round robin connections")
 
 	cmd.AddCommand(NewCmdGet())
@@ -115,11 +132,8 @@ func NewClientCommand() *cobra.Command {
 }
 
 func ClientExecute() {
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
-	defer cancel()
-
+	ctx := context.Background()
 	cmd := NewClientCommand()
-
 	err := cmd.ExecuteContext(ctx)
 
 	client := client.FromContext(cmd.Context())
