@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import * as fs from "fs";
 import { Client } from "pg";
 import { encodeContent } from "../src";
@@ -131,6 +132,29 @@ describe("binary client operations", () => {
     expect(JSON.stringify(result)).toMatch('{"count":0}');
     expect(result.count).toStrictEqual(0);
   });
+
+  it("can timeout while rebuilding the file system", async () => {
+    const project = 1337n;
+
+    await grpcClient.newProject(project, []);
+
+    const stream = grpcClient.updateObjects(project);
+    for (let i = 0; i < 1000; i++) {
+      const content = encodeContent(crypto.randomBytes(512 * 1024).toString("hex"));
+      await stream.send({
+        path: `hello-${i}.txt`,
+        mode: 0o755n,
+        content: content,
+        size: BigInt(content.length),
+        deleted: false,
+      });
+    }
+    await stream.complete();
+
+    const dir = tmpdir();
+    const rebuildPromise = binaryClient.rebuild(project, null, dir, { timeout: 1 });
+    await expect(rebuildPromise).rejects.toThrow(/context deadline exceeded/);
+  }, 20_000);
 });
 
 describe("Gadget file match tests", () => {
@@ -140,8 +164,9 @@ describe("Gadget file match tests", () => {
 
     await grpcClient.newProject(project, []);
 
+    const stream = grpcClient.updateObjects(project);
     for (const path of paths) {
-      await grpcClient.updateObject(project, {
+      await stream.send({
         path,
         mode: 0o755n,
         content: encodedContent,
@@ -149,6 +174,7 @@ describe("Gadget file match tests", () => {
         deleted: false,
       });
     }
+    await stream.complete();
 
     const dir = tmpdir();
     const result = await binaryClient.rebuild(project, null, dir, { matchInclude: include, matchExclude: exclude });

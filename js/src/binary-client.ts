@@ -148,10 +148,12 @@ export class DateiLagerBinaryClient {
           ? {
               update: options.timeout,
               rebuild: options.timeout,
+              gc: options.timeout,
             }
           : {
               update: 0,
               rebuild: 0,
+              gc: 0,
               ...options.timeout,
             },
       tracing: options.tracing ?? false,
@@ -365,6 +367,9 @@ export class DateiLagerBinaryClient {
       baseArgs.push("--headless-host", this._options.headlessHost);
     }
 
+    const timeout = options?.timeout ?? this._options.timeout[method];
+    baseArgs.push("--timeout", String(timeout));
+
     if (this._options.tracing) {
       const carrier = {};
       propagation.inject(context.active(), carrier);
@@ -375,7 +380,6 @@ export class DateiLagerBinaryClient {
     const subprocess = execa(this._options.command, baseArgs.concat(args), {
       cwd,
       cleanup: false, // don't terminate this subprocess process eagerly when the parent process is terminated, which is execa's default behaviour. we use graceful shutdown gadget-side to give running operations a chance to complete, and we don't want to terminate them prematurely
-      timeout: options?.timeout ?? this._options.timeout[method],
       env: { DL_TOKEN: await this._options.token() },
     });
 
