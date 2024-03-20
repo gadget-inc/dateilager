@@ -34,7 +34,7 @@ func NewClientCommand() *cobra.Command {
 		otelContext  string
 		host         string
 		port         uint16
-		timeout      uint16
+		timeout      uint
 		headlessHost string
 	)
 
@@ -63,7 +63,7 @@ func NewClientCommand() *cobra.Command {
 
 			fmt.Fprintf(os.Stderr, "timeout: %v\n", timeout)
 			if timeout != 0 {
-				ctx, cancel = context.WithTimeout(cmd.Context(), time.Duration(timeout)*time.Second)
+				ctx, cancel = context.WithTimeout(cmd.Context(), time.Duration(timeout)*time.Millisecond)
 				fmt.Fprintf(os.Stderr, "duration: %v\n", time.Duration(timeout)*time.Second)
 			}
 
@@ -115,7 +115,7 @@ func NewClientCommand() *cobra.Command {
 	flags.StringVar(&otelContext, "otel-context", "", "Open Telemetry context")
 	flags.StringVar(&host, "host", "", "GRPC server hostname")
 	flags.Uint16Var(&port, "port", 5051, "GRPC server port")
-	flags.Uint16Var(&timeout, "timeout", 0, "GRPC client timeout")
+	flags.UintVar(&timeout, "timeout", 0, "GRPC client timeout (ms)")
 	flags.StringVar(&headlessHost, "headless-host", "", "Alternative headless hostname to use for round robin connections")
 
 	cmd.AddCommand(NewCmdGet())

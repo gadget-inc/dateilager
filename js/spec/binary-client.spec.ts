@@ -113,21 +113,21 @@ describe("binary client operations", () => {
   });
 
   it("can gc random-projects and return the count cleaned up", async () => {
-    const result = await binaryClient.gcRandomProjects(90, 2, -1, { timeout: 90 });
+    const result = await binaryClient.gcRandomProjects(90, 2, -1, { timeout: 1_000 });
 
     expect(JSON.stringify(result)).toMatch('{"count":0}');
     expect(result.count).toStrictEqual(0);
   });
 
   it("can gc a specific project and return the count cleaned up", async () => {
-    const result = await binaryClient.gcProject(1, 2, -1, { timeout: 90 });
+    const result = await binaryClient.gcProject(1, 2, -1, { timeout: 1_000 });
 
     expect(JSON.stringify(result)).toMatch('{"count":0}');
     expect(result.count).toStrictEqual(0);
   });
 
   it("can gc contents and successfully return the count of contents cleaned up", async () => {
-    const result = await binaryClient.gcContents(90, { timeout: 90 });
+    const result = await binaryClient.gcContents(90, { timeout: 1_000 });
 
     expect(JSON.stringify(result)).toMatch('{"count":0}');
     expect(result.count).toStrictEqual(0);
@@ -139,7 +139,7 @@ describe("binary client operations", () => {
     await grpcClient.newProject(project, []);
 
     const stream = grpcClient.updateObjects(project);
-    for (let i = 0; i < 1000; i++) {
+    for (let i = 0; i < 30; i++) {
       const content = encodeContent(crypto.randomBytes(512 * 1024).toString("hex"));
       await stream.send({
         path: `hello-${i}.txt`,
@@ -152,9 +152,9 @@ describe("binary client operations", () => {
     await stream.complete();
 
     const dir = tmpdir();
-    const rebuildPromise = binaryClient.rebuild(project, null, dir, { timeout: 1 });
+    const rebuildPromise = binaryClient.rebuild(project, null, dir, { timeout: 25 });
     await expect(rebuildPromise).rejects.toThrow(/context deadline exceeded/);
-  }, 20_000);
+  });
 });
 
 describe("Gadget file match tests", () => {
