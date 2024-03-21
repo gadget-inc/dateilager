@@ -71,13 +71,13 @@ func ListProjects(ctx context.Context, tx pgx.Tx) ([]*pb.Project, error) {
 	return projects, nil
 }
 
-func RandomProjects(ctx context.Context, tx pgx.Tx, sample float32) ([]int64, error) {
+func RandomProjects(ctx context.Context, conn DbConnector, sample float32) ([]int64, error) {
 	var projects []int64
 
 	for i := 0; i < 5; i++ {
 		// The SYSTEM sampling method would be quicker but it often produces no or all data
 		// on tables with just a few rows.
-		rows, err := tx.Query(ctx, fmt.Sprintf(`
+		rows, err := conn.Query(ctx, fmt.Sprintf(`
 			SELECT id
 			FROM dl.projects
 			TABLESAMPLE BERNOULLI(%f)

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -61,10 +60,8 @@ func NewClientCommand() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			fmt.Fprintf(os.Stderr, "timeout: %v\n", timeout)
 			if timeout != 0 {
 				ctx, cancel = context.WithTimeout(cmd.Context(), time.Duration(timeout)*time.Millisecond)
-				fmt.Fprintf(os.Stderr, "duration: %v\n", time.Duration(timeout)*time.Second)
 			}
 
 			if tracing {

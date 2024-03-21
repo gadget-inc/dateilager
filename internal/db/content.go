@@ -240,8 +240,8 @@ func (cl *ContentLookup) Lookup(ctx context.Context, tx pgx.Tx, hashesToLookup m
 	return contents, nil
 }
 
-func RandomContents(ctx context.Context, tx pgx.Tx, sample float32) ([]Hash, error) {
-	rows, err := tx.Query(ctx, fmt.Sprintf(`
+func RandomContents(ctx context.Context, conn DbConnector, sample float32) ([]Hash, error) {
+	rows, err := conn.Query(ctx, fmt.Sprintf(`
 		SELECT (hash).h1, (hash).h2
 		FROM dl.contents
 		TABLESAMPLE SYSTEM(%f)

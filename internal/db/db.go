@@ -10,6 +10,7 @@ import (
 type CloseFunc func(context.Context)
 
 type DbConnector interface {
-	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
 	Connect(context.Context) (pgx.Tx, CloseFunc, error)
+	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
 }

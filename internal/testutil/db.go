@@ -46,6 +46,14 @@ func (d *DbTestConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 	return innerTx, func(context.Context) {}, nil
 }
 
+func (d *DbTestConnector) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	if d.innerTx != nil {
+		return d.innerTx.Query(ctx, sql, args...)
+	} else {
+		return d.tx.Query(ctx, sql, args...)
+	}
+}
+
 func (d *DbTestConnector) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
 	if d.innerTx != nil {
 		return d.innerTx.Exec(ctx, sql, args...)
