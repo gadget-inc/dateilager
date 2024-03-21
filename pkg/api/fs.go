@@ -847,12 +847,6 @@ func (f *Fs) GcProject(ctx context.Context, req *pb.GcProjectRequest) (*pb.GcPro
 		return nil, status.Error(codes.InvalidArgument, "Invalid GC KeepVersions: cannot keep 0 versions")
 	}
 
-	tx, close, err := f.DbConn.Connect(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
-	}
-	defer close(ctx)
-
 	logger.Debug(ctx, "FS.GcProject[Init]", key.Project.Field(req.Project))
 
 	fromVersion := int64(0)
@@ -860,21 +854,15 @@ func (f *Fs) GcProject(ctx context.Context, req *pb.GcProjectRequest) (*pb.GcPro
 		fromVersion = *req.FromVersion
 	}
 
-	hashes, err := db.GcProjectObjects(ctx, tx, req.Project, req.KeepVersions, fromVersion)
+	hashes, err := db.GcProjectObjects(ctx, f.DbConn, req.Project, req.KeepVersions, fromVersion)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS gc project objects %v: %v", req.Project, err)
 	}
 
-	count, err := db.GcContentHashes(ctx, tx, hashes)
+	count, err := db.GcContentHashes(ctx, f.DbConn, hashes)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS gc content hashes %v: %v", req.Project, err)
 	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS gc project commit tx: %v", err)
-	}
-	logger.Debug(ctx, "FS.GcProject[Commit]")
 
 	return &pb.GcProjectResponse{
 		Count:   count,
@@ -901,12 +889,6 @@ func (f *Fs) GcRandomProjects(ctx context.Context, req *pb.GcRandomProjectsReque
 		return nil, status.Error(codes.InvalidArgument, "Invalid GC KeepVersions: cannot keep 0 versions")
 	}
 
-	tx, close, err := f.DbConn.Connect(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
-	}
-	defer close(ctx)
-
 	logger.Debug(ctx, "FS.GcRandomProjects[Init]", key.SampleRate.Field(req.Sample))
 
 	fromVersion := int64(0)
@@ -914,26 +896,20 @@ func (f *Fs) GcRandomProjects(ctx context.Context, req *pb.GcRandomProjectsReque
 		fromVersion = *req.FromVersion
 	}
 
-	projects, err := db.RandomProjects(ctx, tx, req.Sample)
+	projects, err := db.RandomProjects(ctx, f.DbConn, req.Sample)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS gc random projects %f: %v", req.Sample, err)
 	}
 
-	hashes, err := db.GcProjectsObjects(ctx, tx, projects, req.KeepVersions, fromVersion)
+	hashes, err := db.GcProjectsObjects(ctx, f.DbConn, projects, req.KeepVersions, fromVersion)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS gc random project objects: %v", err)
 	}
 
-	count, err := db.GcContentHashes(ctx, tx, hashes)
+	count, err := db.GcContentHashes(ctx, f.DbConn, hashes)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS gc random content hashes: %v", err)
 	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS gc random projects commit tx: %v", err)
-	}
-	logger.Debug(ctx, "FS.GcRandomProjects[Commit]")
 
 	return &pb.GcRandomProjectsResponse{
 		Count:    count,
@@ -951,29 +927,17 @@ func (f *Fs) GcContents(ctx context.Context, req *pb.GcContentsRequest) (*pb.GcC
 		return nil, err
 	}
 
-	tx, close, err := f.DbConn.Connect(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
-	}
-	defer close(ctx)
-
 	logger.Debug(ctx, "FS.GcContents[Init]")
 
-	hashes, err := db.RandomContents(ctx, tx, req.Sample)
+	hashes, err := db.RandomContents(ctx, f.DbConn, req.Sample)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS gc random contents %f: %v", req.Sample, err)
 	}
 
-	count, err := db.GcContentHashes(ctx, tx, hashes)
+	count, err := db.GcContentHashes(ctx, f.DbConn, hashes)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS gc random content hashes: %v", err)
 	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "FS gc contents commit tx: %v", err)
-	}
-	logger.Debug(ctx, "FS.GcContents[Commit]")
 
 	return &pb.GcContentsResponse{
 		Count: count,

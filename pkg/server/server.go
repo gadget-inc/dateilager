@@ -115,6 +115,10 @@ func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 	return tx, func(ctx context.Context) { _ = tx.Rollback(ctx); conn.Release() }, nil
 }
 
+func (d *DbPoolConnector) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	return d.pool.Query(ctx, sql, args...)
+}
+
 func (d *DbPoolConnector) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
 	return d.pool.Exec(ctx, sql, args...)
 }

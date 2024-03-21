@@ -6,11 +6,10 @@ import (
 
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
-	"github.com/jackc/pgx/v5"
 	"go.opentelemetry.io/otel/trace"
 )
 
-func GcProjectObjects(ctx context.Context, tx pgx.Tx, project int64, keep int64, fromVersion int64) ([]Hash, error) {
+func GcProjectObjects(ctx context.Context, conn DbConnector, project int64, keep int64, fromVersion int64) ([]Hash, error) {
 	ctx, span := telemetry.Start(ctx, "gc.project-objects", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.KeepVersions.Attribute(keep),
@@ -20,7 +19,7 @@ func GcProjectObjects(ctx context.Context, tx pgx.Tx, project int64, keep int64,
 
 	hashes := []Hash{}
 
-	rows, err := tx.Query(ctx, `
+	rows, err := conn.Query(ctx, `
 		WITH latest AS (
 			SELECT latest_version AS version
 			FROM dl.projects
@@ -50,11 +49,11 @@ func GcProjectObjects(ctx context.Context, tx pgx.Tx, project int64, keep int64,
 	return hashes, nil
 }
 
-func GcProjectsObjects(ctx context.Context, tx pgx.Tx, projects []int64, keep int64, fromVersion int64) ([]Hash, error) {
+func GcProjectsObjects(ctx context.Context, conn DbConnector, projects []int64, keep int64, fromVersion int64) ([]Hash, error) {
 	hashes := []Hash{}
 
 	for _, project := range projects {
-		h, err := GcProjectObjects(ctx, tx, project, keep, fromVersion)
+		h, err := GcProjectObjects(ctx, conn, project, keep, fromVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -64,7 +63,7 @@ func GcProjectsObjects(ctx context.Context, tx pgx.Tx, projects []int64, keep in
 	return hashes, nil
 }
 
-func GcContentHashes(ctx context.Context, tx pgx.Tx, hashes []Hash) (int64, error) {
+func GcContentHashes(ctx context.Context, conn DbConnector, hashes []Hash) (int64, error) {
 	if len(hashes) == 0 {
 		return 0, nil
 	}
@@ -72,7 +71,7 @@ func GcContentHashes(ctx context.Context, tx pgx.Tx, hashes []Hash) (int64, erro
 	rowsAffected := int64(0)
 
 	for _, hashChunk := range chunk(hashes, 500) {
-		tag, err := tx.Exec(ctx, `
+		tag, err := conn.Exec(ctx, `
 		WITH missing AS (
 			SELECT c.hash
 			FROM dl.contents c
