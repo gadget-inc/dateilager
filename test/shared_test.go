@@ -110,6 +110,20 @@ func countContents(tc util.TestCtx) int {
 	return count
 }
 
+func countObjectsByProject(tc util.TestCtx, project int64) int {
+	conn := tc.Connect()
+
+	var count int
+	err := conn.QueryRow(tc.Context(), `
+		SELECT count(*)
+		FROM dl.objects
+		WHERE project = $1
+	`, project).Scan(&count)
+	require.NoError(tc.T(), err, "count objects")
+
+	return count
+}
+
 func writeObjectFull(tc util.TestCtx, project int64, start int64, stop *int64, path, content string, mode fs.FileMode) {
 	conn := tc.Connect()
 

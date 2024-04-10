@@ -23,6 +23,7 @@ func CopyAllObjects(ctx context.Context, tx pgx.Tx, source int64, target int64) 
 		SELECT $1, start_version, stop_version, path, hash, mode, size, packed
 		FROM dl.objects
 		WHERE project = $2
+		AND stop_version IS NULL
 	`, target, source)
 	if err != nil {
 		return fmt.Errorf("copy project, source %v, target %v: %w", source, target, err)

@@ -53,6 +53,10 @@ func TestNewProjectWithTemplate(t *testing.T) {
 		"/b": {content: "b v3"},
 		"/c": {content: "c v3"},
 	})
+
+	// Copied projects should only contain live objects
+	assert.Equal(t, 4, countObjectsByProject(tc, 1))
+	assert.Equal(t, 2, countObjectsByProject(tc, 2))
 }
 
 func TestGetEmpty(t *testing.T) {
