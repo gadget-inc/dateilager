@@ -1,6 +1,6 @@
 module github.com/gadget-inc/dateilager
 
-go 1.20
+go 1.22
 
 require (
 	github.com/dgraph-io/ristretto v0.1.1
