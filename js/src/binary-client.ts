@@ -36,14 +36,12 @@ export interface DateiLagerBinaryClientOptions {
 
   /**
    * The path to the dateilager-client executable.
-   *
    * @default "dateilager-client"
    */
   command?: string;
 
   /**
    * The default number of milliseconds to wait before terminating any command.
-   *
    * @default 0 No timeout.
    */
   timeout?:
@@ -51,21 +49,18 @@ export interface DateiLagerBinaryClientOptions {
     | {
         /**
          * The default number of milliseconds to wait before terminating the update command.
-         *
          * @default 0 No timeout.
          */
         update?: number;
 
         /**
          * The default number of milliseconds to wait before terminating the rebuild command.
-         *
          * @default 0 No timeout.
          */
         rebuild?: number;
 
         /**
          * The default number of milliseconds to wait before terminating the gc command.
-         *
          * @default 0 No timeout.
          */
         gc?: number;
@@ -73,7 +68,6 @@ export interface DateiLagerBinaryClientOptions {
 
   /**
    * Whether the dateilager binary client should enable tracing.
-   *
    * @default false
    */
   tracing?: boolean;
@@ -163,12 +157,11 @@ export class DateiLagerBinaryClient {
 
   /**
    * Update objects in a project based on the differences in a local directory.
-   *
    * @param project         The id of the project.
    * @param directory       The path of the directory to send updates from.
    * @param options         Object of options.
    * @param options.timeout Number of milliseconds to wait before terminating the process.
-   * @returns                 The latest project version or `null` if something went wrong.
+   * @returns               The latest project version or `null` if something went wrong.
    */
   public async update(project: bigint, directory: string, options?: { timeout?: number }): Promise<bigint | null> {
     return await trace(
@@ -194,7 +187,6 @@ export class DateiLagerBinaryClient {
 
   /**
    * Rebuild the local filesystem.
-   *
    * @param project              The id of the project.
    * @param to                   The version of the project to rebuild the filesystem to.
    * @param directory            The path of the directory to rebuild the filesystem at.
@@ -205,7 +197,7 @@ export class DateiLagerBinaryClient {
    * @param options.cacheDir     Path where the cache directory is mounted.
    * @param options.matchInclude Set fileMatch to true if the written files are matched by this glob pattern
    * @param options.matchExclude Set fileMatch to false if the written files are matched by this glob pattern
-   * @returns                      The latest project version or `null` if something went wrong.
+   * @returns                    The latest project version or `null` if something went wrong.
    */
   public async rebuild(
     project: bigint,
