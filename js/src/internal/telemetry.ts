@@ -15,7 +15,7 @@ export function trace<T>(name: string, options: SpanOptions, fn: (span: Span) =>
       const result = fn(span);
 
       // to reduce overhead and keep the same return type, only instantiate a promise if a promise was returned
-      if (result && "then" in result) {
+      if (result && typeof result == "object" && "then" in result) {
         return Promise.resolve(result).finally(() => span.end());
       }
 

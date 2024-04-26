@@ -39,14 +39,12 @@ export interface DateiLagerGrpcClientOptions {
 
   /**
    * Options that will be passed to the underlying grpc client constructor.
-   *
    * @see ClientOptions
    */
   grpcClientOptions?: ClientOptions;
 
   /**
    * Options that will be passed to every remote procedure call.
-   *
    * @see RpcOptions
    */
   rpcOptions?: RpcOptions | (() => RpcOptions | undefined);
@@ -71,7 +69,6 @@ export class DateiLagerGrpcClient {
   /**
    * The library used to interact with GRPC creates connections lazily, this constructor will not
    * raise an error even if there is no service running at {@link DateiLagerGrpcClientOptions.server server}.
-   *
    * @param options Grpc client options.
    */
   public constructor(options: DateiLagerGrpcClientOptions) {
@@ -113,7 +110,6 @@ export class DateiLagerGrpcClient {
 
   /**
    * Create a new project.
-   *
    * @param project      The id of the project.
    * @param packPatterns The paths to pack.
    * @param template     The id of the project to start from.
@@ -141,7 +137,6 @@ export class DateiLagerGrpcClient {
 
   /**
    * Delete a project.
-   *
    * @param project The id of the project.
    */
   public async deleteProject(project: bigint): Promise<void> {
@@ -158,13 +153,12 @@ export class DateiLagerGrpcClient {
 
   /**
    * List objects.
-   *
-   * @param project The id of the project.
-   * @param path    The path to list objects under.
-   * @param ignores The paths under {@link path} to ignore.
-   * @param from    The project version to start from.
-   * @param to      The project version to end at.
-   * @returns         A stream of objects.
+   * @param  project The id of the project.
+   * @param  path    The path to list objects under.
+   * @param  ignores The paths under {@link path} to ignore.
+   * @param  from    The project version to start from.
+   * @param  to      The project version to end at.
+   * @returns        A stream of objects.
    * @yields           An object from the stream.
    * @example
    * for await (const object of client.listObjects(1n, "")) {
@@ -227,13 +221,12 @@ export class DateiLagerGrpcClient {
 
   /**
    * Get objects.
-   *
    * @param project The id of the project.
    * @param path    The path to get objects under.
    * @param ignores The paths under {@link path} to ignore.
    * @param from    The project version to start from.
    * @param to      The project version to end at.
-   * @returns         All the objects under {@link path}.
+   * @returns       All the objects under {@link path}.
    * @example
    * const response = await client.getObjects(1n, "");
    * for (const object of response.objects) {
@@ -265,12 +258,11 @@ export class DateiLagerGrpcClient {
 
   /**
    * Get an object.
-   *
    * @param project The id of the project.
    * @param path    The path of the object.
    * @param from    The project version to start from.
    * @param to      The project version to end at.
-   * @returns         The object at the given path or undefined if it does not exist.
+   * @returns       The object at the given path or undefined if it does not exist.
    */
   public async getObject(project: bigint, path: string, from?: bigint, to?: bigint): Promise<Objekt | undefined> {
     return await trace(
@@ -314,9 +306,8 @@ export class DateiLagerGrpcClient {
 
   /**
    * Update objects.
-   *
    * @param project The id of the project.
-   * @returns         An {@link UpdateInputStream} to send objects to update.
+   * @returns       An {@link UpdateInputStream} to send objects to update.
    */
   public updateObjects(project: bigint): UpdateInputStream {
     const parentContext = contextAPI.active();
@@ -337,10 +328,9 @@ export class DateiLagerGrpcClient {
 
   /**
    * Update an object.
-   *
    * @param project The id of the project.
    * @param obj     The object to update.
-   * @returns         The latest project version or `null` if something went wrong.
+   * @returns       The latest project version or `null` if something went wrong.
    */
   public async updateObject(project: bigint, obj: Objekt): Promise<bigint | null> {
     const stream = this.updateObjects(project);
@@ -350,7 +340,6 @@ export class DateiLagerGrpcClient {
 
   /**
    * Rollback a project.
-   *
    * @param project The id of the project.
    * @param version The version to rollback to.
    */
@@ -360,7 +349,6 @@ export class DateiLagerGrpcClient {
 
   /**
    * Snapshot the current state of the dateilager server.
-   *
    * @returns All the projects on the dateilager server.
    * @throws If the dateilager server's DL_ENV environment variable is PROD.
    * @see DateiLagerGrpcClient.resetToSnapshotInDevOrTests
@@ -373,7 +361,6 @@ export class DateiLagerGrpcClient {
   /**
    * Reset the given projects to their respective versions and delete any remaining projects.
    * If no projects are provided, delete all projects.
-   *
    * @param projects The projects to reset.
    * @throws If the dateilager server's DL_ENV environment variable is PROD.
    * @see DateiLagerGrpcClient.snapshotInDevOrTests
@@ -386,11 +373,10 @@ export class DateiLagerGrpcClient {
    * Clones the `source` projects changes (from `fromVersion` up to `toVersion`) to the `target` project.
    * This method assumes that it is always a one way clone from source to target, it does not take into account
    * the changes that have occurred in the `target` project.
-   *
    * @param source  The source project.
    * @param target  The target project.
    * @param version The version of the source project to clone up to.
-   * @returns         The new version number of the target project.
+   * @returns       The new version number of the target project.
    */
   public async cloneToProject(source: bigint, target: bigint, version: bigint): Promise<CloneToProjectResponse> {
     return await trace(
@@ -411,11 +397,10 @@ export class DateiLagerGrpcClient {
 
   /**
    * GC project.
-   *
    * @param project The project to GC.
    * @param keep    The amount of versions since the latest that should be kept.
    * @param from    The starting version to GC from.
-   * @returns         The amount of objects that were GC'd.
+   * @returns       The amount of objects that were GC'd.
    */
   public async gcProject(project: bigint, keep: bigint, from?: bigint): Promise<bigint> {
     const call = await this._client.gcProject({
@@ -428,11 +413,10 @@ export class DateiLagerGrpcClient {
 
   /**
    * GC random projects.
-   *
    * @param sample The percentage of projects to sample from.
    * @param keep   The amount of versions since the latest that should be kept.
    * @param from   The starting version to GC from.
-   * @returns        The amount of objects that were GC'd.
+   * @returns      The amount of objects that were GC'd.
    */
   public async gcRandomProjects(sample: number, keep: bigint, from?: bigint): Promise<bigint> {
     const call = await this._client.gcRandomProjects({
@@ -445,9 +429,8 @@ export class DateiLagerGrpcClient {
 
   /**
    * GC contents.
-   *
    * @param sample The percentage of projects to sample from.
-   * @returns        The amount of objects that were GC'd.
+   * @returns      The amount of objects that were GC'd.
    */
   public async gcContents(sample: number): Promise<bigint> {
     const call = await this._client.gcContents({
@@ -459,7 +442,6 @@ export class DateiLagerGrpcClient {
 
 /**
  * Used to send a stream of objects to update.
- *
  * @see DateiLagerGrpcClient.updateObjects
  */
 class UpdateInputStream {
@@ -480,7 +462,6 @@ class UpdateInputStream {
 
   /**
    * Send an object to update.
-   *
    * @param obj The object to update.
    */
   public async send(obj: Objekt): Promise<void> {
@@ -497,7 +478,6 @@ class UpdateInputStream {
 
   /**
    * Complete the update request.
-   *
    * @returns The latest project version or `null` if something went wrong.
    */
   public async complete(): Promise<bigint | null> {
@@ -515,9 +495,8 @@ const encoder = new TextEncoder();
 
 /**
  * Encode string object contents as an array of bytes.
- *
  * @param content The string to encode.
- * @returns         The encoded content as an array of bytes.
+ * @returns       The encoded content as an array of bytes.
  */
 export function encodeContent(content: string): Uint8Array {
   return encoder.encode(content);
@@ -527,9 +506,8 @@ const decoder = new TextDecoder();
 
 /**
  * Decode an array of bytes as an object's string contents.
- *
  * @param bytes The array of bytes to decode.
- * @returns       The bytes decoded into a string.
+ * @returns     The bytes decoded into a string.
  */
 export function decodeContent(bytes: Uint8Array | undefined): string {
   return decoder.decode(bytes);
