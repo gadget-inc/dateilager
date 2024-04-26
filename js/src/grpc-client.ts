@@ -315,10 +315,11 @@ export class DateiLagerGrpcClient {
   /**
    * Update objects.
    *
-   * @param project The id of the project.
-   * @returns         An {@link UpdateInputStream} to send objects to update.
+   * @param project  The id of the project.
+   * @param isStaged If the update will be staged and committed later.
+   * @returns          An {@link UpdateInputStream} to send objects to update.
    */
-  public updateObjects(project: bigint): UpdateInputStream {
+  public updateObjects(project: bigint, isStaged: boolean): UpdateInputStream {
     const parentContext = contextAPI.active();
     const span = tracer.startSpan(
       "dateilager-grpc-client.update-objects",
@@ -332,7 +333,7 @@ export class DateiLagerGrpcClient {
 
     const call = contextAPI.with(traceAPI.setSpan(parentContext, span), () => this._client.update(this._rpcOptions()));
 
-    return new UpdateInputStream(project, call, span);
+    return new UpdateInputStream(project, isStaged, call, span);
   }
 
   /**
@@ -343,9 +344,20 @@ export class DateiLagerGrpcClient {
    * @returns         The latest project version or `null` if something went wrong.
    */
   public async updateObject(project: bigint, obj: Objekt): Promise<bigint | null> {
-    const stream = this.updateObjects(project);
+    const stream = this.updateObjects(project, false);
     await stream.send(obj);
     return await stream.complete();
+  }
+
+  /**
+   * Commit a staged update.
+   *
+   * @param project The id of the project.
+   * @param version The version to commit.
+   * @returns         The latest project version or `null` if something went wrong.
+   */
+  public async commitUpdate(project: bigint, version: bigint): Promise<void> {
+    await this._client.commitUpdate({ project, version }, this._rpcOptions());
   }
 
   /**
@@ -467,13 +479,17 @@ class UpdateInputStream {
   private readonly _project: bigint;
 
   /** @internal */
+  private readonly _isStaged: boolean;
+
+  /** @internal */
   private readonly _call: ClientStreamingCall<UpdateRequest, UpdateResponse>;
 
   /** @internal */
   private readonly _span: Span;
 
-  public constructor(project: bigint, call: ClientStreamingCall<UpdateRequest, UpdateResponse>, span: Span) {
+  public constructor(project: bigint, isStaged: boolean, call: ClientStreamingCall<UpdateRequest, UpdateResponse>, span: Span) {
     this._project = project;
+    this._isStaged = isStaged;
     this._call = call;
     this._span = span;
   }
@@ -488,6 +504,7 @@ class UpdateInputStream {
       await this._call.requests.send({
         project: this._project,
         object: obj,
+        isStaged: this._isStaged,
       });
     } catch (err) {
       this._span.end();
