@@ -47,7 +47,3 @@ runs:
     - name: Add Go binaries to PATH
       run: echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
       shell: bash -l {0}
-
-    - name: Install Go binaries
-      run: make install
-      shell: bash -l {0}

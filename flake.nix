@@ -11,6 +11,7 @@
       "x86_64-linux"
       "x86_64-darwin"
       "aarch64-darwin"
+      "aarch64-linux"
     ]
       (system: nixpkgs.lib.fix (flake:
         let
@@ -36,7 +37,7 @@
           callPackage = pkgs.newScope (flake.packages // { inherit lib callPackage; });
         in
         {
-          packages = {
+          packages =  {
             ## DateiLager development scripts
 
             clean = callPackage ./development/nix/scripts/clean.nix { };
@@ -63,6 +64,27 @@
           };
 
           defaultPackage = flake.packages.dateilager;
+
+          devShell = pkgs.mkShell {
+            buildInputs = with pkgs; [
+              flake.packages.go
+              flake.packages.nodejs
+              flake.packages.postgresql
+              flake.packages.dev
+              flake.packages.clean
+              git
+              protobuf
+              protoc-gen-go
+              protoc-gen-go-grpc
+              go-migrate
+              mkcert
+            ];
+
+            shellHook = ''
+              # prepend the built binaries to the $PATH
+              export PATH="./bin":$PATH
+          '';
+          };
         }
       )));
 }
