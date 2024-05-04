@@ -269,7 +269,7 @@ func TestRebuildWithCache(t *testing.T) {
 	cacheDir := emptyTmpDir(t)
 	defer os.RemoveAll(cacheDir)
 
-	_, err = c.GetCache(tc.Context(), cacheDir)
+	_, _, err = c.GetCache(tc.Context(), cacheDir)
 	require.NoError(t, err)
 
 	rebuild(tc, c, 1, nil, tmpDir, &cacheDir, expectedResponse{

@@ -25,7 +25,7 @@ func TestClientGetCacheWithEmptyCache(t *testing.T) {
 	tmpCacheDir, err := os.MkdirTemp("", "dl_cache_test_tmp")
 	require.NoError(t, err)
 
-	version, err := c.GetCache(tc.Context(), tmpCacheDir)
+	version, _, err := c.GetCache(tc.Context(), tmpCacheDir)
 	assert.NoError(t, err, "no errors expected")
 	assert.Equal(t, int64(-1), version)
 
@@ -49,7 +49,7 @@ func TestClientGetCache(t *testing.T) {
 	tmpCacheDir, err := os.MkdirTemp("", "dl_cache_test_tmp")
 	require.NoError(t, err)
 
-	version, err := c.GetCache(tc.Context(), tmpCacheDir)
+	version, _, err := c.GetCache(tc.Context(), tmpCacheDir)
 	require.NoError(t, err, "client.GetCache after GetCache")
 	assert.Equal(t, []string{"objects", "versions"}, dirFileNames(t, tmpCacheDir))
 
@@ -85,7 +85,7 @@ func TestClientGetCacheFailsIfLockCannotBeObtained(t *testing.T) {
 	_, err = os.OpenFile(filepath.Join(tmpCacheDir, ".lock"), os.O_CREATE|os.O_EXCL, 0600)
 	require.NoError(t, err)
 
-	_, err = c.GetCache(tc.Context(), tmpCacheDir)
+	_, _, err = c.GetCache(tc.Context(), tmpCacheDir)
 	assert.Error(t, err, "expected an error")
 	assert.Contains(t, err.Error(), "unable to obtain cache lock file")
 }
@@ -105,13 +105,13 @@ func TestClientCanHaveMultipleCacheVersions(t *testing.T) {
 	tmpCacheDir, err := os.MkdirTemp("", "dl_cache_test_tmp")
 	require.NoError(t, err)
 
-	version1, err := c.GetCache(tc.Context(), tmpCacheDir)
+	version1, _, err := c.GetCache(tc.Context(), tmpCacheDir)
 	require.NoError(t, err, "client.GetCache after GetCache")
 
 	_, err = db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
 	require.NoError(t, err)
 
-	version2, err := c.GetCache(tc.Context(), tmpCacheDir)
+	version2, _, err := c.GetCache(tc.Context(), tmpCacheDir)
 	require.NoError(t, err, "client.GetCache after GetCache")
 
 	versionsFileContent, err := os.ReadFile(filepath.Join(tmpCacheDir, "versions"))
@@ -134,9 +134,9 @@ func TestDownloadingTheSameVersionTwice(t *testing.T) {
 	tmpCacheDir, err := os.MkdirTemp("", "dl_cache_test_tmp")
 	require.NoError(t, err)
 
-	version1, err := c.GetCache(tc.Context(), tmpCacheDir)
+	version1, _, err := c.GetCache(tc.Context(), tmpCacheDir)
 	require.NoError(t, err, "client.GetCache after GetCache")
-	_, err = c.GetCache(tc.Context(), tmpCacheDir)
+	_, _, err = c.GetCache(tc.Context(), tmpCacheDir)
 	require.NoError(t, err, "client.GetCache after GetCache")
 
 	versionsFileContent, err := os.ReadFile(filepath.Join(tmpCacheDir, "versions"))
