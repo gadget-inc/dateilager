@@ -38,7 +38,7 @@ checksum:
     - glob: ./dist/migrations.tar.gz
 
 archives:
-  - name_template: "{{ .ProjectName }}-v{{ .Version }}-PRERELEASE-{{ .Os }}-{{ .Arch }}"
+  - name_template: "{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}"
   
 
 release:
