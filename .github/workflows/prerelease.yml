@@ -23,6 +23,19 @@ jobs:
         uses: goreleaser/goreleaser-action@v4
         with:
           version: latest
-          args: release --clean -f .goreleaser.prerelease.yml
+          args: release --clean --snapshot -f .goreleaser.prerelease.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create prerelease
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "pre-${{ github.sha }}"
+          prerelease: true
+          make_latest: false
+          name: "Prelease: pre-${{ github.sha }}"
+          files: |
+            dist/*.tar.gz
+            dist/checksum*

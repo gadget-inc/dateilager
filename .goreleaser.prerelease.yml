@@ -5,7 +5,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=v{{.Version}}-prerelease
+      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=v{{.Version}}
     goos:
       - linux
       - darwin
@@ -18,7 +18,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=v{{.Version}}-prerelease
+      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=v{{.Version}}
     goos:
       - linux
       - darwin
@@ -38,13 +38,8 @@ checksum:
     - glob: ./dist/migrations.tar.gz
 
 archives:
-  - name_template: "{{ .ProjectName }}-v{{ .Version }}-PRERELEASE-{{ .Os }}-{{ .Arch }}"
+  - name_template: "{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}"
 
 release:
-  version:
-    name_template: "{{ if .Tag }}{{ .Tag }}+{{ end }}pre-{{ .ShortCommit }}"
-  prerelease: true
-  draft: true
-  make_latest: false
   extra_files:
     - glob: ./dist/migrations.tar.gz
