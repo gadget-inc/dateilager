@@ -1,0 +1,47 @@
+builds:
+  - main: ./cmd/client/main.go
+    id: client
+    binary: client
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=v{{.Version}}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+  - main: ./cmd/server/main.go
+    id: server
+    binary: server
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=v{{.Version}}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    hooks:
+      post:
+        - tar -zcf dist/migrations.tar.gz migrations
+
+changelog:
+  skip: true
+
+checksum:
+  name_template: "checksums.txt"
+  extra_files:
+    - glob: ./dist/migrations.tar.gz
+
+archives:
+  - name_template: "{{ .ProjectName }}-v{{ .Version }}-PRERELEASE-{{ .Os }}-{{ .Arch }}"
+  
+
+release:
+  prerelease: true
+  extra_files:
+    - glob: ./dist/migrations.tar.gz
