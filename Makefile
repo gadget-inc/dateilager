@@ -1,5 +1,6 @@
 PROJECT := dateilager
 VERSION := $(shell git describe --tags --abbrev=0)
+GIT_COMMIT := $(shell git rev-parse --short HEAD)
 BUILD_FLAGS := -ldflags="-s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=$(VERSION)"
 
 DB_HOST ?= 127.0.0.1
@@ -200,6 +201,10 @@ else
 	docker push gcr.io/gadget-core-production/dateilager:$(version)
 	docker push gcr.io/gadget-core-production/dateilager:latest
 endif
+
+upload-prerelease-container-image: release
+	docker build -t gcr.io/gadget-core-production/dateilager:$(GIT_COMMIT) .
+	docker push gcr.io/gadget-core-production/dateilager:$(GIT_COMMIT)
 
 run-container: release
 	docker build -t dl-local:latest .
