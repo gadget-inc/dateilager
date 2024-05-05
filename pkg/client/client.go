@@ -46,12 +46,13 @@ type VersionRange struct {
 }
 
 type Client struct {
-	conn *grpc.ClientConn
-	fs   pb.FsClient
+	conn  *grpc.ClientConn
+	fs    pb.FsClient
+	cache pb.CacheClient
 }
 
 func NewClientConn(conn *grpc.ClientConn) *Client {
-	return &Client{conn: conn, fs: pb.NewFsClient(conn)}
+	return &Client{conn: conn, fs: pb.NewFsClient(conn), cache: pb.NewCacheClient(conn)}
 }
 
 type options struct {
@@ -948,6 +949,24 @@ func (c *Client) CloneToProject(ctx context.Context, source int64, target int64,
 	}
 
 	return &response.LatestVersion, nil
+}
+
+func (c *Client) PopulateDiskCache(ctx context.Context, destination string) (int64, error) {
+	ctx, span := telemetry.Start(ctx, "client.populate-disk-cache", trace.WithAttributes(
+		key.CachePath.Attribute(destination),
+	))
+	defer span.End()
+
+	request := &pb.PopulateDiskCacheRequest{
+		Path: destination,
+	}
+
+	response, err := c.cache.PopulateDiskCache(ctx, request)
+	if err != nil {
+		return 0, fmt.Errorf("populate disk cache for %s: %w", destination, err)
+	}
+
+	return response.Version, nil
 }
 
 func parallelWorkerCount() int {

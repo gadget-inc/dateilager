@@ -34,6 +34,9 @@ func NewTestCtx(t *testing.T, role auth.Role, projects ...int64) TestCtx {
 		Project: project,
 	})
 
+	log := zaptest.NewLogger(t)
+	zap.ReplaceGlobals(log)
+
 	dbConn, err := newDbTestConnector(ctx, os.Getenv("DB_URI"))
 	require.NoError(t, err, "connecting to DB")
 
@@ -42,7 +45,7 @@ func NewTestCtx(t *testing.T, role auth.Role, projects ...int64) TestCtx {
 
 	return TestCtx{
 		t:      t,
-		log:    zaptest.NewLogger(t),
+		log:    log,
 		dbConn: dbConn,
 		lookup: lookup,
 		ctx:    ctx,

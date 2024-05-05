@@ -124,6 +124,7 @@ func NewClientCommand() *cobra.Command {
 	cmd.AddCommand(NewCmdUpdate())
 	cmd.AddCommand(NewCmdGc())
 	cmd.AddCommand(NewCmdGetCache())
+	cmd.AddCommand(NewCmdGetCacheFromDaemon())
 
 	return cmd
 }

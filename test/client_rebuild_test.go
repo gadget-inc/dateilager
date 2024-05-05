@@ -277,8 +277,8 @@ func TestRebuildWithCache(t *testing.T) {
 		count:   2,
 	})
 
-	aCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), ha.Hex(), "pack/a")
-	bCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), hb.Hex(), "pack/b")
+	aCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), ha, "pack/a")
+	bCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), hb, "pack/b")
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"pack/a/1": {content: "pack/a/1 v1"},

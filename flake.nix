@@ -54,6 +54,9 @@
 
             postgresql = pkgs.postgresql_14;
 
+            golangci-lint = pkgs.golangci-lint;
+
+            glibcLocales = pkgs.glibcLocales;
             ## DateiLager outputs
 
             dateilager = callPackage ./. {
@@ -72,6 +75,8 @@
               flake.packages.postgresql
               flake.packages.dev
               flake.packages.clean
+              flake.packages.golangci-lint
+              flake.packages.glibcLocales
               git
               protobuf
               protoc-gen-go
@@ -83,6 +88,9 @@
             shellHook = ''
               # prepend the built binaries to the $PATH
               export PATH="./bin":$PATH
+
+              # silence ginko deprecations -- they come from the csi test suite that we don't control
+              export ACK_GINKGO_DEPRECATIONS=1.16.5
           '';
           };
         }

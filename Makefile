@@ -8,11 +8,13 @@ DB_USER ?= postgres
 DB_PASS ?= password
 DB_URI := postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl
 
-GRPC_PORT ?= 5051
 GRPC_HOST ?= localhost
+GRPC_PORT ?= 5051
+GRPC_CACHED_PORT ?= 5053
 
-DEV_TOKEN_ADMIN ?= v2.public.eyJzdWIiOiJhZG1pbiIsImlhdCI6IjIwMjEtMTAtMTVUMTE6MjA6MDAuMDM0WiJ9WtEey8KfQQRy21xoHq1C5KQatEevk8RxS47k4bRfMwVCPHumZmVuk6ADcfDHTmSnMtEGfFXdxnYOhRP6Clb_Dw
-DEV_TOKEN_PROJECT_1 ?= v2.public.eyJzdWIiOiIxIiwiaWF0IjoiMjAyMS0xMC0xNVQxMToyMDowMC4wMzVaIn2MQ14RfIGpoEycCuvRu9J3CZp6PppUXf5l5w8uKKydN3C31z6f6GgOEPNcnwODqBnX7Pjarpz4i2uzWEqLgQYD
+DEV_TOKEN_ADMIN ?= v2.public.eyJzdWIiOiJhZG1pbiJ9yt40HNkcyOUtDeFa_WPS6vi0WiE4zWngDGJLh17TuYvssTudCbOdQEkVDRD-mSNTXLgSRDXUkO-AaEr4ZLO4BQ
+DEV_TOKEN_PROJECT_1 ?= v2.public.eyJzdWIiOiIxIn2jV7FOdEXafKDtAnVyDgI4fmIbqU7C1iuhKiL0lDnG1Z5-j6_ObNDd75sZvLZ159-X98_mP4qvwzui0w8pjt8F
+DEV_SHARED_READER_TOKEN ?= v2.public.eyJzdWIiOiJzaGFyZWQtcmVhZGVyIn1CxWdB02s9el0Wt7qReARZ-7JtIb4Zj3D4Oiji1yXHqj0orkpbcVlswVUiekECJC16d1NrHwD2FWSwRORZn8gK
 
 PKG_GO_FILES := $(shell find pkg/ -type f -name '*.go')
 INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
@@ -63,7 +65,7 @@ development/server.key:
 
 development/server.crt: development/server.key
 
-build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client development/server.crt
+build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go internal/pb/cache.pb.go internal/pb/cache_grpc.pb.go bin/server bin/client bin/cached development/server.crt
 
 lint:
 	golangci-lint run
@@ -86,8 +88,9 @@ release/migrations.tar.gz: migrations/*
 	tar -zcf $@ migrations
 
 release: build
-release: release/server_linux_amd64 release/server_macos_amd64 release/server_macos_arm64
-release: release/client_linux_amd64 release/client_macos_amd64 release/client_macos_arm64
+release: release/server_linux_amd64 release/server_macos_amd64 release/server_macos_arm64 release/server_linux_arm64
+release: release/client_linux_amd64 release/client_macos_amd64 release/client_macos_arm64 release/client_linux_arm64
+release: release/cached_linux_amd64 release/cached_macos_amd64 release/cached_macos_arm64 release/cached_linux_arm64
 release: release/migrations.tar.gz
 
 test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
@@ -120,6 +123,11 @@ server: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 server-profile: export DL_ENV=dev
 server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT) --profile cpu.prof --log-level info
+
+cached: export DL_ENV=dev
+cached: export DL_TOKEN=$(DEV_SHARED_READER_TOKEN)
+cached: internal/pb/cache.pb.go internal/pb/cache_grpc.pb.go
+	go run cmd/cached/main.go --upstream-host $(GRPC_HOST) --upstream-port $(GRPC_PORT) --port $(GRPC_CACHED_PORT) --staging-path tmp/cache-stage
 
 client-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
 client-update: export DL_SKIP_SSL_VERIFICATION=1
@@ -168,6 +176,11 @@ client-getcache: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-getcache: export DL_SKIP_SSL_VERIFICATION=1
 client-getcache:
 	go run cmd/client/main.go getcache --host $(GRPC_HOST) --path input/cache
+
+client-getcache-from-daemon: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-getcache-from-daemon: export DL_SKIP_SSL_VERIFICATION=1
+client-getcache-from-daemon:
+	mkdir -p tmp/pods/test-pod/volumes/example && go run cmd/client/main.go getcache-from-daemon --host $(GRPC_HOST) --port $(GRPC_CACHED_PORT) input/cache
 
 client-gc-contents: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-gc-contents: export DL_SKIP_SSL_VERIFICATION=1
@@ -242,8 +255,8 @@ else
 	cd js && npm install
 endif
 
-js/src/pb: $(PROTO_FILES)
-	cd js && mkdir -p ./src/pb && npx protoc --experimental_allow_proto3_optional --ts_out ./src/pb --ts_opt long_type_bigint,ts_nocheck,eslint_disable,add_pb_suffix --proto_path ../internal/pb/ ../$^
+js/src/pb: internal/pb/fs.proto
+	cd js && mkdir -p ./src/pb && npx protoc --experimental_allow_proto3_optional --ts_out ./src/pb --ts_opt long_type_bigint,ts_nocheck,eslint_disable,add_pb_suffix --proto_path ../internal/pb/ ../internal/pb/fs.proto
 
 js/dist: js/node_modules js/src/pb
 	cd js && npm run build

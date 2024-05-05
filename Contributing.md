@@ -188,3 +188,7 @@ We also need to build the server docker image and push it to Gadget's container 
 ```bash
 make upload-container-image version=0.0.x
 ```
+
+### Getting PASETO tokens locally
+
+You can sign PASETO tokens locally with this handy online tool: https://token.dev/paseto/. Ensure you use the V2 algorithm in the public mode, and copy the PASTEO public and private key from the `development` folder.
