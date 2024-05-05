@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dl-server
+  labels:
+    app: dl-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dl-server
+  template:
+    metadata:
+      name: dl-server
+      labels:
+        app: dl-server
+    spec:
+      containers:
+        - name: server
+          image: local/dateilager:latest
+          imagePullPolicy: Never
+          command: ["./server"]
+          args:
+            [
+              "--log-level=info",
+              "--log-encoding=json",
+              "--port=5051",
+              "--dburi=$(DATABASE_URL)",
+              "--cert=secrets/tls/tls.crt",
+              "--key=secrets/tls/tls.key",
+              "--paseto=secrets/paseto/paseto.pub",
+            ]
+          ports:
+            - name: api
+              containerPort: 5051
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+                [
+                  "/bin/grpc_health_probe",
+                  "-addr=:5051",
+                  "-service=dateilager.server",
+                  "-tls",
+                  "-tls-no-verify",
+                ]
+            initialDelaySeconds: 1
+          livenessProbe:
+            exec:
+              command:
+                [
+                  "/bin/grpc_health_probe",
+                  "-addr=:5051",
+                  "-service=dateilager.server",
+                  "-tls",
+                  "-tls-no-verify",
+                ]
+            initialDelaySeconds: 2
+            periodSeconds: 2
+            failureThreshold: 2
+          env:
+            - name: DL_ENV
+              value: "dev"
+          envFrom:
+            - secretRef:
+                name: dl-app-secrets
+          volumeMounts:
+            - mountPath: "/home/main/secrets/tls"
+              name: tls-secret
+            - mountPath: "/home/main/secrets/paseto"
+              name: paseto-secret
+      volumes:
+        - name: tls-secret
+          secret:
+            secretName: dl-tls-secret
+        - name: paseto-secret
+          secret:
+            secretName: dl-paseto-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: dl-headless
+  name: dl-headless
+spec:
+  clusterIP: None
+  selector:
+    app: dl-server
+  ports:
+    - name: grpc
+      protocol: TCP
+      port: 5051
+      targetPort: 5051

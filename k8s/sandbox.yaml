@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dl-sandbox
+  labels:
+    app: dl-sandbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dl-sandbox
+  template:
+    metadata:
+      name: dl-sandbox
+      labels:
+        app: dl-sandbox
+    spec:
+      containers:
+        - name: sandbox
+          image: local/dateilager:latest
+          imagePullPolicy: Never
+          command: ["bash", "-c", "--"]
+          args: ["while true; do sleep 30; done;"]
+          # command: ["bash"]
+          # args:
+          #   [
+          #     "-c",
+          #     'curl -XPOST -H ''Content-Type: application/json'' -d "{\"uid\":\"${K8S_CONTAINER_ID}\", \"volume\": \"appdir\"}"  dl-agent.dateilager.svc.cluster.local:8080/link_cache',
+          #   ]
+          env:
+            - name: K8S_CONTAINER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+          volumeMounts:
+            - name: appdir
+              mountPath: /tmp/appdir
+      volumes:
+        - name: appdir
+          emptyDir: {}

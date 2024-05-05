@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dl-agent
+  labels:
+    app: dl-agent
+spec:
+  selector:
+    matchLabels:
+      app: dl-agent
+  template:
+    metadata:
+      name: dl-agent
+      labels:
+        app: dl-agent
+    spec:
+      containers:
+        - name: agent
+          image: local/dateilager:latest
+          imagePullPolicy: Never
+          securityContext: # FIXME
+            allowPrivilegeEscalation: false
+            runAsUser: 0
+          command: ["./client"]
+          args:
+            [
+              "agent",
+              "--host=dl-headless.dateilager.svc.cluster.local",
+              "--headless-host=dl-headless.dateilager.svc.cluster.local",
+              "--dir=/home/main/varlib/dl_cache",
+              "--log-level=info",
+              "--log-encoding=json",
+            ]
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 2
+            failureThreshold: 2
+          env:
+            - name: DL_SKIP_SSL_VERIFICATION
+              value: "1"
+          envFrom:
+            - secretRef:
+                name: dl-agent-secrets
+          volumeMounts:
+            - name: varlib
+              mountPath: /home/main/varlib
+      volumes:
+        - name: varlib
+          hostPath:
+            path: /var/lib
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dl-agent
+  labels:
+    app: dl-agent
+spec:
+  internalTrafficPolicy: Local
+  selector:
+    app: dl-agent
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

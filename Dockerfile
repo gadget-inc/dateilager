@@ -1,6 +1,6 @@
 FROM --platform=linux/amd64 registry.fedoraproject.org/fedora-minimal:40
 
-RUN microdnf install -y curl findutils gzip iputils less postgresql procps shadow-utils tar time which \
+RUN microdnf install -y curl findutils gzip hostname iputils less postgresql procps shadow-utils tar time which \
     && microdnf clean all
 
 RUN GRPC_HEALTH_PROBE_VERSION=v0.4.23 \
@@ -19,7 +19,9 @@ WORKDIR /home/main
 RUN mkdir -p /home/main/secrets
 VOLUME /home/main/secrets/tls
 VOLUME /home/main/secrets/paseto
+VOLUME /home/main/varlib
 
+COPY release/client_linux_amd64 client
 COPY release/server_linux_amd64 server
 COPY migrations migrations
 COPY entrypoint.sh entrypoint.sh

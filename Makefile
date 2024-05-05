@@ -21,12 +21,18 @@ PROTO_FILES := $(shell find internal/pb/ -type f -name '*.proto')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
+K8S_NS := dateilager
+K8S_CTX := docker-desktop
+KC := kubectl --context $(K8S_CTX) -n $(K8S_NS)
+
 .PHONY: install migrate migrate-create clean build lint release
 .PHONY: test test-one test-fuzz test-js lint-js build-js
 .PHONY: reset-db setup-local server server-profile install-js
 .PHONY: client-update client-large-update client-get client-rebuild client-rebuild-with-cache
 .PHONY: client-getcache client-gc-contents client-gc-project client-gc-random-projects
-.PHONY: health upload-container-image run-container gen-docs
+.PHONY: start-agent gen-docs health
+.PHONY: upload-container-image upload-prerelease-container-image build-local-container run-container
+.PHONY: setup-k8s reset-k8s deploy-k8s
 .PHONY: load-test-new load-test-get load-test-update
 
 install:
@@ -189,6 +195,14 @@ client-gc-random-projects: export DL_SKIP_SSL_VERIFICATION=1
 client-gc-random-projects:
 	go run cmd/client/main.go gc --host $(GRPC_HOST) --mode random-projects --sample 25 --keep 1
 
+start-agent: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+start-agent: export DL_SKIP_SSL_VERIFICATION=1
+start-agent:
+	go run cmd/client/main.go agent --host $(GRPC_HOST) --dir /tmp/dl_agent
+
+gen-docs:
+	go run cmd/gen-docs/main.go
+
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)
 	grpc-health-probe -addr $(GRPC_SERVER) -service $(SERVICE)
@@ -206,12 +220,30 @@ upload-prerelease-container-image: release
 	docker build -t gcr.io/gadget-core-production/dateilager:$(GIT_COMMIT) .
 	docker push gcr.io/gadget-core-production/dateilager:$(GIT_COMMIT)
 
-run-container: release
-	docker build -t dl-local:latest .
-	docker run --rm -it -p 127.0.0.1:$(GRPC_PORT):$(GRPC_PORT)/tcp -v ./development:/home/main/secrets/tls -v ./development:/home/main/secrets/paseto dl-local:latest $(GRPC_PORT) "postgres://$(DB_USER):$(DB_PASS)@host.docker.internal:5432" dl
+build-local-container: release
+	docker build -t local/dateilager:latest .
 
-gen-docs:
-	go run cmd/gen-docs/main.go
+run-container: build-local-container
+	docker run --rm -it -p 127.0.0.1:$(GRPC_PORT):$(GRPC_PORT)/tcp -v ./development:/home/main/secrets/tls -v ./development:/home/main/secrets/paseto local/dateilager:latest $(GRPC_PORT) "postgres://$(DB_USER):$(DB_PASS)@host.docker.internal:5432" dl
+
+setup-k8s:
+	kubectl --context $(K8S_CTX) apply -f k8s/namespace.yaml
+	$(KC) create secret tls dl-tls-secret --cert=development/server.crt --key=development/server.key
+	$(KC) create secret generic dl-paseto-secret --from-file=paseto.pub=development/paseto.pub
+	$(KC) create secret generic dl-app-secrets --from-literal="DATABASE_URL=postgres://$(DB_USER):$(DB_PASS)@host.docker.internal:5432/dl"
+	$(KC) create secret generic dl-agent-secrets --from-literal="DL_TOKEN=$(DEV_TOKEN_ADMIN)"
+
+reset-k8s:
+	$(KC) delete service --ignore-not-found dl-agent
+	$(KC) delete daemonset --ignore-not-found dl-agent
+	$(KC) delete service --ignore-not-found dl-headless
+	$(KC) delete deployment --ignore-not-found dl-server
+	$(KC) delete deployment --ignore-not-found --force dl-sandbox
+
+deploy-k8s: build-local-container reset-k8s
+	$(KC) apply -f k8s/server.yaml
+	$(KC) apply -f k8s/agent.yaml
+	$(KC) apply -f k8s/sandbox.yaml
 
 define load-test
 	ghz --cert=development/server.crt --key=development/server.key \

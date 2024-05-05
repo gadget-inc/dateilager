@@ -18,6 +18,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
+	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
 	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
@@ -758,6 +759,8 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 		return -1, fmt.Errorf("fs.GetCache receive: %w", err)
 	}
 	version := response.Version
+
+	logger.Info(ctx, "get cache version", key.Version.Field(version), key.CacheVersions.Field(availableVersions))
 
 	for _, availableVersion := range availableVersions {
 		if version == availableVersion {

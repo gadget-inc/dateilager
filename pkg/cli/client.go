@@ -84,6 +84,7 @@ func NewClientCommand() *cobra.Command {
 				return fmt.Errorf("required flag(s) \"host\" not set")
 			}
 
+			logger.Info(ctx, "client config", zap.String("host", host), zap.Uint16("port", port), zap.String("headlesshost", headlessHost))
 			cl, err := client.NewClient(ctx, host, port, client.WithheadlessHost(headlessHost))
 			if err != nil {
 				return err
@@ -124,6 +125,7 @@ func NewClientCommand() *cobra.Command {
 	cmd.AddCommand(NewCmdUpdate())
 	cmd.AddCommand(NewCmdGc())
 	cmd.AddCommand(NewCmdGetCache())
+	cmd.AddCommand(NewCmdAgent())
 
 	return cmd
 }
