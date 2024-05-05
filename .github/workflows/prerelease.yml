@@ -26,3 +26,9 @@ jobs:
           args: release --clean --snapshot -f .goreleaser.prerelease.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload assets
+        uses: actions/upload-artifact@v3
+        with:
+          name: dateilager-prerelease
+          path: dist/*
