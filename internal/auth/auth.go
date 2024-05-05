@@ -18,9 +18,10 @@ const (
 type Role int
 
 const (
-	None Role = iota
-	Project
-	Admin
+	None         Role = iota
+	Project           // read and write to one project
+	Admin             // read and write to any project
+	SharedReader      // read the shared caches, but no specific project data
 )
 
 type Auth struct {
@@ -36,14 +37,17 @@ func (a Auth) String() string {
 		return fmt.Sprintf("project[%d]", *a.Project)
 	case Admin:
 		return "admin"
+	case SharedReader:
+		return "sharedReader"
 	default:
 		return "unknown"
 	}
 }
 
 var (
-	noAuth    = Auth{Role: None}
-	adminAuth = Auth{Role: Admin}
+	noAuth           = Auth{Role: None}
+	adminAuth        = Auth{Role: Admin}
+	sharedReaderAuth = Auth{Role: SharedReader}
 )
 
 type AuthValidator struct {
@@ -69,6 +73,10 @@ func (av *AuthValidator) Validate(ctx context.Context, token string) (Auth, erro
 
 	if payload.Subject == "admin" {
 		return adminAuth, nil
+	}
+
+	if payload.Subject == "shared-reader" {
+		return sharedReaderAuth, nil
 	}
 
 	project, err := strconv.ParseInt(payload.Subject, 10, 64)
