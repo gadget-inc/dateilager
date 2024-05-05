@@ -10,6 +10,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
@@ -23,8 +24,11 @@ import (
 
 type Cached struct {
 	pb.UnimplementedCachedServer
+	csi.UnimplementedIdentityServer
+	csi.UnimplementedNodeServer
 
-	Env         environment.Env
+	Env environment.Env
+
 	Client      *client.Client
 	StagingPath string
 

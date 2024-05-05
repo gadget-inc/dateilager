@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/files"
@@ -433,6 +434,8 @@ func createTestCachedClient(tc util.TestCtx) (*client.CachedClient, *api.Cached,
 
 	cached := tc.CachedApi(cl, stagingPath)
 	pb.RegisterCachedServer(s, cached)
+	csi.RegisterIdentityServer(s, cached)
+	csi.RegisterNodeServer(s, cached)
 
 	go func() {
 		err := s.Serve(lis)

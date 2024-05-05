@@ -44,6 +44,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 		timeout      uint
 		headlessHost string
 		stagingPath  string
+		csiSocket    string
 	)
 
 	cmd := &cobra.Command{
@@ -90,27 +91,27 @@ func NewCacheDaemonCommand() *cobra.Command {
 				shutdownTelemetry = telemetry.Init(ctx, telemetry.Server)
 			}
 
-			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-			if err != nil {
-				return fmt.Errorf("cannot open TLS cert and key files (%s, %s): %w", certFile, keyFile, err)
-			}
-
-			pasetoKey, err := parsePublicKey(pasetoFile)
-			if err != nil {
-				return fmt.Errorf("cannot parse Paseto public key %s: %w", pasetoFile, err)
-			}
-
 			cl, err := client.NewClient(ctx, upstreamHost, upstreamPort, client.WithheadlessHost(headlessHost))
 			if err != nil {
 				return err
 			}
 
-			listen, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-			if err != nil {
-				return fmt.Errorf("failed to listen on TCP port %d: %w", port, err)
+			var s *cached.CacheServer
+			if csiSocket == "" {
+				cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+				if err != nil {
+					return fmt.Errorf("cannot open TLS cert and key files (%s, %s): %w", certFile, keyFile, err)
+				}
+				pasetoKey, err := parsePublicKey(pasetoFile)
+				if err != nil {
+					return fmt.Errorf("cannot parse Paseto public key %s: %w", pasetoFile, err)
+				}
+
+				s = cached.NewServer(ctx, &cert, pasetoKey)
+			} else {
+				s = cached.NewCacheCSIServer(ctx, cl, stagingPath)
 			}
 
-			s := cached.NewServer(ctx, &cert, pasetoKey)
 			logger.Info(ctx, "register Cached")
 			cached := &api.Cached{
 				Env:         env,
@@ -120,19 +121,45 @@ func NewCacheDaemonCommand() *cobra.Command {
 			s.RegisterCachedServer(ctx, cached)
 
 			osSignals := make(chan os.Signal, 1)
+			errors := make(chan error, 2)
 			signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
-			go func() {
-				<-osSignals
-				s.Grpc.GracefulStop()
-			}()
 
 			err = cached.Prepare(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to prepare cache daemon in %s: %w", stagingPath, err)
 			}
 
-			logger.Info(ctx, "start cached server", key.Port.Field(port), key.Environment.Field(env.String()))
-			return s.Serve(listen)
+			if csiSocket != "" {
+				go (func() {
+					logger.Info(ctx, "start CSI server")
+					err := s.ServeCSI(ctx, csiSocket)
+					if err != nil {
+						errors <- err
+					}
+				})()
+			}
+
+			go (func() {
+				listen, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+				if err != nil {
+					errors <- fmt.Errorf("failed to listen on TCP port %d: %w", port, err)
+					return
+				}
+
+				logger.Info(ctx, "start cached server", key.Port.Field(port), key.Environment.Field(env.String()))
+				err = s.Serve(listen)
+				if err != nil {
+					errors <- err
+				}
+			})()
+
+			select {
+			case err := <-errors:
+				return err
+			case <-osSignals:
+				s.Grpc.GracefulStop()
+				return nil
+			}
 		},
 		PostRunE: func(cmd *cobra.Command, _ []string) error {
 			if shutdownTelemetry != nil {
@@ -164,6 +191,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 	flags.StringVar(&pasetoFile, "paseto", "development/paseto.pub", "Paseto public key file")
 	flags.UintVar(&timeout, "timeout", 0, "GRPC client timeout (ms)")
 
+	flags.StringVar(&csiSocket, "csi-socket", "", "path for running the Kubernetes CSI Driver interface")
 	flags.StringVar(&stagingPath, "staging-path", "", "path for staging downloaded caches")
 	_ = cmd.MarkPersistentFlagRequired("staging-path")
 
