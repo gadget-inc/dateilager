@@ -201,15 +201,28 @@ func HardlinkDir(olddir, newdir string) error {
 		}
 	}
 
+	rootInfo, err := os.Lstat(olddir)
+	if err != nil {
+		return fmt.Errorf("cannot stat olddir %v: %w", olddir, err)
+	}
+
+	err = os.MkdirAll(newdir, rootInfo.Mode())
+	if err != nil {
+		return fmt.Errorf("cannot create new root dir %v: %w", olddir, err)
+	}
+
 	return filepath.Walk(olddir, func(oldpath string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to walk dir: %v, %w", info, err)
+		}
+		if oldpath == olddir {
+			return nil
 		}
 
 		newpath := filepath.Join(newdir, strings.TrimPrefix(oldpath, olddir))
 
 		if info.IsDir() {
-			err := os.MkdirAll(newpath, info.Mode())
+			err := os.Mkdir(newpath, info.Mode())
 			if err != nil {
 				return fmt.Errorf("cannot create dir %v: %w", newpath, err)
 			}
