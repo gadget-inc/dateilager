@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"io/fs"
@@ -275,9 +276,11 @@ func writeFile(t *testing.T, dir string, path string, content string) {
 	require.NoError(t, err, "write file %v", path)
 }
 
-func emptyTmpDir(t *testing.T) string {
+func emptyTmpDir(t testing.TB) string {
 	dir, err := os.MkdirTemp("", "dateilager_tests_")
-	require.NoError(t, err, "create temp dir")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	return dir
 }
@@ -763,4 +766,95 @@ func formatPtr(p *int64) string {
 		return "<nil>"
 	}
 	return fmt.Sprint(*p)
+}
+
+// CompareDirectories compares the contents and permissions of two directories recursively.
+func CompareDirectories(dir1, dir2 string) error {
+	files1 := make(map[string]os.FileInfo)
+	err := filepath.Walk(dir1, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relPath, err := filepath.Rel(dir1, path)
+		if err != nil {
+			return err
+		}
+		files1[relPath] = info
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	err = filepath.Walk(dir2, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relPath, err := filepath.Rel(dir2, path)
+		if err != nil {
+			return err
+		}
+		if origInfo, ok := files1[relPath]; ok {
+			if info.IsDir() && origInfo.IsDir() {
+				// Only compare directories for existence, not content
+				delete(files1, relPath)
+				return nil
+			}
+			if !compareFileInfo(origInfo, info) {
+				return fmt.Errorf("file permissions differ for %s: %o vs %o", relPath, origInfo.Mode()&os.ModePerm, info.Mode()&os.ModePerm)
+			}
+			if equal, err := compareFileContents(filepath.Join(dir1, relPath), filepath.Join(dir2, relPath)); err != nil {
+				return fmt.Errorf("error comparing contents of %s: %v", relPath, err)
+			} else if !equal {
+				return fmt.Errorf("contents differ for %s", relPath)
+			}
+			delete(files1, relPath)
+		} else {
+			return fmt.Errorf("extra file found in directory 2: %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for file := range files1 {
+		err = fmt.Errorf("file missing in directory 2: %s", file)
+	}
+	return err
+}
+
+// compareFileInfo compares the permissions and other metadata of two files.
+func compareFileInfo(info1, info2 os.FileInfo) bool {
+	return (info1.Mode() & os.ModePerm) == (info2.Mode() & os.ModePerm)
+}
+
+// compareFileContents compares the contents of two files.
+func compareFileContents(file1, file2 string) (bool, error) {
+	f1, err := os.Open(file1)
+	if err != nil {
+		return false, err
+	}
+	defer f1.Close()
+	f2, err := os.Open(file2)
+	if err != nil {
+		return false, err
+	}
+	defer f2.Close()
+
+	if info1, _ := f1.Stat(); info1.IsDir() {
+		return true, nil // Skip directories in content comparison
+	}
+	if info2, _ := f2.Stat(); info2.IsDir() {
+		return true, nil // Skip directories in content comparison
+	}
+
+	hash1, hash2 := sha256.New(), sha256.New()
+	if _, err := io.Copy(hash1, f1); err != nil {
+		return false, err
+	}
+	if _, err := io.Copy(hash2, f2); err != nil {
+		return false, err
+	}
+
+	return bytes.Equal(hash1.Sum(nil), hash2.Sum(nil)), nil
 }

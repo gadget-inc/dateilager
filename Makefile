@@ -108,6 +108,10 @@ test-fuzz: export DL_SKIP_SSL_VERIFICATION=1
 test-fuzz: reset-db
 	go run cmd/fuzz-test/main.go --host $(GRPC_HOST) --iterations 1000 --projects 5
 
+bench: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
+bench: migrate
+	cd test && go test -bench . -run=^#
+
 reset-db: migrate
 	psql $(DB_URI) -c "truncate dl.objects; truncate dl.contents; truncate dl.projects; truncate dl.cache_versions;"
 
