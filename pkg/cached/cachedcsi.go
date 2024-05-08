@@ -11,7 +11,6 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/gadget-inc/dateilager/internal/logger"
-	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -22,8 +21,9 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-// NewCacheServer returns a CSI plugin that contains the necessary gRPC interfaces to interact with Kubernetes over unix domain sockets for managing volumes on behalf of pods
-func NewCacheCSIServer(ctx context.Context, client *client.Client, stagingPath string) *CacheServer {
+// NewCSIServer returns a CSI plugin that contains the necessary gRPC interfaces
+// to interact with Kubernetes over unix domain sockets for managing volumes on behalf of pods
+func NewCSIServer(ctx context.Context, client *client.Client, stagingPath string) *CachedServer {
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(
 			grpc_middleware.ChainUnaryServer(
@@ -34,19 +34,11 @@ func NewCacheCSIServer(ctx context.Context, client *client.Client, stagingPath s
 		),
 	)
 
+	logger.Info(ctx, "register HealthServer")
 	healthServer := health.NewServer()
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
 
-	cached := &api.Cached{
-		Client:      client,
-		StagingPath: stagingPath,
-	}
-	pb.RegisterCachedServer(grpcServer, cached)
-
-	csi.RegisterIdentityServer(grpcServer, cached)
-	csi.RegisterNodeServer(grpcServer, cached)
-
-	server := &CacheServer{
+	server := &CachedServer{
 		Grpc:   grpcServer,
 		Health: healthServer,
 	}
@@ -54,8 +46,13 @@ func NewCacheCSIServer(ctx context.Context, client *client.Client, stagingPath s
 	return server
 }
 
-// Run starts the CSI plugin by communication over the given endpoint
-func (s *CacheServer) ServeCSI(ctx context.Context, listenSocketPath string) error {
+func (s *CachedServer) RegisterCSI(cached *api.Cached) {
+	csi.RegisterIdentityServer(s.Grpc, cached)
+	csi.RegisterNodeServer(s.Grpc, cached)
+}
+
+// ServeCSI starts the CSI plugin by communication over the given endpoint
+func (s *CachedServer) ServeCSI(listenSocketPath string) error {
 	u, err := url.Parse(listenSocketPath)
 	if err != nil {
 		return fmt.Errorf("unable to parse address: %q", err)

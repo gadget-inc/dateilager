@@ -122,7 +122,7 @@ func NewServerCommand() *cobra.Command {
 				DbConn:        dbConn,
 				ContentLookup: contentLookup,
 			}
-			s.RegisterFs(ctx, fs)
+			s.RegisterFs(fs)
 
 			osSignals := make(chan os.Signal, 1)
 			signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)

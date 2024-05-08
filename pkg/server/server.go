@@ -201,7 +201,7 @@ func (s *Server) monitorDbPool(ctx context.Context, dbConn *DbPoolConnector) {
 	}()
 }
 
-func (s *Server) RegisterFs(ctx context.Context, fs *api.Fs) {
+func (s *Server) RegisterFs(fs *api.Fs) {
 	pb.RegisterFsServer(s.Grpc, fs)
 }
 

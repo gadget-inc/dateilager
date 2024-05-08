@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/gadget-inc/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/pkg/cached"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/klauspost/compress/s2"
@@ -406,6 +408,25 @@ func createTestGRPCServer(tc util.TestCtx, reqAuth auth.Auth) (*bufconn.Listener
 	}
 
 	return lis, s, getConn
+}
+
+func createTestCachedCSIServer(tc util.TestCtx, tmpDir string) (*api.Cached, string, func()) {
+	cl, _, closeClient := createTestClient(tc)
+	s := cached.NewCSIServer(tc.Context(), cl, path.Join(tmpDir, "cached", "staging"))
+
+	socket := path.Join(tmpDir, "csi.sock")
+	endpoint := "unix://" + socket
+
+	go func() {
+		err := s.ServeCSI(endpoint)
+		require.NoError(tc.T(), err, "CSI Server exited")
+	}()
+
+	cached := tc.CachedApi(cl, path.Join(tmpDir, "cached", "staging"))
+	s.RegisterCached(cached)
+	s.RegisterCSI(cached)
+
+	return cached, endpoint, func() { closeClient(); s.Grpc.Stop() }
 }
 
 func createTestClient(tc util.TestCtx) (*client.Client, *api.Fs, func()) {

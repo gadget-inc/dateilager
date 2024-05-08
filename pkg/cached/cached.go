@@ -20,12 +20,12 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-type CacheServer struct {
+type CachedServer struct {
 	Grpc   *grpc.Server
 	Health *health.Server
 }
 
-func NewServer(ctx context.Context, cert *tls.Certificate, pasetoKey ed25519.PublicKey) *CacheServer {
+func NewServer(ctx context.Context, cert *tls.Certificate, pasetoKey ed25519.PublicKey) *CachedServer {
 	creds := credentials.NewServerTLSFromCert(cert)
 	validator := auth.NewAuthValidator(pasetoKey)
 
@@ -51,7 +51,7 @@ func NewServer(ctx context.Context, cert *tls.Certificate, pasetoKey ed25519.Pub
 	healthServer := health.NewServer()
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
 
-	server := &CacheServer{
+	server := &CachedServer{
 		Grpc:   grpcServer,
 		Health: healthServer,
 	}
@@ -59,10 +59,10 @@ func NewServer(ctx context.Context, cert *tls.Certificate, pasetoKey ed25519.Pub
 	return server
 }
 
-func (s *CacheServer) RegisterCachedServer(ctx context.Context, cached *api.Cached) {
+func (s *CachedServer) RegisterCached(cached *api.Cached) {
 	pb.RegisterCachedServer(s.Grpc, cached)
 }
 
-func (s *CacheServer) Serve(lis net.Listener) error {
+func (s *CachedServer) Serve(lis net.Listener) error {
 	return s.Grpc.Serve(lis)
 }

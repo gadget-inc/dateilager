@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sync/errgroup"
 )
 
 func NewCacheDaemonCommand() *cobra.Command {
@@ -96,12 +97,13 @@ func NewCacheDaemonCommand() *cobra.Command {
 				return err
 			}
 
-			var s *cached.CacheServer
+			var s *cached.CachedServer
 			if csiSocket == "" {
 				cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 				if err != nil {
 					return fmt.Errorf("cannot open TLS cert and key files (%s, %s): %w", certFile, keyFile, err)
 				}
+
 				pasetoKey, err := parsePublicKey(pasetoFile)
 				if err != nil {
 					return fmt.Errorf("cannot parse Paseto public key %s: %w", pasetoFile, err)
@@ -109,7 +111,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 
 				s = cached.NewServer(ctx, &cert, pasetoKey)
 			} else {
-				s = cached.NewCacheCSIServer(ctx, cl, stagingPath)
+				s = cached.NewCSIServer(ctx, cl, stagingPath)
 			}
 
 			logger.Info(ctx, "register Cached")
@@ -118,10 +120,14 @@ func NewCacheDaemonCommand() *cobra.Command {
 				Client:      cl,
 				StagingPath: stagingPath,
 			}
-			s.RegisterCachedServer(ctx, cached)
+			s.RegisterCached(cached)
+
+			if csiSocket != "" {
+				logger.Info(ctx, "register CSI")
+				s.RegisterCSI(cached)
+			}
 
 			osSignals := make(chan os.Signal, 1)
-			errors := make(chan error, 2)
 			signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
 
 			err = cached.Prepare(ctx)
@@ -129,37 +135,32 @@ func NewCacheDaemonCommand() *cobra.Command {
 				return fmt.Errorf("failed to prepare cache daemon in %s: %w", stagingPath, err)
 			}
 
+			group, ctx := errgroup.WithContext(ctx)
+
 			if csiSocket != "" {
-				go (func() {
+				group.Go(func() error {
 					logger.Info(ctx, "start CSI server")
-					err := s.ServeCSI(ctx, csiSocket)
-					if err != nil {
-						errors <- err
-					}
-				})()
+					return s.ServeCSI(csiSocket)
+				})
 			}
 
-			go (func() {
+			group.Go(func() error {
 				listen, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 				if err != nil {
-					errors <- fmt.Errorf("failed to listen on TCP port %d: %w", port, err)
-					return
+					return fmt.Errorf("failed to listen on TCP port %d: %w", port, err)
 				}
 
 				logger.Info(ctx, "start cached server", key.Port.Field(port), key.Environment.Field(env.String()))
-				err = s.Serve(listen)
-				if err != nil {
-					errors <- err
-				}
-			})()
+				return s.Serve(listen)
+			})
 
-			select {
-			case err := <-errors:
-				return err
-			case <-osSignals:
+			group.Go(func() error {
+				<-osSignals
 				s.Grpc.GracefulStop()
 				return nil
-			}
+			})
+
+			return group.Wait()
 		},
 		PostRunE: func(cmd *cobra.Command, _ []string) error {
 			if shutdownTelemetry != nil {

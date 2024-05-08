@@ -10,7 +10,6 @@ import (
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
-	"github.com/gadget-inc/dateilager/pkg/cached"
 	"github.com/kubernetes-csi/csi-test/pkg/sanity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,21 +26,14 @@ func TestCachedCSIDriver(t *testing.T) {
 	_, err := db.CreateCache(tc.Context(), tc.Connect(), "", 100)
 	require.NoError(t, err)
 
-	c, _, close := createTestClient(tc)
-	defer close()
-
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	s := cached.NewCacheCSIServer(tc.Context(), c, path.Join(tmpDir, "cached", "staging"))
-	require.NoError(t, s.Cached.Prepare(tc.Context()), "cached.Prepare must succeed")
-	defer s.Grpc.GracefulStop()
+	cached, endpoint, close := createTestCachedCSIServer(tc, tmpDir)
+	defer close()
 
-	socket := path.Join(tmpDir, "csi.sock")
-	endpoint := "unix://" + socket
-	go (func() {
-		require.NoError(t, s.ServeCSI(tc.Context(), endpoint), "ServeCSI must succeed")
-	})()
+	err = cached.Prepare(tc.Context())
+	require.NoError(t, err, "cached.Prepare must succeed")
 
 	sanityPath := path.Join(tmpDir, "csi")
 	require.NoError(t, os.MkdirAll(sanityPath, 0755), "couldn't make staging path")
@@ -66,19 +58,17 @@ func TestCachedCSIDriverMountsCache(t *testing.T) {
 	version, err := db.CreateCache(tc.Context(), tc.Connect(), "", 100)
 	require.NoError(t, err)
 
-	c, _, close := createTestClient(tc)
-	defer close()
-
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	s := cached.NewCacheCSIServer(tc.Context(), c, path.Join(tmpDir, "cached", "staging"))
-	require.NoError(t, s.Cached.Prepare(tc.Context()), "cached.Prepare must succeed")
-	defer s.Grpc.GracefulStop()
+	cached, _, close := createTestCachedCSIServer(tc, tmpDir)
+	defer close()
+
+	require.NoError(t, cached.Prepare(tc.Context()), "cached.Prepare must succeed")
 
 	targetDir := path.Join(tmpDir, "vol-target")
 
-	_, err = s.Cached.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
+	_, err = cached.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
 		VolumeId:          "foobar",
 		StagingTargetPath: path.Join(tmpDir, "vol-staging-target"),
 		TargetPath:        targetDir,
@@ -117,18 +107,17 @@ func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
 	version, err := db.CreateCache(tc.Context(), tc.Connect(), "", 100)
 	require.NoError(t, err)
 
-	c, _, close := createTestClient(tc)
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	cached, _, close := createTestCachedCSIServer(tc, tmpDir)
 	defer close()
 
-	tmpDir := emptyTmpDir(t)
-	// defer os.RemoveAll(tmpDir)
-
-	s := cached.NewCacheCSIServer(tc.Context(), c, path.Join(tmpDir, "cached", "staging"))
-	require.NoError(t, s.Cached.Prepare(tc.Context()), "cached.Prepare must succeed")
-	defer s.Grpc.GracefulStop()
+	err = cached.Prepare(tc.Context())
+	require.NoError(t, err, "cached.Prepare must succeed")
 
 	targetDir := path.Join(tmpDir, "vol-target")
-	_, err = s.Cached.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
+	_, err = cached.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
 		VolumeId:          "foobar",
 		StagingTargetPath: path.Join(tmpDir, "vol-staging-target"),
 		TargetPath:        targetDir,
@@ -173,27 +162,25 @@ func TestCachedCSIDriverProbeFailsUntilPrepared(t *testing.T) {
 	_, err := db.CreateCache(tc.Context(), tc.Connect(), "", 100)
 	require.NoError(t, err)
 
-	c, _, close := createTestClient(tc)
-	defer close()
-
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	s := cached.NewCacheCSIServer(tc.Context(), c, path.Join(tmpDir, "cached", "staging"))
-	defer s.Grpc.GracefulStop()
+	cached, _, close := createTestCachedCSIServer(tc, tmpDir)
+	defer close()
 
-	response, err := s.Cached.Probe(tc.Context(), &csi.ProbeRequest{})
+	response, err := cached.Probe(tc.Context(), &csi.ProbeRequest{})
 	require.NoError(t, err)
 
 	// not ready because we haven't Prepare-d yet
 	assert.Equal(t, false, response.Ready.Value)
 
-	require.NoError(t, s.Cached.Prepare(tc.Context()), "cached.Prepare must succeed")
+	err = cached.Prepare(tc.Context())
+	require.NoError(t, err, "cached.Prepare must succeed")
 
-	response, err = s.Cached.Probe(tc.Context(), &csi.ProbeRequest{})
+	response, err = cached.Probe(tc.Context(), &csi.ProbeRequest{})
 	require.NoError(t, err)
 
-	//  ready because we Prepare-d
+	// ready because we Prepare-d
 	assert.Equal(t, true, response.Ready.Value)
 }
 
