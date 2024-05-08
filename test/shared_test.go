@@ -409,8 +409,10 @@ func createTestGRPCServer(tc util.TestCtx, reqAuth auth.Auth) (*bufconn.Listener
 
 func createTestClient(tc util.TestCtx) (*client.Client, *api.Fs, func()) {
 	lis, s, getConn := createTestGRPCServer(tc, tc.Context().Value(auth.AuthCtxKey).(auth.Auth))
+
 	fs := tc.FsApi()
 	pb.RegisterFsServer(s, fs)
+
 	go func() {
 		err := s.Serve(lis)
 		require.NoError(tc.T(), err, "Server exited")
@@ -423,27 +425,23 @@ func createTestClient(tc util.TestCtx) (*client.Client, *api.Fs, func()) {
 
 // Make a new client that connects to a test cached server
 // Under the hood, this creates a test storage server and connects to that
-func createTestCachedClient(tc util.TestCtx) (*client.Client, *api.Cached, func()) {
+func createTestCachedClient(tc util.TestCtx) (*client.CachedClient, *api.Cached, func()) {
 	lis, s, getConn := createTestGRPCServer(tc, tc.Context().Value(auth.AuthCtxKey).(auth.Auth))
 
-	storageClient, _, closeServerClient := createTestClient(tc)
+	cl, _, closeClient := createTestClient(tc)
 	stagingPath := emptyTmpDir(tc.T())
 
-	cached := &api.Cached{
-		Client:      storageClient,
-		StagingPath: stagingPath,
-	}
-
-	pb.RegisterCacheServer(s, cached)
+	cached := tc.CachedApi(cl, stagingPath)
+	pb.RegisterCachedServer(s, cached)
 
 	go func() {
 		err := s.Serve(lis)
 		require.NoError(tc.T(), err, "Server exited")
 	}()
 
-	c := client.NewClientConn(getConn())
+	cachedClient := client.NewCachedClientConn(getConn())
 
-	return c, cached, func() { c.Close(); s.Stop(); closeServerClient() }
+	return cachedClient, cached, func() { cachedClient.Close(); closeClient(); s.Stop() }
 }
 
 func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, cacheDir *string, expected expectedResponse) {

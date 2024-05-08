@@ -131,7 +131,7 @@ func NewServerCommand() *cobra.Command {
 				s.Grpc.GracefulStop()
 			}()
 
-			logger.Info(ctx, "start server", key.Port.Field(port), key.Environment.Field(env.String()))
+			logger.Info(ctx, "start fs server", key.Port.Field(port), key.Environment.Field(env.String()))
 			return s.Serve(listen)
 		},
 		PostRunE: func(cmd *cobra.Command, _ []string) error {

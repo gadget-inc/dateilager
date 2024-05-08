@@ -46,13 +46,21 @@ type VersionRange struct {
 }
 
 type Client struct {
-	conn  *grpc.ClientConn
-	fs    pb.FsClient
-	cache pb.CacheClient
+	conn *grpc.ClientConn
+	fs   pb.FsClient
+}
+
+type CachedClient struct {
+	conn   *grpc.ClientConn
+	cached pb.CachedClient
 }
 
 func NewClientConn(conn *grpc.ClientConn) *Client {
-	return &Client{conn: conn, fs: pb.NewFsClient(conn), cache: pb.NewCacheClient(conn)}
+	return &Client{conn: conn, fs: pb.NewFsClient(conn)}
+}
+
+func NewCachedClientConn(conn *grpc.ClientConn) *CachedClient {
+	return &CachedClient{conn: conn, cached: pb.NewCachedClient(conn)}
 }
 
 type options struct {
@@ -72,12 +80,7 @@ func WithheadlessHost(host string) func(*options) {
 	}
 }
 
-func NewClient(ctx context.Context, host string, port uint16, opts ...func(*options)) (*Client, error) {
-	ctx, span := telemetry.Start(ctx, "client.new", trace.WithAttributes(
-		key.Server.Attribute(host),
-	))
-	defer span.End()
-
+func grpcClientConn(ctx context.Context, host string, port uint16, opts ...func(*options)) (*grpc.ClientConn, error) {
 	pool, err := x509.SystemCertPool()
 	if err != nil {
 		return nil, fmt.Errorf("load system cert pool: %w", err)
@@ -116,7 +119,7 @@ func NewClient(ctx context.Context, host string, port uint16, opts ...func(*opti
 		server = fmt.Sprintf("%s:%d", o.headlessHost, port)
 	}
 
-	conn, err := grpc.DialContext(connectCtx, server,
+	return grpc.DialContext(connectCtx, server,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(auth),
 		grpc.WithReadBufferSize(BUFFER_SIZE),
@@ -156,6 +159,15 @@ func NewClient(ctx context.Context, host string, port uint16, opts ...func(*opti
 			}
 		`),
 	)
+}
+
+func NewClient(ctx context.Context, host string, port uint16, opts ...func(*options)) (*Client, error) {
+	ctx, span := telemetry.Start(ctx, "client.new", trace.WithAttributes(
+		key.Server.Attribute(host),
+	))
+	defer span.End()
+
+	conn, err := grpcClientConn(ctx, host, port, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -951,7 +963,28 @@ func (c *Client) CloneToProject(ctx context.Context, source int64, target int64,
 	return &response.LatestVersion, nil
 }
 
-func (c *Client) PopulateDiskCache(ctx context.Context, destination string) (int64, error) {
+func NewCachedClient(ctx context.Context, host string, port uint16, opts ...func(*options)) (*CachedClient, error) {
+	ctx, span := telemetry.Start(ctx, "cached-client.new", trace.WithAttributes(
+		key.Server.Attribute(host),
+	))
+	defer span.End()
+
+	conn, err := grpcClientConn(ctx, host, port, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewCachedClientConn(conn), nil
+}
+
+func (c *CachedClient) Close() {
+	// Give a chance for the upstream socket to finish writing it's response
+	// https://github.com/grpc/grpc-go/issues/2869#issuecomment-503310136
+	time.Sleep(1 * time.Millisecond)
+	c.conn.Close()
+}
+
+func (c *CachedClient) PopulateDiskCache(ctx context.Context, destination string) (int64, error) {
 	ctx, span := telemetry.Start(ctx, "client.populate-disk-cache", trace.WithAttributes(
 		key.CachePath.Attribute(destination),
 	))
@@ -961,7 +994,7 @@ func (c *Client) PopulateDiskCache(ctx context.Context, destination string) (int
 		Path: destination,
 	}
 
-	response, err := c.cache.PopulateDiskCache(ctx, request)
+	response, err := c.cached.PopulateDiskCache(ctx, request)
 	if err != nil {
 		return 0, fmt.Errorf("populate disk cache for %s: %w", destination, err)
 	}

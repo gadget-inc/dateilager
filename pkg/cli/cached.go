@@ -15,6 +15,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
+	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/cached"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/version"
@@ -109,7 +110,14 @@ func NewCacheDaemonCommand() *cobra.Command {
 				return fmt.Errorf("failed to listen on TCP port %d: %w", port, err)
 			}
 
-			s := cached.NewServer(ctx, cl, &cert, stagingPath, pasetoKey)
+			s := cached.NewServer(ctx, &cert, pasetoKey)
+			logger.Info(ctx, "register Cached")
+			cached := &api.Cached{
+				Env:         env,
+				Client:      cl,
+				StagingPath: stagingPath,
+			}
+			s.RegisterCachedServer(ctx, cached)
 
 			osSignals := make(chan os.Signal, 1)
 			signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
@@ -118,12 +126,12 @@ func NewCacheDaemonCommand() *cobra.Command {
 				s.Grpc.GracefulStop()
 			}()
 
-			err = s.Cached.Prepare(ctx)
+			err = cached.Prepare(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to prepare cache daemon in %s: %w", stagingPath, err)
 			}
 
-			logger.Info(ctx, "start server", key.Port.Field(port), key.Environment.Field(env.String()))
+			logger.Info(ctx, "start cached server", key.Port.Field(port), key.Environment.Field(env.String()))
 			return s.Serve(listen)
 		},
 		PostRunE: func(cmd *cobra.Command, _ []string) error {
@@ -146,17 +154,19 @@ func NewCacheDaemonCommand() *cobra.Command {
 	flags.StringVar(&encoding, "log-encoding", "console", "Log encoding (console | json)")
 	flags.BoolVar(&tracing, "tracing", false, "Whether tracing is enabled")
 	flags.StringVar(&profilePath, "profile", "", "CPU profile output path (profiling enabled if set)")
-	flags.StringVar(&certFile, "cert", "development/server.crt", "TLS cert file")
-	flags.StringVar(&keyFile, "key", "development/server.key", "TLS key file")
-	flags.StringVar(&pasetoFile, "paseto", "development/paseto.pub", "Paseto public key file")
+
+	flags.IntVar(&port, "port", 5053, "cache API port")
 	flags.StringVar(&upstreamHost, "upstream-host", "localhost", "GRPC server hostname")
 	flags.Uint16Var(&upstreamPort, "upstream-port", 5051, "GRPC server port")
 	flags.StringVar(&headlessHost, "headless-host", "", "Alternative headless hostname to use for round robin connections")
+	flags.StringVar(&certFile, "cert", "development/server.crt", "TLS cert file")
+	flags.StringVar(&keyFile, "key", "development/server.key", "TLS key file")
+	flags.StringVar(&pasetoFile, "paseto", "development/paseto.pub", "Paseto public key file")
 	flags.UintVar(&timeout, "timeout", 0, "GRPC client timeout (ms)")
-	flags.IntVar(&port, "port", 5053, "cache API port")
-	flags.StringVar(&stagingPath, "staging-path", "", "path for staging downloaded caches")
 
+	flags.StringVar(&stagingPath, "staging-path", "", "path for staging downloaded caches")
 	_ = cmd.MarkPersistentFlagRequired("staging-path")
+
 	return cmd
 }
 

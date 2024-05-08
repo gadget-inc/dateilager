@@ -9,6 +9,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -88,5 +89,13 @@ func (tc *TestCtx) FsApi() *api.Fs {
 		Env:           environment.Test,
 		DbConn:        tc.Connector(),
 		ContentLookup: tc.ContentLookup(),
+	}
+}
+
+func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string) *api.Cached {
+	return &api.Cached{
+		Env:         environment.Test,
+		Client:      cl,
+		StagingPath: stagingPath,
 	}
 }

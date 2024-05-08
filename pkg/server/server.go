@@ -130,7 +130,6 @@ type Server struct {
 
 func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certificate, pasetoKey ed25519.PublicKey) *Server {
 	creds := credentials.NewServerTLSFromCert(cert)
-
 	validator := auth.NewAuthValidator(pasetoKey)
 
 	grpcServer := grpc.NewServer(

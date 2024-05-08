@@ -70,8 +70,6 @@ build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go internal/pb/cache.pb.go in
 lint:
 	golangci-lint run
 
-
-
 release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o $@ $<
 
@@ -177,10 +175,10 @@ client-getcache: export DL_SKIP_SSL_VERIFICATION=1
 client-getcache:
 	go run cmd/client/main.go getcache --host $(GRPC_HOST) --path input/cache
 
-client-getcache-from-daemon: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
-client-getcache-from-daemon: export DL_SKIP_SSL_VERIFICATION=1
-client-getcache-from-daemon:
-	mkdir -p tmp/pods/test-pod/volumes/example && go run cmd/client/main.go getcache-from-daemon --host $(GRPC_HOST) --port $(GRPC_CACHED_PORT) input/cache
+client-getcached: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
+client-getcached: export DL_SKIP_SSL_VERIFICATION=1
+client-getcached:
+	go run cmd/client/main.go getcached --host $(GRPC_HOST) --port $(GRPC_CACHED_PORT) --path input/cache
 
 client-gc-contents: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-gc-contents: export DL_SKIP_SSL_VERIFICATION=1

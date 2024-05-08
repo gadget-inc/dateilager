@@ -4,9 +4,8 @@ package pb;
 
 option go_package = "github.com/gadget-inc/dateilager/pkg/pb";
 
-service Cache {
-  rpc PopulateDiskCache(PopulateDiskCacheRequest)
-      returns (PopulateDiskCacheResponse);
+service Cached {
+  rpc PopulateDiskCache(PopulateDiskCacheRequest) returns (PopulateDiskCacheResponse);
 }
 
 message PopulateDiskCacheRequest { string path = 1; }

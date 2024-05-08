@@ -8,14 +8,17 @@ import (
 )
 
 func NewCmdGetCacheFromDaemon() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:  "getcache-from-daemon <destination_path>",
-		Args: cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			c := client.FromContext(ctx)
+	var (
+		path string
+	)
 
-			version, err := c.PopulateDiskCache(ctx, args[0])
+	cmd := &cobra.Command{
+		Use: "getcached",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			c := client.CachedFromContext(ctx)
+
+			version, err := c.PopulateDiskCache(ctx, path)
 			if err != nil {
 				return err
 			}
@@ -25,6 +28,10 @@ func NewCmdGetCacheFromDaemon() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&path, "path", "", "Cache directory")
+
+	_ = cmd.MarkFlagRequired("path")
 
 	return cmd
 }

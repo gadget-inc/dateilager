@@ -10,18 +10,24 @@ import (
 	"path"
 	"time"
 
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Cached struct {
-	pb.UnimplementedCacheServer
+	pb.UnimplementedCachedServer
+
+	Env         environment.Env
 	Client      *client.Client
 	StagingPath string
+
 	// the current directory holding a fully formed downloaded cache
 	currentDir string
 	// the current version of the cache on disk at currentDir
@@ -29,6 +35,10 @@ type Cached struct {
 }
 
 func (c *Cached) PopulateDiskCache(ctx context.Context, req *pb.PopulateDiskCacheRequest) (*pb.PopulateDiskCacheResponse, error) {
+	if c.Env != environment.Dev && c.Env != environment.Test {
+		return nil, status.Errorf(codes.Unimplemented, "Cached populateDiskCache only implemented in dev and test environments")
+	}
+
 	err := requireAdminAuth(ctx)
 	if err != nil {
 		return nil, err

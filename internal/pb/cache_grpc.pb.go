@@ -19,89 +19,89 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Cache_PopulateDiskCache_FullMethodName = "/pb.Cache/PopulateDiskCache"
+	Cached_PopulateDiskCache_FullMethodName = "/pb.Cached/PopulateDiskCache"
 )
 
-// CacheClient is the client API for Cache service.
+// CachedClient is the client API for Cached service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type CacheClient interface {
+type CachedClient interface {
 	PopulateDiskCache(ctx context.Context, in *PopulateDiskCacheRequest, opts ...grpc.CallOption) (*PopulateDiskCacheResponse, error)
 }
 
-type cacheClient struct {
+type cachedClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewCacheClient(cc grpc.ClientConnInterface) CacheClient {
-	return &cacheClient{cc}
+func NewCachedClient(cc grpc.ClientConnInterface) CachedClient {
+	return &cachedClient{cc}
 }
 
-func (c *cacheClient) PopulateDiskCache(ctx context.Context, in *PopulateDiskCacheRequest, opts ...grpc.CallOption) (*PopulateDiskCacheResponse, error) {
+func (c *cachedClient) PopulateDiskCache(ctx context.Context, in *PopulateDiskCacheRequest, opts ...grpc.CallOption) (*PopulateDiskCacheResponse, error) {
 	out := new(PopulateDiskCacheResponse)
-	err := c.cc.Invoke(ctx, Cache_PopulateDiskCache_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Cached_PopulateDiskCache_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// CacheServer is the server API for Cache service.
-// All implementations must embed UnimplementedCacheServer
+// CachedServer is the server API for Cached service.
+// All implementations must embed UnimplementedCachedServer
 // for forward compatibility
-type CacheServer interface {
+type CachedServer interface {
 	PopulateDiskCache(context.Context, *PopulateDiskCacheRequest) (*PopulateDiskCacheResponse, error)
-	mustEmbedUnimplementedCacheServer()
+	mustEmbedUnimplementedCachedServer()
 }
 
-// UnimplementedCacheServer must be embedded to have forward compatible implementations.
-type UnimplementedCacheServer struct {
+// UnimplementedCachedServer must be embedded to have forward compatible implementations.
+type UnimplementedCachedServer struct {
 }
 
-func (UnimplementedCacheServer) PopulateDiskCache(context.Context, *PopulateDiskCacheRequest) (*PopulateDiskCacheResponse, error) {
+func (UnimplementedCachedServer) PopulateDiskCache(context.Context, *PopulateDiskCacheRequest) (*PopulateDiskCacheResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PopulateDiskCache not implemented")
 }
-func (UnimplementedCacheServer) mustEmbedUnimplementedCacheServer() {}
+func (UnimplementedCachedServer) mustEmbedUnimplementedCachedServer() {}
 
-// UnsafeCacheServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to CacheServer will
+// UnsafeCachedServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to CachedServer will
 // result in compilation errors.
-type UnsafeCacheServer interface {
-	mustEmbedUnimplementedCacheServer()
+type UnsafeCachedServer interface {
+	mustEmbedUnimplementedCachedServer()
 }
 
-func RegisterCacheServer(s grpc.ServiceRegistrar, srv CacheServer) {
-	s.RegisterService(&Cache_ServiceDesc, srv)
+func RegisterCachedServer(s grpc.ServiceRegistrar, srv CachedServer) {
+	s.RegisterService(&Cached_ServiceDesc, srv)
 }
 
-func _Cache_PopulateDiskCache_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Cached_PopulateDiskCache_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PopulateDiskCacheRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(CacheServer).PopulateDiskCache(ctx, in)
+		return srv.(CachedServer).PopulateDiskCache(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Cache_PopulateDiskCache_FullMethodName,
+		FullMethod: Cached_PopulateDiskCache_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CacheServer).PopulateDiskCache(ctx, req.(*PopulateDiskCacheRequest))
+		return srv.(CachedServer).PopulateDiskCache(ctx, req.(*PopulateDiskCacheRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// Cache_ServiceDesc is the grpc.ServiceDesc for Cache service.
+// Cached_ServiceDesc is the grpc.ServiceDesc for Cached service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var Cache_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "pb.Cache",
-	HandlerType: (*CacheServer)(nil),
+var Cached_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pb.Cached",
+	HandlerType: (*CachedServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "PopulateDiskCache",
-			Handler:    _Cache_PopulateDiskCache_Handler,
+			Handler:    _Cached_PopulateDiskCache_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

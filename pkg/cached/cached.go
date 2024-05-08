@@ -10,7 +10,6 @@ import (
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gadget-inc/dateilager/pkg/api"
-	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/server"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
@@ -24,10 +23,9 @@ import (
 type CacheServer struct {
 	Grpc   *grpc.Server
 	Health *health.Server
-	Cached *api.Cached
 }
 
-func NewServer(ctx context.Context, client *client.Client, cert *tls.Certificate, stagingPath string, pasetoKey ed25519.PublicKey) *CacheServer {
+func NewServer(ctx context.Context, cert *tls.Certificate, pasetoKey ed25519.PublicKey) *CacheServer {
 	creds := credentials.NewServerTLSFromCert(cert)
 	validator := auth.NewAuthValidator(pasetoKey)
 
@@ -53,19 +51,16 @@ func NewServer(ctx context.Context, client *client.Client, cert *tls.Certificate
 	healthServer := health.NewServer()
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
 
-	cached := &api.Cached{
-		Client:      client,
-		StagingPath: stagingPath,
-	}
-	pb.RegisterCacheServer(grpcServer, cached)
-
 	server := &CacheServer{
 		Grpc:   grpcServer,
 		Health: healthServer,
-		Cached: cached,
 	}
 
 	return server
+}
+
+func (s *CacheServer) RegisterCachedServer(ctx context.Context, cached *api.Cached) {
+	pb.RegisterCachedServer(s.Grpc, cached)
 }
 
 func (s *CacheServer) Serve(lis net.Listener) error {
