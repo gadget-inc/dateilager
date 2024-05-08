@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,8 +22,9 @@ import (
 )
 
 var (
-	shutdownTelemetry func()
-	span              trace.Span
+	shutdownTelemetry    func()
+	span                 trace.Span
+	requiresCachedClient = []string{"getcached"}
 )
 
 func NewClientCommand() *cobra.Command {
@@ -88,8 +90,15 @@ func NewClientCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-
 			ctx = client.IntoContext(ctx, cl)
+
+			if slices.Contains(requiresCachedClient, cmd.CalledAs()) {
+				cachedClient, err := client.NewCachedClient(ctx, host, port, client.WithheadlessHost(headlessHost))
+				if err != nil {
+					return err
+				}
+				ctx = client.CachedIntoContext(ctx, cachedClient)
+			}
 
 			cmd.SetContext(ctx)
 
@@ -109,11 +118,14 @@ func NewClientCommand() *cobra.Command {
 	flags.AddGoFlag(flag.CommandLine.Lookup("log-level"))
 	flags.StringVar(&encoding, "log-encoding", "console", "Log encoding (console | json)")
 	flags.BoolVar(&tracing, "tracing", false, "Whether tracing is enabled")
+
 	flags.StringVar(&otelContext, "otel-context", "", "Open Telemetry context")
 	flags.StringVar(&host, "host", "", "GRPC server hostname")
 	flags.Uint16Var(&port, "port", 5051, "GRPC server port")
-	flags.UintVar(&timeout, "timeout", 0, "GRPC client timeout (ms)")
 	flags.StringVar(&headlessHost, "headless-host", "", "Alternative headless hostname to use for round robin connections")
+	flags.UintVar(&timeout, "timeout", 0, "GRPC client timeout (ms)")
+
+	_ = cmd.MarkFlagRequired("host")
 
 	cmd.AddCommand(NewCmdGet())
 	cmd.AddCommand(NewCmdInspect())
@@ -124,6 +136,7 @@ func NewClientCommand() *cobra.Command {
 	cmd.AddCommand(NewCmdUpdate())
 	cmd.AddCommand(NewCmdGc())
 	cmd.AddCommand(NewCmdGetCache())
+	cmd.AddCommand(NewCmdGetCacheFromDaemon())
 
 	return cmd
 }

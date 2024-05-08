@@ -27,7 +27,7 @@ RUN go mod download
 
 # copy everything else and build the project
 COPY . ./
-RUN make release/server_linux_$TARGETARCH
+RUN make release/server_linux_$TARGETARCH release/cached_linux_$TARGETARCH
 
 FROM buildpack-deps:bullseye AS build-release-stage
 ARG TARGETARCH
@@ -48,11 +48,14 @@ RUN mkdir -p /home/main/secrets
 VOLUME /home/main/secrets/tls
 VOLUME /home/main/secrets/paseto
 
+COPY --from=build-stage /app/release/cached_linux_${TARGETARCH} cached
 COPY --from=build-stage /app/release/server_linux_${TARGETARCH} server
+
 COPY migrations migrations
 COPY entrypoint.sh entrypoint.sh
 
-# smoke test -- ensure the server command can run
+# smoke test -- ensure the commands can run
 RUN ./server --help
+RUN ./cached --help
 
 ENTRYPOINT ["./entrypoint.sh"]

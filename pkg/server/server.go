@@ -130,7 +130,6 @@ type Server struct {
 
 func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certificate, pasetoKey ed25519.PublicKey) *Server {
 	creds := credentials.NewServerTLSFromCert(cert)
-
 	validator := auth.NewAuthValidator(pasetoKey)
 
 	grpcServer := grpc.NewServer(
@@ -139,7 +138,7 @@ func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certifica
 				grpc_recovery.UnaryServerInterceptor(),
 				otelgrpc.UnaryServerInterceptor(),
 				logger.UnaryServerInterceptor(),
-				validateTokenUnary(validator),
+				ValidateTokenUnary(validator),
 			),
 		),
 		grpc.StreamInterceptor(
@@ -210,7 +209,7 @@ func (s *Server) Serve(lis net.Listener) error {
 	return s.Grpc.Serve(lis)
 }
 
-func validateTokenUnary(validator *auth.AuthValidator) grpc.UnaryServerInterceptor {
+func ValidateTokenUnary(validator *auth.AuthValidator) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
