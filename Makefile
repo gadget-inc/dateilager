@@ -21,23 +21,13 @@ PROTO_FILES := $(shell find internal/pb/ -type f -name '*.proto')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
-.PHONY: install migrate migrate-create clean build lint release
+.PHONY: migrate migrate-create clean build lint release
 .PHONY: test test-one test-fuzz test-js lint-js build-js
 .PHONY: reset-db setup-local server server-profile install-js
 .PHONY: client-update client-large-update client-get client-rebuild client-rebuild-with-cache
 .PHONY: client-getcache client-gc-contents client-gc-project client-gc-random-projects
 .PHONY: health upload-container-image run-container gen-docs
 .PHONY: load-test-new load-test-get load-test-update
-
-install:
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
-	go install github.com/grpc-ecosystem/grpc-health-probe@v0.4
-	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.15
-	go install github.com/bojand/ghz/cmd/ghz@v0.110.0
-	go install github.com/gadget-inc/fsdiff/cmd/fsdiff@v0.4
-	go install github.com/stamblerre/gocode@latest
-	go install golang.org/x/tools/cmd/goimports@latest
 
 migrate:
 	migrate -database $(DB_URI)?sslmode=disable -path $(MIGRATE_DIR) up
@@ -78,8 +68,13 @@ build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client deve
 lint:
 	golangci-lint run
 
+
+
 release/%_linux_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o $@ $<
+
+release/%_linux_arm64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(BUILD_FLAGS) -o $@ $<
 
 release/%_macos_amd64: cmd/%/main.go $(PKG_GO_FILES) $(INTERNAL_GO_FILES) go.sum
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(BUILD_FLAGS) -o $@ $<
@@ -193,22 +188,23 @@ health:
 	grpc-health-probe -addr $(GRPC_SERVER)
 	grpc-health-probe -addr $(GRPC_SERVER) -service $(SERVICE)
 
-upload-container-image: release
+upload-container-image:
 ifndef version
 	$(error version variable must be set)
 else
-	docker build -t gcr.io/gadget-core-production/dateilager:$(version) -t gcr.io/gadget-core-production/dateilager:latest .
+	docker build --platform linux/amd64 -t gcr.io/gadget-core-production/dateilager:$(version) -t gcr.io/gadget-core-production/dateilager:latest .
 	docker push gcr.io/gadget-core-production/dateilager:$(version)
 	docker push gcr.io/gadget-core-production/dateilager:latest
 endif
 
-upload-prerelease-container-image: release
-	docker build -t gcr.io/gadget-core-production/dateilager:$(GIT_COMMIT) .
-	docker push gcr.io/gadget-core-production/dateilager:$(GIT_COMMIT)
+upload-prerelease-container-image:
+	docker build --platform linux/arm64,linux/amd64 --push -t us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:pre-$(GIT_COMMIT) .
 
-run-container: release
-	docker build -t dl-local:latest .
-	docker run --rm -it -p 127.0.0.1:$(GRPC_PORT):$(GRPC_PORT)/tcp -v ./development:/home/main/secrets/tls -v ./development:/home/main/secrets/paseto dl-local:latest $(GRPC_PORT) "postgres://$(DB_USER):$(DB_PASS)@host.docker.internal:5432" dl
+build-local-container:
+	docker build --load -t dl-local:dev .
+
+run-container: release build-local-container
+	docker run --rm -it -p 127.0.0.1:$(GRPC_PORT):$(GRPC_PORT)/tcp -v ./development:/home/main/secrets/tls -v ./development:/home/main/secrets/paseto dl-local:dev $(GRPC_PORT) "postgres://$(DB_USER):$(DB_PASS)@host.docker.internal:5432" dl
 
 gen-docs:
 	go run cmd/gen-docs/main.go

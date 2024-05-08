@@ -1,0 +1,14 @@
+.git
+.direnv
+.vscode
+Dockerfile
+js
+test
+tmp
+bin
+release
+docs
+input
+node_modules
+development
+!development/nix
