@@ -3,7 +3,7 @@ import path from "path";
 import { DateiLagerBinaryClient, DateiLagerGrpcClient } from "../src";
 
 export const devAdminToken =
-  "v2.public.eyJzdWIiOiJhZG1pbiIsImlhdCI6IjIwMjEtMTAtMTVUMTE6MjA6MDAuMDM0WiJ9WtEey8KfQQRy21xoHq1C5KQatEevk8RxS47k4bRfMwVCPHumZmVuk6ADcfDHTmSnMtEGfFXdxnYOhRP6Clb_Dw";
+  "v2.public.eyJzdWIiOiJhZG1pbiJ9yt40HNkcyOUtDeFa_WPS6vi0WiE4zWngDGJLh17TuYvssTudCbOdQEkVDRD-mSNTXLgSRDXUkO-AaEr4ZLO4BQ";
 
 export const grpcClient = new DateiLagerGrpcClient({
   server: "localhost:5051",

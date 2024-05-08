@@ -213,11 +213,12 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 	return hash
 }
 
-func writePackedFiles(tc util.TestCtx, project int64, start int64, stop *int64, path string) db.Hash {
-	return writePackedObjects(tc, project, start, stop, path, map[string]expectedObject{
+func writePackedFiles(tc util.TestCtx, project int64, start int64, stop *int64, path string) string {
+	hash := writePackedObjects(tc, project, start, stop, path, map[string]expectedObject{
 		filepath.Join(path, "1"): {content: fmt.Sprintf("%s v%d", filepath.Join(path, "1"), start)},
 		filepath.Join(path, "2"): {content: fmt.Sprintf("%s v%d", filepath.Join(path, "2"), start)},
 	})
+	return hash.Hex()
 }
 
 func packObjects(tc util.TestCtx, objects map[string]expectedObject) []byte {
@@ -338,11 +339,13 @@ func verifyDir(t *testing.T, dir string, version int64, files map[string]expecte
 		dirEntries[fmt.Sprintf("%s/", *maybeEmptyDir)] = *maybeEmptyInfo
 	}
 
-	fileVersion, err := client.ReadVersionFile(dir)
-	require.NoError(t, err, "read version file")
+	if version != -1 {
+		fileVersion, err := client.ReadVersionFile(dir)
+		require.NoError(t, err, "read version file")
 
-	assert.Equal(t, version, fileVersion, "expected file version %v", version)
-	assert.Equal(t, len(files), len(dirEntries), "expected %v files in %v", len(files), dir)
+		assert.Equal(t, version, fileVersion, "expected file version %v", version)
+		assert.Equal(t, len(files), len(dirEntries), "expected %v files in %v", len(files), dir)
+	}
 
 	for name, file := range files {
 		path := filepath.Join(dir, name)
@@ -374,10 +377,7 @@ func verifyDir(t *testing.T, dir string, version int64, files map[string]expecte
 	}
 }
 
-func createTestClient(tc util.TestCtx) (*client.Client, *api.Fs, func()) {
-	fs := tc.FsApi()
-	reqAuth := tc.Context().Value(auth.AuthCtxKey).(auth.Auth)
-
+func createTestGRPCServer(tc util.TestCtx, reqAuth auth.Auth) (*bufconn.Listener, *grpc.Server, func() *grpc.ClientConn) {
 	lis := bufconn.Listen(bufSize)
 	s := grpc.NewServer(
 		grpc.UnaryInterceptor(
@@ -394,22 +394,54 @@ func createTestClient(tc util.TestCtx) (*client.Client, *api.Fs, func()) {
 		),
 	)
 
+	dialer := func(context.Context, string) (net.Conn, error) {
+		return lis.Dial()
+	}
+
+	getConn := func() *grpc.ClientConn {
+		conn, err := grpc.DialContext(tc.Context(), "bufnet", grpc.WithContextDialer(dialer), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		require.NoError(tc.T(), err, "Failed to dial bufnet")
+		return conn
+	}
+
+	return lis, s, getConn
+}
+
+func createTestClient(tc util.TestCtx) (*client.Client, *api.Fs, func()) {
+	lis, s, getConn := createTestGRPCServer(tc, tc.Context().Value(auth.AuthCtxKey).(auth.Auth))
+
+	fs := tc.FsApi()
 	pb.RegisterFsServer(s, fs)
+
 	go func() {
 		err := s.Serve(lis)
 		require.NoError(tc.T(), err, "Server exited")
 	}()
 
-	dialer := func(context.Context, string) (net.Conn, error) {
-		return lis.Dial()
-	}
-
-	conn, err := grpc.DialContext(tc.Context(), "bufnet", grpc.WithContextDialer(dialer), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(tc.T(), err, "Failed to dial bufnet")
-
-	c := client.NewClientConn(conn)
+	c := client.NewClientConn(getConn())
 
 	return c, fs, func() { c.Close(); s.Stop() }
+}
+
+// Make a new client that connects to a test cached server
+// Under the hood, this creates a test storage server and connects to that
+func createTestCachedClient(tc util.TestCtx) (*client.CachedClient, *api.Cached, func()) {
+	lis, s, getConn := createTestGRPCServer(tc, tc.Context().Value(auth.AuthCtxKey).(auth.Auth))
+
+	cl, _, closeClient := createTestClient(tc)
+	stagingPath := emptyTmpDir(tc.T())
+
+	cached := tc.CachedApi(cl, stagingPath)
+	pb.RegisterCachedServer(s, cached)
+
+	go func() {
+		err := s.Serve(lis)
+		require.NoError(tc.T(), err, "Server exited")
+	}()
+
+	cachedClient := client.NewCachedClientConn(getConn())
+
+	return cachedClient, cached, func() { cachedClient.Close(); closeClient(); s.Stop() }
 }
 
 func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, cacheDir *string, expected expectedResponse) {

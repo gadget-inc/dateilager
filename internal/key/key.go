@@ -1,6 +1,8 @@
 package key
 
 import (
+	"time"
+
 	"github.com/gadget-inc/dateilager/pkg/stringutil"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -36,7 +38,9 @@ const (
 	Worker            = IntKey("dl.worker")
 	WorkerCount       = IntKey("dl.worker_count")
 	Ignores           = StringSliceKey("dl.ignores")
+	DurationMS        = DurationKey("dl.duration_ms")
 	CloneToProject    = Int64Key("dl.clone_to_project")
+	CachePath         = StringKey("dl.cache_path")
 )
 
 var (
@@ -147,4 +151,14 @@ func (isk Int64SliceKey) Field(value []int64) zap.Field {
 
 func (isk Int64SliceKey) Attribute(value []int64) attribute.KeyValue {
 	return attribute.Int64Slice(string(isk), value)
+}
+
+type DurationKey string
+
+func (dk DurationKey) Field(value time.Duration) zap.Field {
+	return zap.Duration(string(dk), value)
+}
+
+func (dk DurationKey) Attribute(value time.Duration) attribute.KeyValue {
+	return attribute.Float64(string(dk), float64(value.Milliseconds()))
 }

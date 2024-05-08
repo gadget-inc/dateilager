@@ -46,6 +46,24 @@ func requireProjectAuth(ctx context.Context) (int64, error) {
 	return -1, status.Errorf(codes.PermissionDenied, "FS endpoint requires project access")
 }
 
+func requireSharedReaderAuth(ctx context.Context) error {
+	ctxAuth := ctx.Value(auth.AuthCtxKey).(auth.Auth)
+
+	if ctxAuth.Role == auth.Admin {
+		return nil
+	}
+
+	if ctxAuth.Role == auth.Project {
+		return nil
+	}
+
+	if ctxAuth.Role == auth.SharedReader {
+		return nil
+	}
+
+	return status.Errorf(codes.PermissionDenied, "FS endpoint requires shared reader access")
+}
+
 type Fs struct {
 	pb.UnimplementedFsServer
 
@@ -948,7 +966,7 @@ func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) erro
 	ctx := stream.Context()
 	trace.SpanFromContext(ctx)
 
-	_, err := requireProjectAuth(ctx)
+	err := requireSharedReaderAuth(ctx)
 	if err != nil {
 		return err
 	}

@@ -2,10 +2,7 @@ package cli
 
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/tls"
-	"crypto/x509"
-	"encoding/pem"
 	"flag"
 	"fmt"
 	"net"
@@ -14,40 +11,44 @@ import (
 	"runtime/pprof"
 	"syscall"
 
-	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/gadget-inc/dateilager/pkg/api"
-	"github.com/gadget-inc/dateilager/pkg/server"
+	"github.com/gadget-inc/dateilager/pkg/cached"
+	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/version"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-func NewServerCommand() *cobra.Command {
+func NewCacheDaemonCommand() *cobra.Command {
 	var (
 		profilerEnabled   bool = false
 		shutdownTelemetry func()
 	)
 
 	var (
-		level       *zapcore.Level
-		encoding    string
-		tracing     bool
-		profilePath string
-		port        int
-		dbUri       string
-		certFile    string
-		keyFile     string
-		pasetoFile  string
+		level        *zapcore.Level
+		encoding     string
+		tracing      bool
+		profilePath  string
+		upstreamHost string
+		upstreamPort uint16
+		certFile     string
+		keyFile      string
+		pasetoFile   string
+		port         int
+		timeout      uint
+		headlessHost string
+		stagingPath  string
 	)
 
 	cmd := &cobra.Command{
-		Use:               "server",
-		Short:             "DateiLager server",
+		Use:               "cached",
+		Short:             "DateiLager cache daemon",
 		DisableAutoGenTag: true,
 		Version:           version.Version,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -89,17 +90,6 @@ func NewServerCommand() *cobra.Command {
 				shutdownTelemetry = telemetry.Init(ctx, telemetry.Server)
 			}
 
-			listen, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-			if err != nil {
-				return fmt.Errorf("failed to listen on TCP port %d: %w", port, err)
-			}
-
-			dbConn, err := server.NewDbPoolConnector(ctx, dbUri)
-			if err != nil {
-				return fmt.Errorf("cannot connect to DB %s: %w", dbUri, err)
-			}
-			defer dbConn.Close()
-
 			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 			if err != nil {
 				return fmt.Errorf("cannot open TLS cert and key files (%s, %s): %w", certFile, keyFile, err)
@@ -110,19 +100,24 @@ func NewServerCommand() *cobra.Command {
 				return fmt.Errorf("cannot parse Paseto public key %s: %w", pasetoFile, err)
 			}
 
-			contentLookup, err := db.NewContentLookup()
+			cl, err := client.NewClient(ctx, upstreamHost, upstreamPort, client.WithheadlessHost(headlessHost))
 			if err != nil {
-				return fmt.Errorf("cannot setup content lookup: %w", err)
+				return err
 			}
 
-			s := server.NewServer(ctx, dbConn, &cert, pasetoKey)
-			logger.Info(ctx, "register Fs")
-			fs := &api.Fs{
-				Env:           env,
-				DbConn:        dbConn,
-				ContentLookup: contentLookup,
+			listen, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+			if err != nil {
+				return fmt.Errorf("failed to listen on TCP port %d: %w", port, err)
 			}
-			s.RegisterFs(ctx, fs)
+
+			s := cached.NewServer(ctx, &cert, pasetoKey)
+			logger.Info(ctx, "register Cached")
+			cached := &api.Cached{
+				Env:         env,
+				Client:      cl,
+				StagingPath: stagingPath,
+			}
+			s.RegisterCachedServer(ctx, cached)
 
 			osSignals := make(chan os.Signal, 1)
 			signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
@@ -131,7 +126,12 @@ func NewServerCommand() *cobra.Command {
 				s.Grpc.GracefulStop()
 			}()
 
-			logger.Info(ctx, "start fs server", key.Port.Field(port), key.Environment.Field(env.String()))
+			err = cached.Prepare(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to prepare cache daemon in %s: %w", stagingPath, err)
+			}
+
+			logger.Info(ctx, "start cached server", key.Port.Field(port), key.Environment.Field(env.String()))
 			return s.Serve(listen)
 		},
 		PostRunE: func(cmd *cobra.Command, _ []string) error {
@@ -155,18 +155,24 @@ func NewServerCommand() *cobra.Command {
 	flags.BoolVar(&tracing, "tracing", false, "Whether tracing is enabled")
 	flags.StringVar(&profilePath, "profile", "", "CPU profile output path (profiling enabled if set)")
 
-	flags.IntVar(&port, "port", 5051, "GRPC server port")
-	flags.StringVar(&dbUri, "dburi", "postgres://postgres@127.0.0.1:5432/dl", "Postgres URI")
+	flags.IntVar(&port, "port", 5053, "cache API port")
+	flags.StringVar(&upstreamHost, "upstream-host", "localhost", "GRPC server hostname")
+	flags.Uint16Var(&upstreamPort, "upstream-port", 5051, "GRPC server port")
+	flags.StringVar(&headlessHost, "headless-host", "", "Alternative headless hostname to use for round robin connections")
 	flags.StringVar(&certFile, "cert", "development/server.crt", "TLS cert file")
 	flags.StringVar(&keyFile, "key", "development/server.key", "TLS key file")
 	flags.StringVar(&pasetoFile, "paseto", "development/paseto.pub", "Paseto public key file")
+	flags.UintVar(&timeout, "timeout", 0, "GRPC client timeout (ms)")
+
+	flags.StringVar(&stagingPath, "staging-path", "", "path for staging downloaded caches")
+	_ = cmd.MarkPersistentFlagRequired("staging-path")
 
 	return cmd
 }
 
-func ServerExecute() {
+func CacheDaemonExecute() {
 	ctx := context.Background()
-	cmd := NewServerCommand()
+	cmd := NewCacheDaemonCommand()
 
 	err := cmd.ExecuteContext(ctx)
 
@@ -176,23 +182,4 @@ func ServerExecute() {
 	if err != nil {
 		logger.Fatal(ctx, "server failed", zap.Error(err))
 	}
-}
-
-func parsePublicKey(path string) (ed25519.PublicKey, error) {
-	pubKeyBytes, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("cannot open Paseto public key file: %w", err)
-	}
-
-	block, _ := pem.Decode(pubKeyBytes)
-	if block == nil || block.Type != "PUBLIC KEY" {
-		return nil, fmt.Errorf("error decoding Paseto public key PEM")
-	}
-
-	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing Paseto public key: %w", err)
-	}
-
-	return pub.(ed25519.PublicKey), nil
 }

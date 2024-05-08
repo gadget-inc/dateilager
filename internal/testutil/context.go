@@ -9,6 +9,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -34,6 +35,9 @@ func NewTestCtx(t *testing.T, role auth.Role, projects ...int64) TestCtx {
 		Project: project,
 	})
 
+	log := zaptest.NewLogger(t)
+	zap.ReplaceGlobals(log)
+
 	dbConn, err := newDbTestConnector(ctx, os.Getenv("DB_URI"))
 	require.NoError(t, err, "connecting to DB")
 
@@ -42,7 +46,7 @@ func NewTestCtx(t *testing.T, role auth.Role, projects ...int64) TestCtx {
 
 	return TestCtx{
 		t:      t,
-		log:    zaptest.NewLogger(t),
+		log:    log,
 		dbConn: dbConn,
 		lookup: lookup,
 		ctx:    ctx,
@@ -85,5 +89,13 @@ func (tc *TestCtx) FsApi() *api.Fs {
 		Env:           environment.Test,
 		DbConn:        tc.Connector(),
 		ContentLookup: tc.ContentLookup(),
+	}
+}
+
+func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string) *api.Cached {
+	return &api.Cached{
+		Env:         environment.Test,
+		Client:      cl,
+		StagingPath: stagingPath,
 	}
 }
