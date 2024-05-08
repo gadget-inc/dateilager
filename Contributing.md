@@ -64,6 +64,12 @@ make build
 
 ### Run migrations
 
+Assuming Postgres is running, you can setup the database using the migrate tool:
+
+```
+make migrate
+```
+
 ## API Testing
 
 Ensure there is a Postgres database named `dl_tests`. These tests will write to a real database instance
