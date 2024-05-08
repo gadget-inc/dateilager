@@ -714,11 +714,11 @@ func cleanupCacheLockFile(lockFile *os.File) {
 	os.Remove(lockFile.Name())
 }
 
-func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, error) {
+func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, uint32, error) {
 	objectDir := CacheObjectsDir(cacheRootDir)
 	err := os.MkdirAll(objectDir, 0755)
 	if err != nil {
-		return -1, fmt.Errorf("cannot create object folder: %w", err)
+		return -1, 0, fmt.Errorf("cannot create object folder: %w", err)
 	}
 
 	tmpObjectDir := CacheTmpDir(cacheRootDir)
@@ -726,13 +726,13 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 
 	err = os.MkdirAll(tmpObjectDir, 0755)
 	if err != nil {
-		return -1, fmt.Errorf("cannot create tmp folder to unpack cached objects: %w", err)
+		return -1, 0, fmt.Errorf("cannot create tmp folder to unpack cached objects: %w", err)
 	}
 	defer os.RemoveAll(tmpObjectDir)
 
 	lockFile, err := obtainCacheLockFile(cacheRootDir)
 	if err != nil {
-		return -1, err
+		return -1, 0, err
 	}
 	defer cleanupCacheLockFile(lockFile)
 
@@ -745,23 +745,23 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 
 	stream, err := c.fs.GetCache(ctx, request)
 	if err != nil {
-		return -1, fmt.Errorf("fs.GetCache connect: %w", err)
+		return -1, 0, fmt.Errorf("fs.GetCache connect: %w", err)
 	}
 
 	// Pull one response before booting workers
 	// This is a short circuit in case the cache doesn't exist
 	response, err := stream.Recv()
 	if err == io.EOF {
-		return -1, nil
+		return -1, 0, nil
 	}
 	if err != nil {
-		return -1, fmt.Errorf("fs.GetCache receive: %w", err)
+		return -1, 0, fmt.Errorf("fs.GetCache receive: %w", err)
 	}
 	version := response.Version
 
 	for _, availableVersion := range availableVersions {
 		if version == availableVersion {
-			return version, nil
+			return version, 0, nil
 		}
 	}
 
@@ -796,6 +796,8 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 	})
 
 	workerCount := parallelWorkerCount()
+	var writtenObjectCount atomic.Uint32
+
 	span.SetAttributes(key.WorkerCount.Attribute(workerCount))
 
 	for i := 0; i < workerCount; i++ {
@@ -834,7 +836,7 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 						}
 					}
 
-					_, _, err := files.WriteTar(tempDest, CacheObjectsDir(cacheRootDir), tarReader, nil, nil)
+					count, _, err := files.WriteTar(tempDest, CacheObjectsDir(cacheRootDir), tarReader, nil, nil)
 					if err != nil {
 						cancel()
 						return err
@@ -845,6 +847,7 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 						cancel()
 						return fmt.Errorf("couldn't rename temporary folder (%s) to final folder (%s): %w", tempDest, finalDest, err)
 					}
+					writtenObjectCount.Add(count)
 				}
 			}
 		})
@@ -852,21 +855,21 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, erro
 
 	err = group.Wait()
 	if err != nil {
-		return -1, err
+		return -1, writtenObjectCount.Load(), err
 	}
 
 	versionFile, err := os.OpenFile(cacheVersionPath(cacheRootDir), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
 	if err != nil {
-		return -1, fmt.Errorf("fs.GetCache cannot open cache versions file for writing: %w", err)
+		return -1, writtenObjectCount.Load(), fmt.Errorf("fs.GetCache cannot open cache versions file for writing: %w", err)
 	}
 	defer versionFile.Close()
 
 	_, err = versionFile.WriteString(fmt.Sprintf("%d\n", version))
 	if err != nil {
-		return -1, fmt.Errorf("fs.GetCache failed to update the versions file: %w", err)
+		return -1, writtenObjectCount.Load(), fmt.Errorf("fs.GetCache failed to update the versions file: %w", err)
 	}
 
-	return version, nil
+	return version, writtenObjectCount.Load(), nil
 }
 
 func (c *Client) GcProject(ctx context.Context, project int64, keep int64, from *int64) (int64, error) {

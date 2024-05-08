@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -223,13 +224,22 @@ func packObjects(tc util.TestCtx, objects map[string]expectedObject) []byte {
 	contentWriter := db.NewTarWriter()
 	defer contentWriter.Close()
 
-	for path, info := range objects {
+	var keys []string
+	for key := range objects {
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	// iterate the objects for packing in a deterministic order
+	for _, key := range keys {
+		info := objects[key]
 		mode := info.mode
 		if mode == 0 {
 			mode = 0755
 		}
 
-		object := db.NewUncachedTarObject(path, mode, int64(len(info.content)), info.deleted, []byte(info.content))
+		object := db.NewUncachedTarObject(key, mode, int64(len(info.content)), info.deleted, []byte(info.content))
 
 		err := contentWriter.WriteObject(&object)
 		require.NoError(tc.T(), err, "write content to TAR")

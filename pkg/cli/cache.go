@@ -18,7 +18,7 @@ func NewCmdGetCache() *cobra.Command {
 			ctx := cmd.Context()
 			c := client.FromContext(ctx)
 
-			version, err := c.GetCache(ctx, path)
+			version, _, err := c.GetCache(ctx, path)
 			if err != nil {
 				return err
 			}

@@ -90,7 +90,7 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 			return err
 		}
 		hashHex := hex.EncodeToString(content)
-		return hardlinkDir(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
+		return HardlinkDir(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
 
 	case tar.TypeReg:
 		dir := filepath.Dir(path)
@@ -193,7 +193,7 @@ func makeSymlink(oldname, newname string) error {
 	return nil
 }
 
-func hardlinkDir(olddir, newdir string) error {
+func HardlinkDir(olddir, newdir string) error {
 	if fileExists(newdir) {
 		err := os.RemoveAll(newdir)
 		if err != nil {
@@ -203,7 +203,7 @@ func hardlinkDir(olddir, newdir string) error {
 
 	return filepath.Walk(olddir, func(oldpath string, info fs.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to walk dir: %v, %w", info, err)
 		}
 
 		newpath := filepath.Join(newdir, strings.TrimPrefix(oldpath, olddir))
