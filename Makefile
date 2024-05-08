@@ -127,6 +127,11 @@ cached: export DL_TOKEN=$(DEV_SHARED_READER_TOKEN)
 cached: internal/pb/cache.pb.go internal/pb/cache_grpc.pb.go
 	go run cmd/cached/main.go --upstream-host $(GRPC_HOST) --upstream-port $(GRPC_PORT) --port $(GRPC_CACHED_PORT) --staging-path tmp/cache-stage
 
+cached-csi: export DL_ENV=dev
+cached-csi: export DL_TOKEN=$(DEV_SHARED_READER_TOKEN)
+cached-csi: internal/pb/cache.pb.go internal/pb/cache_grpc.pb.go
+	go run cmd/cached/main.go --upstream-host $(GRPC_HOST) --upstream-port $(GRPC_PORT) --staging-path tmp/cache-stage --csi-socket unix://tmp/csi.sock
+
 client-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
 client-update: export DL_SKIP_SSL_VERIFICATION=1
 client-update:

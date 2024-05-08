@@ -41,6 +41,8 @@ const (
 	DurationMS        = DurationKey("dl.duration_ms")
 	CloneToProject    = Int64Key("dl.clone_to_project")
 	CachePath         = StringKey("dl.cache_path")
+	VolumeID          = StringKey("dl.volume_id")
+	TargetPath        = StringKey("dl.target_path")
 )
 
 var (
