@@ -380,8 +380,8 @@ func verifyDir(t *testing.T, dir string, version int64, files map[string]expecte
 	}
 }
 
-func createTestGRPCServer(tc util.TestCtx, reqAuth auth.Auth) (*bufconn.Listener, *grpc.Server, func() *grpc.ClientConn) {
-	lis := bufconn.Listen(bufSize)
+func createTestGRPCServer(tc util.TestCtx) (*bufconn.Listener, *grpc.Server, func() *grpc.ClientConn) {
+	reqAuth := tc.Auth()
 	s := grpc.NewServer(
 		grpc.UnaryInterceptor(
 			grpc.UnaryServerInterceptor(func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
@@ -397,6 +397,7 @@ func createTestGRPCServer(tc util.TestCtx, reqAuth auth.Auth) (*bufconn.Listener
 		),
 	)
 
+	lis := bufconn.Listen(bufSize)
 	dialer := func(context.Context, string) (net.Conn, error) {
 		return lis.Dial()
 	}
@@ -412,7 +413,15 @@ func createTestGRPCServer(tc util.TestCtx, reqAuth auth.Auth) (*bufconn.Listener
 
 func createTestCachedCSIServer(tc util.TestCtx, tmpDir string) (*api.Cached, string, func()) {
 	cl, _, closeClient := createTestClient(tc)
-	s := cached.NewCSIServer(tc.Context(), cl, path.Join(tmpDir, "cached", "staging"))
+	_, grpcServer, _ := createTestGRPCServer(tc)
+
+	s := cached.CachedServer{
+		Grpc: grpcServer,
+	}
+
+	cached := tc.CachedApi(cl, path.Join(tmpDir, "cached", "staging"))
+	s.RegisterCached(cached)
+	s.RegisterCSI(cached)
 
 	socket := path.Join(tmpDir, "csi.sock")
 	endpoint := "unix://" + socket
@@ -422,15 +431,11 @@ func createTestCachedCSIServer(tc util.TestCtx, tmpDir string) (*api.Cached, str
 		require.NoError(tc.T(), err, "CSI Server exited")
 	}()
 
-	cached := tc.CachedApi(cl, path.Join(tmpDir, "cached", "staging"))
-	s.RegisterCached(cached)
-	s.RegisterCSI(cached)
-
 	return cached, endpoint, func() { closeClient(); s.Grpc.Stop() }
 }
 
 func createTestClient(tc util.TestCtx) (*client.Client, *api.Fs, func()) {
-	lis, s, getConn := createTestGRPCServer(tc, tc.Context().Value(auth.AuthCtxKey).(auth.Auth))
+	lis, s, getConn := createTestGRPCServer(tc)
 
 	fs := tc.FsApi()
 	pb.RegisterFsServer(s, fs)
@@ -448,7 +453,7 @@ func createTestClient(tc util.TestCtx) (*client.Client, *api.Fs, func()) {
 // Make a new client that connects to a test cached server
 // Under the hood, this creates a test storage server and connects to that
 func createTestCachedClient(tc util.TestCtx) (*client.CachedClient, *api.Cached, func()) {
-	lis, s, getConn := createTestGRPCServer(tc, tc.Context().Value(auth.AuthCtxKey).(auth.Auth))
+	lis, s, getConn := createTestGRPCServer(tc)
 
 	cl, _, closeClient := createTestClient(tc)
 	stagingPath := emptyTmpDir(tc.T())
