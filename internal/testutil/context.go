@@ -69,6 +69,10 @@ func (tc *TestCtx) Context() context.Context {
 	return tc.ctx
 }
 
+func (tc *TestCtx) Auth() auth.Auth {
+	return tc.Context().Value(auth.AuthCtxKey).(auth.Auth)
+}
+
 func (tc *TestCtx) Connect() pgx.Tx {
 	tx, _, err := tc.dbConn.Connect(tc.ctx)
 	require.NoError(tc.t, err, "connecting to db")

@@ -56,17 +56,12 @@ func TestClientNewProjectDuplicateReportsError(t *testing.T) {
 	/** Create Project Again**/
 
 	tcSecond := util.NewTestCtx(t, auth.Admin, projectId)
-	defer tc.Close()
+	defer tcSecond.Close()
 
 	cSecond, _, closeSecond := createTestClient(tc)
 	defer closeSecond()
 
 	errSecond := cSecond.NewProject(tcSecond.Context(), projectId, nil, nil)
-	want := "project id already exists"
 
-	require.Error(t, errSecond, "NewProject")
-
-	if errSecond == nil {
-		t.Errorf("got %s want %s", errSecond, want)
-	}
+	require.Error(t, errSecond, "NewProject already exists error")
 }

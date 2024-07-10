@@ -97,22 +97,17 @@ func NewCacheDaemonCommand() *cobra.Command {
 				return err
 			}
 
-			var s *cached.CachedServer
-			if csiSocket == "" {
-				cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-				if err != nil {
-					return fmt.Errorf("cannot open TLS cert and key files (%s, %s): %w", certFile, keyFile, err)
-				}
-
-				pasetoKey, err := parsePublicKey(pasetoFile)
-				if err != nil {
-					return fmt.Errorf("cannot parse Paseto public key %s: %w", pasetoFile, err)
-				}
-
-				s = cached.NewServer(ctx, &cert, pasetoKey)
-			} else {
-				s = cached.NewCSIServer(ctx, cl, stagingPath)
+			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+			if err != nil {
+				return fmt.Errorf("cannot open TLS cert and key files (%s, %s): %w", certFile, keyFile, err)
 			}
+
+			pasetoKey, err := parsePublicKey(pasetoFile)
+			if err != nil {
+				return fmt.Errorf("cannot parse Paseto public key %s: %w", pasetoFile, err)
+			}
+
+			s := cached.NewServer(ctx, &cert, pasetoKey)
 
 			logger.Info(ctx, "register Cached")
 			cached := &api.Cached{
@@ -122,14 +117,6 @@ func NewCacheDaemonCommand() *cobra.Command {
 			}
 			s.RegisterCached(cached)
 
-			if csiSocket != "" {
-				logger.Info(ctx, "register CSI")
-				s.RegisterCSI(cached)
-			}
-
-			osSignals := make(chan os.Signal, 1)
-			signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
-
 			err = cached.Prepare(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to prepare cache daemon in %s: %w", stagingPath, err)
@@ -138,6 +125,9 @@ func NewCacheDaemonCommand() *cobra.Command {
 			group, ctx := errgroup.WithContext(ctx)
 
 			if csiSocket != "" {
+				logger.Info(ctx, "register CSI")
+				s.RegisterCSI(cached)
+
 				group.Go(func() error {
 					logger.Info(ctx, "start CSI server")
 					return s.ServeCSI(csiSocket)
@@ -153,6 +143,9 @@ func NewCacheDaemonCommand() *cobra.Command {
 				logger.Info(ctx, "start cached server", key.Port.Field(port), key.Environment.Field(env.String()))
 				return s.Serve(listen)
 			})
+
+			osSignals := make(chan os.Signal, 1)
+			signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
 
 			group.Go(func() error {
 				<-osSignals
