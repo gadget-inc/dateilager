@@ -411,7 +411,7 @@ func createTestGRPCServer(tc util.TestCtx) (*bufconn.Listener, *grpc.Server, fun
 	return lis, s, getConn
 }
 
-func createTestCachedCSIServer(tc util.TestCtx, tmpDir string) (*api.Cached, string, func()) {
+func createTestCachedServer(tc util.TestCtx, tmpDir string) (*api.Cached, string, func()) {
 	cl, _, closeClient := createTestClient(tc)
 	_, grpcServer, _ := createTestGRPCServer(tc)
 
@@ -427,7 +427,7 @@ func createTestCachedCSIServer(tc util.TestCtx, tmpDir string) (*api.Cached, str
 	endpoint := "unix://" + socket
 
 	go func() {
-		err := s.ServeCSI(endpoint)
+		err := s.Serve(endpoint)
 		require.NoError(tc.T(), err, "CSI Server exited")
 	}()
 

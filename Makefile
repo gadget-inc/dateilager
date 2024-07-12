@@ -10,7 +10,8 @@ DB_URI := postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl
 
 GRPC_HOST ?= localhost
 GRPC_PORT ?= 5051
-GRPC_CACHED_PORT ?= 5053
+
+CACHED_SOCKET ?= unix:///tmp/csi.sock
 
 DEV_TOKEN_ADMIN ?= v2.public.eyJzdWIiOiJhZG1pbiJ9yt40HNkcyOUtDeFa_WPS6vi0WiE4zWngDGJLh17TuYvssTudCbOdQEkVDRD-mSNTXLgSRDXUkO-AaEr4ZLO4BQ
 DEV_TOKEN_PROJECT_1 ?= v2.public.eyJzdWIiOiIxIn2jV7FOdEXafKDtAnVyDgI4fmIbqU7C1iuhKiL0lDnG1Z5-j6_ObNDd75sZvLZ159-X98_mP4qvwzui0w8pjt8F
@@ -24,12 +25,13 @@ MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 
 .PHONY: migrate migrate-create clean build lint release
-.PHONY: test test-one test-fuzz test-js lint-js build-js
-.PHONY: reset-db setup-local server server-profile install-js
+.PHONY: test test-one test-fuzz test-js lint-js install-js build-js
+.PHONY: reset-db setup-local build-cache-version server server-profile cached
 .PHONY: client-update client-large-update client-get client-rebuild client-rebuild-with-cache
 .PHONY: client-getcache client-gc-contents client-gc-project client-gc-random-projects
-.PHONY: health upload-container-image run-container gen-docs
-.PHONY: load-test-new load-test-get load-test-update
+.PHONY: cachedclient-probe cachedclient-populate cachedclient-stats
+.PHONY: health upload-container-image upload-prerelease-container-image run-container gen-docs
+.PHONY: load-test-new load-test-update load-test-update-large load-test-get load-test-get-compress
 
 migrate:
 	migrate -database $(DB_URI)?sslmode=disable -path $(MIGRATE_DIR) up
@@ -114,6 +116,9 @@ reset-db: migrate
 setup-local: reset-db
 	psql $(DB_URI) -c "insert into dl.projects (id, latest_version, pack_patterns) values (1, 0, '{\"node_modules/.*/\"}');"
 
+build-cache-version:
+	psql $(DB_URI) -c "with impactful_packed_objects as (select hash, count(*) as count from dl.objects where packed = true and stop_version is null group by hash order by count desc limit 20) insert into dl.cache_versions (hashes) select coalesce(array_agg(hash), '{}') from impactful_packed_objects;"
+
 server: export DL_ENV=dev
 server: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT)
@@ -125,12 +130,7 @@ server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 cached: export DL_ENV=dev
 cached: export DL_TOKEN=$(DEV_SHARED_READER_TOKEN)
 cached: internal/pb/cache.pb.go internal/pb/cache_grpc.pb.go
-	go run cmd/cached/main.go --upstream-host $(GRPC_HOST) --upstream-port $(GRPC_PORT) --port $(GRPC_CACHED_PORT) --staging-path tmp/cache-stage
-
-cached-csi: export DL_ENV=dev
-cached-csi: export DL_TOKEN=$(DEV_SHARED_READER_TOKEN)
-cached-csi: internal/pb/cache.pb.go internal/pb/cache_grpc.pb.go
-	go run cmd/cached/main.go --upstream-host $(GRPC_HOST) --upstream-port $(GRPC_PORT) --staging-path tmp/cache-stage --csi-socket unix://tmp/csi.sock
+	go run cmd/cached/main.go --upstream-host $(GRPC_HOST) --upstream-port $(GRPC_PORT) --csi-socket $(CACHED_SOCKET) --staging-path tmp/cache-stage
 
 client-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
 client-update: export DL_SKIP_SSL_VERIFICATION=1
@@ -180,11 +180,6 @@ client-getcache: export DL_SKIP_SSL_VERIFICATION=1
 client-getcache:
 	go run cmd/client/main.go getcache --host $(GRPC_HOST) --path input/cache
 
-client-getcached: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
-client-getcached: export DL_SKIP_SSL_VERIFICATION=1
-client-getcached:
-	go run cmd/client/main.go getcached --host $(GRPC_HOST) --port $(GRPC_CACHED_PORT) --path input/cache
-
 client-gc-contents: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-gc-contents: export DL_SKIP_SSL_VERIFICATION=1
 client-gc-contents:
@@ -199,6 +194,15 @@ client-gc-random-projects: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-gc-random-projects: export DL_SKIP_SSL_VERIFICATION=1
 client-gc-random-projects:
 	go run cmd/client/main.go gc --host $(GRPC_HOST) --mode random-projects --sample 25 --keep 1
+
+cachedclient-probe:
+	go run cmd/cached-client/main.go probe --socket $(CACHED_SOCKET)
+
+cachedclient-populate:
+	go run cmd/cached-client/main.go populate --socket $(CACHED_SOCKET) --path input/cache
+
+cachedclient-stats:
+	go run cmd/cached-client/main.go stats --socket $(CACHED_SOCKET)
 
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)

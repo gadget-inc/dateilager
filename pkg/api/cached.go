@@ -48,11 +48,6 @@ func (c *Cached) PopulateDiskCache(ctx context.Context, req *pb.PopulateDiskCach
 		return nil, status.Errorf(codes.Unimplemented, "Cached populateDiskCache only implemented in dev and test environments")
 	}
 
-	err := requireAdminAuth(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	destination := req.Path
 
 	version, err := c.writeCache(destination)

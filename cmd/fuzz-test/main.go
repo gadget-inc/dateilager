@@ -682,5 +682,5 @@ func main() {
 	}
 
 	logger.Info(ctx, "fuzz test completed")
-	_ = logger.Sync()
+	_ = logger.Sync(ctx)
 }

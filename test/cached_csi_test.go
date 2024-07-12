@@ -29,7 +29,7 @@ func TestCachedCSIDriver(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	cached, endpoint, close := createTestCachedCSIServer(tc, tmpDir)
+	cached, endpoint, close := createTestCachedServer(tc, tmpDir)
 	defer close()
 
 	err = cached.Prepare(tc.Context())
@@ -61,7 +61,7 @@ func TestCachedCSIDriverMountsCache(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	cached, _, close := createTestCachedCSIServer(tc, tmpDir)
+	cached, _, close := createTestCachedServer(tc, tmpDir)
 	defer close()
 
 	require.NoError(t, cached.Prepare(tc.Context()), "cached.Prepare must succeed")
@@ -110,7 +110,7 @@ func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	cached, _, close := createTestCachedCSIServer(tc, tmpDir)
+	cached, _, close := createTestCachedServer(tc, tmpDir)
 	defer close()
 
 	err = cached.Prepare(tc.Context())
@@ -165,7 +165,7 @@ func TestCachedCSIDriverProbeFailsUntilPrepared(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	cached, _, close := createTestCachedCSIServer(tc, tmpDir)
+	cached, _, close := createTestCachedServer(tc, tmpDir)
 	defer close()
 
 	response, err := cached.Probe(tc.Context(), &csi.ProbeRequest{})

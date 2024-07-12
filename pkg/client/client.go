@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
@@ -26,7 +28,9 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/keepalive"
 )
@@ -51,8 +55,10 @@ type Client struct {
 }
 
 type CachedClient struct {
-	conn   *grpc.ClientConn
-	cached pb.CachedClient
+	conn     *grpc.ClientConn
+	cached   pb.CachedClient
+	identity csi.IdentityClient
+	node     csi.NodeClient
 }
 
 func NewClientConn(conn *grpc.ClientConn) *Client {
@@ -60,7 +66,12 @@ func NewClientConn(conn *grpc.ClientConn) *Client {
 }
 
 func NewCachedClientConn(conn *grpc.ClientConn) *CachedClient {
-	return &CachedClient{conn: conn, cached: pb.NewCachedClient(conn)}
+	return &CachedClient{
+		conn:     conn,
+		cached:   pb.NewCachedClient(conn),
+		identity: csi.NewIdentityClient(conn),
+		node:     csi.NewNodeClient(conn),
+	}
 }
 
 type options struct {
@@ -977,6 +988,37 @@ func NewCachedClient(ctx context.Context, host string, port uint16, opts ...func
 	return NewCachedClientConn(conn), nil
 }
 
+func NewCachedUnixClient(ctx context.Context, socket string) (*CachedClient, error) {
+	ctx, span := telemetry.Start(ctx, "cached-unix-client.new", trace.WithAttributes(
+		key.Server.Attribute(socket),
+	))
+	defer span.End()
+
+	bc := backoff.DefaultConfig
+	bc.MaxDelay = time.Second
+	dialOptions := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: bc}),
+		grpc.WithBlock(),
+		grpc.WithIdleTimeout(time.Duration(0)),
+		grpc.WithContextDialer(func(ctx context.Context, path string) (net.Conn, error) {
+			var timeout time.Duration
+			deadline, ok := ctx.Deadline()
+			if ok {
+				timeout = time.Until(deadline)
+			}
+			return net.DialTimeout("unix", path[len("unix://"):], timeout)
+		}),
+	}
+
+	conn, err := grpc.DialContext(ctx, socket, dialOptions...)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewCachedClientConn(conn), nil
+}
+
 func (c *CachedClient) Close() {
 	// Give a chance for the upstream socket to finish writing it's response
 	// https://github.com/grpc/grpc-go/issues/2869#issuecomment-503310136
@@ -1000,6 +1042,28 @@ func (c *CachedClient) PopulateDiskCache(ctx context.Context, destination string
 	}
 
 	return response.Version, nil
+}
+
+func (c *CachedClient) Probe(ctx context.Context) (bool, error) {
+	request := &csi.ProbeRequest{}
+
+	response, err := c.identity.Probe(ctx, request)
+	if err != nil {
+		return false, fmt.Errorf("failed to probe server: %w", err)
+	}
+
+	return response.Ready.Value, nil
+}
+
+func (c *CachedClient) NodeGetVolumeStats(ctx context.Context) ([]*csi.VolumeUsage, error) {
+	request := &csi.NodeGetVolumeStatsRequest{}
+
+	response, err := c.node.NodeGetVolumeStats(ctx, request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to probe server: %w", err)
+	}
+
+	return response.Usage, nil
 }
 
 func parallelWorkerCount() int {

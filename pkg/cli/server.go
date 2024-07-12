@@ -171,7 +171,7 @@ func ServerExecute() {
 	err := cmd.ExecuteContext(ctx)
 
 	logger.Info(ctx, "shut down server")
-	_ = logger.Sync()
+	_ = logger.Sync(ctx)
 
 	if err != nil {
 		logger.Fatal(ctx, "server failed", zap.Error(err))
