@@ -3,6 +3,7 @@ package cachedcli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -109,6 +110,15 @@ func NewCacheDaemonCommand() *cobra.Command {
 			logger.Info(ctx, "register CSI")
 			s.RegisterCSI(cached)
 
+			mux := http.NewServeMux()
+			mux.HandleFunc("/healthz", healthzHandler)
+
+			healthServer := &http.Server{
+				Addr:        fmt.Sprintf(":%d", healthzPort),
+				Handler:     mux,
+				BaseContext: func(l net.Listener) context.Context { return ctx },
+			}
+
 			err = cached.Prepare(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to prepare cache daemon in %s: %w", stagingPath, err)
@@ -121,7 +131,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 			group.Go(func() error {
 				<-osSignals
 				s.Grpc.GracefulStop()
-				return nil
+				return healthServer.Shutdown(ctx)
 			})
 
 			group.Go(func() error {
@@ -130,15 +140,11 @@ func NewCacheDaemonCommand() *cobra.Command {
 			})
 
 			group.Go(func() error {
-				mux := http.NewServeMux()
-				mux.HandleFunc("/healthz", healthzHandler)
-
-				healthServer := &http.Server{
-					Addr:        fmt.Sprintf(":%d", healthzPort),
-					Handler:     mux,
-					BaseContext: func(l net.Listener) context.Context { return ctx },
+				err := healthServer.ListenAndServe()
+				if errors.Is(err, http.ErrServerClosed) {
+					return nil
 				}
-				return healthServer.ListenAndServe()
+				return err
 			})
 
 			return group.Wait()

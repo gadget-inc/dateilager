@@ -760,8 +760,6 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, uint
 	}
 	defer cleanupCacheLockFile(lockFile)
 
-	availableVersions := ReadCacheVersionFile(cacheRootDir)
-
 	ctx, span := telemetry.Start(ctx, "client.get_cache")
 	defer span.End()
 
@@ -783,11 +781,9 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, uint
 	}
 	version := response.Version
 
-	for _, availableVersion := range availableVersions {
-		if version == availableVersion {
-			return version, 0, nil
-		}
-	}
+	// We cannot early exist here, even if `version` is already available locally
+	// since we've opened the GRPC stream we need to go ahead and read the whole thing
+	// this should be split into 2 requests, one to get the latest version and another to download it.
 
 	tarChan := make(chan *pb.GetCacheResponse, 16)
 	group, ctx := errgroup.WithContext(ctx)
