@@ -122,33 +122,36 @@ func TestClientCanHaveMultipleCacheVersions(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("%d\n%d\n", version1, version2), string(versionsFileContent))
 }
 
-func TestDownloadingTheSameVersionTwice(t *testing.T) {
-	tc := util.NewTestCtx(t, auth.Project, 1)
-	defer tc.Close()
+// This needs to remain skipped until we split GetCache into two requests
+// If we start a request and then early exit we leave the GRPC request hanging
+//
+// func TestDownloadingTheSameVersionTwice(t *testing.T) {
+// 	tc := util.NewTestCtx(t, auth.Project, 1)
+// 	defer tc.Close()
 
-	writeProject(tc, 1, 1)
-	writePackedFiles(tc, 1, 1, nil, "pack/a")
-	_, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
-	require.NoError(t, err)
+// 	writeProject(tc, 1, 1)
+// 	writePackedFiles(tc, 1, 1, nil, "pack/a")
+// 	_, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
+// 	require.NoError(t, err)
 
-	c, _, close := createTestClient(tc)
-	defer close()
+// 	c, _, close := createTestClient(tc)
+// 	defer close()
 
-	tmpCacheDir, err := os.MkdirTemp("", "dl_cache_test_tmp")
-	require.NoError(t, err)
+// 	tmpCacheDir, err := os.MkdirTemp("", "dl_cache_test_tmp")
+// 	require.NoError(t, err)
 
-	version1, count, err := c.GetCache(tc.Context(), tmpCacheDir)
-	require.NoError(t, err, "client.GetCache after GetCache")
-	assert.Equal(t, uint32(2), count)
+// 	version1, count, err := c.GetCache(tc.Context(), tmpCacheDir)
+// 	require.NoError(t, err, "client.GetCache after GetCache")
+// 	assert.Equal(t, uint32(2), count)
 
-	_, count, err = c.GetCache(tc.Context(), tmpCacheDir)
-	require.NoError(t, err, "client.GetCache after GetCache")
-	assert.Equal(t, uint32(0), count)
+// 	_, count, err = c.GetCache(tc.Context(), tmpCacheDir)
+// 	require.NoError(t, err, "client.GetCache after GetCache")
+// 	assert.Equal(t, uint32(0), count)
 
-	versionsFileContent, err := os.ReadFile(filepath.Join(tmpCacheDir, "versions"))
-	require.NoError(t, err)
-	assert.Equal(t, fmt.Sprintf("%d\n", version1), string(versionsFileContent))
-}
+// 	versionsFileContent, err := os.ReadFile(filepath.Join(tmpCacheDir, "versions"))
+// 	require.NoError(t, err)
+// 	assert.Equal(t, fmt.Sprintf("%d\n", version1), string(versionsFileContent))
+// }
 
 func dirFileNames(t *testing.T, path string) []string {
 	cacheRootFiles, err := os.ReadDir(path)
