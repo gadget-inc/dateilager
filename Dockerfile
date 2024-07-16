@@ -40,6 +40,11 @@ RUN GRPC_HEALTH_PROBE_VERSION=v0.4.23 \
     && curl -Lfso /bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-${TARGETARCH} \
     && chmod +x /bin/grpc_health_probe
 
+RUN GO_MIGRATE_VERSION=v4.17.1 \
+    && curl -Lfso /tmp/migrate.tar.gz https://github.com/golang-migrate/migrate/releases/download/${GO_MIGRATE_VERSION}/migrate.linux-${TARGETARCH}.tar.gz \
+    && tar -xzf /tmp/migrate.tar.gz -C /bin \
+    && chmod +x /bin/migrate
+
 RUN useradd -ms /bin/bash main
 USER main
 WORKDIR /home/main
