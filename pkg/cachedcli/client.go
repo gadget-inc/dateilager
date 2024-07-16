@@ -1,4 +1,4 @@
-package cli
+package cachedcli
 
 import (
 	"context"
@@ -25,23 +25,21 @@ var (
 	span              trace.Span
 )
 
-func NewClientCommand() *cobra.Command {
+func NewCachedClientCommand() *cobra.Command {
 	var (
-		level        *zapcore.Level
-		encoding     string
-		tracing      bool
-		otelContext  string
-		host         string
-		port         uint16
-		timeout      uint
-		headlessHost string
+		level       *zapcore.Level
+		encoding    string
+		tracing     bool
+		otelContext string
+		socket      string
+		timeout     uint
 	)
 
 	var cancel context.CancelFunc
 
 	cmd := &cobra.Command{
-		Use:               "client",
-		Short:             "DateiLager client",
+		Use:               "cachedclient",
+		Short:             "DateiLager cached client",
 		DisableAutoGenTag: true,
 		Version:           version.Version,
 		SilenceErrors:     true,
@@ -78,17 +76,17 @@ func NewClientCommand() *cobra.Command {
 				ctx = otel.GetTextMapPropagator().Extract(ctx, mapCarrier)
 			}
 
-			ctx, span = telemetry.Start(ctx, "cmd.main")
+			ctx, span = telemetry.Start(ctx, "cached-cmd.main")
 
-			if host == "" {
-				return fmt.Errorf("required flag(s) \"host\" not set")
+			if socket == "" {
+				return fmt.Errorf("required flag(s) \"socket\" not set")
 			}
 
-			cl, err := client.NewClient(ctx, host, port, client.WithheadlessHost(headlessHost))
+			cl, err := client.NewCachedUnixClient(ctx, socket)
 			if err != nil {
 				return err
 			}
-			ctx = client.IntoContext(ctx, cl)
+			ctx = client.CachedIntoContext(ctx, cl)
 
 			cmd.SetContext(ctx)
 
@@ -110,29 +108,20 @@ func NewClientCommand() *cobra.Command {
 	flags.BoolVar(&tracing, "tracing", false, "Whether tracing is enabled")
 	flags.StringVar(&otelContext, "otel-context", "", "Open Telemetry context")
 
-	flags.StringVar(&host, "host", "", "GRPC server hostname")
-	flags.Uint16Var(&port, "port", 5051, "GRPC server port")
-	flags.StringVar(&headlessHost, "headless-host", "", "Alternative headless hostname to use for round robin connections")
+	flags.StringVar(&socket, "socket", "", "Unix domain socket path")
 	flags.UintVar(&timeout, "timeout", 0, "GRPC client timeout (ms)")
 
-	_ = cmd.MarkFlagRequired("host")
+	_ = cmd.MarkFlagRequired("socket")
 
-	cmd.AddCommand(NewCmdGet())
-	cmd.AddCommand(NewCmdInspect())
-	cmd.AddCommand(NewCmdNew())
-	cmd.AddCommand(NewCmdRebuild())
-	cmd.AddCommand(NewCmdReset())
-	cmd.AddCommand(NewCmdSnapshot())
-	cmd.AddCommand(NewCmdUpdate())
-	cmd.AddCommand(NewCmdGc())
-	cmd.AddCommand(NewCmdGetCache())
+	cmd.AddCommand(NewCmdPopulate())
+	cmd.AddCommand(NewCmdProbe())
 
 	return cmd
 }
 
 func ClientExecute() {
 	ctx := context.Background()
-	cmd := NewClientCommand()
+	cmd := NewCachedClientCommand()
 	err := cmd.ExecuteContext(ctx)
 
 	client := client.FromContext(cmd.Context())
@@ -151,6 +140,6 @@ func ClientExecute() {
 	_ = logger.Sync(ctx)
 
 	if err != nil {
-		logger.Fatal(ctx, "command failed", zap.Error(err))
+		logger.Fatal(ctx, "cached client failed", zap.Error(err))
 	}
 }

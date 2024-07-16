@@ -5,7 +5,7 @@ import (
 )
 
 type clientCtxKey struct{}
-type cachedCtxKey struct{}
+type cachedClientCtxKey struct{}
 
 func FromContext(ctx context.Context) *Client {
 	client, ok := ctx.Value(clientCtxKey{}).(*Client)
@@ -20,7 +20,7 @@ func IntoContext(ctx context.Context, client *Client) context.Context {
 }
 
 func CachedFromContext(ctx context.Context) *CachedClient {
-	client, ok := ctx.Value(cachedCtxKey{}).(*CachedClient)
+	client, ok := ctx.Value(cachedClientCtxKey{}).(*CachedClient)
 	if !ok {
 		return nil
 	}
@@ -28,5 +28,5 @@ func CachedFromContext(ctx context.Context) *CachedClient {
 }
 
 func CachedIntoContext(ctx context.Context, client *CachedClient) context.Context {
-	return context.WithValue(ctx, cachedCtxKey{}, client)
+	return context.WithValue(ctx, cachedClientCtxKey{}, client)
 }

@@ -1,11 +1,12 @@
-package cli
+package cachedcli
 
 import (
 	"context"
-	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime/pprof"
@@ -38,10 +39,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 		profilePath  string
 		upstreamHost string
 		upstreamPort uint16
-		certFile     string
-		keyFile      string
-		pasetoFile   string
-		port         int
+		healthzPort  uint16
 		timeout      uint
 		headlessHost string
 		stagingPath  string
@@ -97,25 +95,19 @@ func NewCacheDaemonCommand() *cobra.Command {
 				return err
 			}
 
-			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-			if err != nil {
-				return fmt.Errorf("cannot open TLS cert and key files (%s, %s): %w", certFile, keyFile, err)
-			}
+			s := cached.NewServer(ctx)
 
-			pasetoKey, err := parsePublicKey(pasetoFile)
-			if err != nil {
-				return fmt.Errorf("cannot parse Paseto public key %s: %w", pasetoFile, err)
-			}
-
-			s := cached.NewServer(ctx, &cert, pasetoKey)
-
-			logger.Info(ctx, "register Cached")
 			cached := &api.Cached{
 				Env:         env,
 				Client:      cl,
 				StagingPath: stagingPath,
 			}
+
+			logger.Info(ctx, "register Cached")
 			s.RegisterCached(cached)
+
+			logger.Info(ctx, "register CSI")
+			s.RegisterCSI(cached)
 
 			err = cached.Prepare(ctx)
 			if err != nil {
@@ -124,33 +116,29 @@ func NewCacheDaemonCommand() *cobra.Command {
 
 			group, ctx := errgroup.WithContext(ctx)
 
-			if csiSocket != "" {
-				logger.Info(ctx, "register CSI")
-				s.RegisterCSI(cached)
-
-				group.Go(func() error {
-					logger.Info(ctx, "start CSI server")
-					return s.ServeCSI(csiSocket)
-				})
-			}
-
-			group.Go(func() error {
-				listen, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-				if err != nil {
-					return fmt.Errorf("failed to listen on TCP port %d: %w", port, err)
-				}
-
-				logger.Info(ctx, "start cached server", key.Port.Field(port), key.Environment.Field(env.String()))
-				return s.Serve(listen)
-			})
-
 			osSignals := make(chan os.Signal, 1)
 			signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
-
 			group.Go(func() error {
 				<-osSignals
 				s.Grpc.GracefulStop()
 				return nil
+			})
+
+			group.Go(func() error {
+				logger.Info(ctx, "start cached server", key.Socket.Field(csiSocket))
+				return s.Serve(csiSocket)
+			})
+
+			group.Go(func() error {
+				mux := http.NewServeMux()
+				mux.HandleFunc("/healthz", healthzHandler)
+
+				healthServer := &http.Server{
+					Addr:        fmt.Sprintf(":%d", healthzPort),
+					Handler:     mux,
+					BaseContext: func(l net.Listener) context.Context { return ctx },
+				}
+				return healthServer.ListenAndServe()
 			})
 
 			return group.Wait()
@@ -176,17 +164,16 @@ func NewCacheDaemonCommand() *cobra.Command {
 	flags.BoolVar(&tracing, "tracing", false, "Whether tracing is enabled")
 	flags.StringVar(&profilePath, "profile", "", "CPU profile output path (profiling enabled if set)")
 
-	flags.IntVar(&port, "port", 5053, "cache API port")
 	flags.StringVar(&upstreamHost, "upstream-host", "localhost", "GRPC server hostname")
 	flags.Uint16Var(&upstreamPort, "upstream-port", 5051, "GRPC server port")
 	flags.StringVar(&headlessHost, "headless-host", "", "Alternative headless hostname to use for round robin connections")
-	flags.StringVar(&certFile, "cert", "development/server.crt", "TLS cert file")
-	flags.StringVar(&keyFile, "key", "development/server.key", "TLS key file")
-	flags.StringVar(&pasetoFile, "paseto", "development/paseto.pub", "Paseto public key file")
+	flags.Uint16Var(&healthzPort, "healthz-port", 5053, "Healthz HTTP port")
 	flags.UintVar(&timeout, "timeout", 0, "GRPC client timeout (ms)")
 
 	flags.StringVar(&csiSocket, "csi-socket", "", "path for running the Kubernetes CSI Driver interface")
 	flags.StringVar(&stagingPath, "staging-path", "", "path for staging downloaded caches")
+
+	_ = cmd.MarkPersistentFlagRequired("csi-socket")
 	_ = cmd.MarkPersistentFlagRequired("staging-path")
 
 	return cmd
@@ -199,9 +186,37 @@ func CacheDaemonExecute() {
 	err := cmd.ExecuteContext(ctx)
 
 	logger.Info(ctx, "shut down server")
-	_ = logger.Sync()
+	_ = logger.Sync(ctx)
 
 	if err != nil {
 		logger.Fatal(ctx, "server failed", zap.Error(err))
+	}
+}
+
+func healthzHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	type response struct {
+		Status string `json:"status"`
+		Error  string `json:"error"`
+	}
+	resp := &response{}
+
+	if ctx.Err() == nil {
+		w.WriteHeader(http.StatusOK)
+		resp.Status = "healthy"
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+		resp.Status = "error"
+		resp.Error = ctx.Err().Error()
+	}
+
+	data, err := json.MarshalIndent(&resp, "", "  ")
+	if err != nil {
+		logger.Error(ctx, "failed to marshal healthz response", zap.Error(err))
+	}
+	_, err = w.Write(data)
+	if err != nil {
+		logger.Error(ctx, "failed to write healthz response", zap.Error(err))
 	}
 }

@@ -30,6 +30,7 @@ const (
 	QueryPath         = StringKey("dl.query.path")
 	SampleRate        = Float32Key("dl.sample_rate")
 	Server            = StringKey("dl.server")
+	Socket            = StringKey("dl.socket")
 	State             = StringKey("dl.state")
 	Template          = Int64pKey("dl.template")
 	ToVersion         = Int64pKey("dl.to_version")

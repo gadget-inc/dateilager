@@ -1,4 +1,4 @@
-package cli
+package cachedcli
 
 import (
 	"github.com/gadget-inc/dateilager/internal/key"
@@ -7,13 +7,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdGetCacheFromDaemon() *cobra.Command {
+func NewCmdPopulate() *cobra.Command {
 	var (
 		path string
 	)
 
 	cmd := &cobra.Command{
-		Use: "getcached",
+		Use: "populate",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			c := client.CachedFromContext(ctx)

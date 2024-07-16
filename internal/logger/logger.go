@@ -29,8 +29,8 @@ func Logger(ctx context.Context) *zap.Logger {
 	return zap.L()
 }
 
-func Sync() error {
-	return zap.L().Sync()
+func Sync(ctx context.Context) error {
+	return Logger(ctx).Sync()
 }
 
 func Debug(ctx context.Context, msg string, fields ...zap.Field) {
