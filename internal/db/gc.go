@@ -46,6 +46,11 @@ func GcProjectObjects(ctx context.Context, conn DbConnector, project int64, keep
 		hashes = append(hashes, hash)
 	}
 
+	err = rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("failed to iterate rows: %w", err)
+	}
+
 	return hashes, nil
 }
 

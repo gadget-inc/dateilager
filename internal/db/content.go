@@ -235,6 +235,11 @@ func (cl *ContentLookup) Lookup(ctx context.Context, tx pgx.Tx, hashesToLookup m
 				contents[hash] = value
 			}
 		}
+
+		err = rows.Err()
+		if err != nil {
+			return nil, fmt.Errorf("failed to iterate rows: %w", err)
+		}
 	}
 
 	return contents, nil
@@ -260,6 +265,11 @@ func RandomContents(ctx context.Context, conn DbConnector, sample float32) ([]Ha
 		}
 
 		hashes = append(hashes, hash)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("failed to iterate rows: %w", err)
 	}
 
 	return hashes, nil

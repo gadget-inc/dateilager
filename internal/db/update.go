@@ -128,6 +128,11 @@ func UpdatePackedObjects(ctx context.Context, tx pgx.Tx, conn DbConnector, proje
 	}
 	rows.Close()
 
+	err = rows.Err()
+	if err != nil {
+		return false, fmt.Errorf("failed to iterate rows: %w", err)
+	}
+
 	shouldInsert := true
 	updated, err := updateObjects(content, updates)
 	if errors.Is(err, ErrEmptyPack) {
