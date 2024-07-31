@@ -68,6 +68,11 @@ func ListProjects(ctx context.Context, tx pgx.Tx) ([]*pb.Project, error) {
 		projects = append(projects, &pb.Project{Id: id, Version: version})
 	}
 
+	err = rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("failed to iterate rows: %w", err)
+	}
+
 	return projects, nil
 }
 
@@ -94,6 +99,11 @@ func RandomProjects(ctx context.Context, conn DbConnector, sample float32) ([]in
 			}
 
 			projects = append(projects, project)
+		}
+
+		err = rows.Err()
+		if err != nil {
+			return nil, fmt.Errorf("failed to iterate rows: %w", err)
 		}
 
 		// With only few projects this sometimes returns no results.

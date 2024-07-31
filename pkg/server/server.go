@@ -103,8 +103,12 @@ func (d *DbPoolConnector) Connect(ctx context.Context) (pgx.Tx, db.CloseFunc, er
 		return nil, nil, err
 	}
 
+	typeMap := conn.Conn().TypeMap()
 	for _, extraType := range d.extraTypes {
-		conn.Conn().TypeMap().RegisterType(extraType)
+		_, found := typeMap.TypeForOID(extraType.OID)
+		if !found {
+			typeMap.RegisterType(extraType)
+		}
 	}
 
 	tx, err := conn.Begin(ctx)
@@ -177,15 +181,14 @@ func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certifica
 }
 
 func (s *Server) monitorDbPool(ctx context.Context, dbConn *DbPoolConnector) {
-	ticker := time.NewTicker(time.Second)
-
 	go func() {
 		for {
+			timer := time.NewTimer(time.Second)
 			select {
 			case <-ctx.Done():
 				s.Health.SetServingStatus("dateilager.server", healthpb.HealthCheckResponse_NOT_SERVING)
 				return
-			case <-ticker.C:
+			case <-timer.C:
 				ctxTimeout, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 
 				status := healthpb.HealthCheckResponse_SERVING

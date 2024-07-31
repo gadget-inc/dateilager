@@ -727,6 +727,7 @@ func debugProjects(tc util.TestCtx) {
 
 		fmt.Printf("%d,\t%d,\t\t%v\n", id, latestVersion, packPatterns)
 	}
+	require.NoError(tc.T(), rows.Err(), "iterate rows")
 
 	fmt.Println()
 }
@@ -755,6 +756,7 @@ func debugObjects(tc util.TestCtx) {
 
 		fmt.Printf("%d,\t\t%d,\t\t%s,\t\t%s,\t%s,\t%d,\t%v,\t(%x, %x)\n", project, start_version, formatPtr(stop_version), path, formatMode(mode), size, packed, h1, h2)
 	}
+	require.NoError(tc.T(), rows.Err(), "iterate rows")
 
 	fmt.Println()
 }

@@ -121,11 +121,8 @@ func executeQuery(ctx context.Context, tx pgx.Tx, queryBuilder *queryBuilder) ([
 	defer rows.Close()
 
 	var dbObjects []DbObject
-	for {
-		if !rows.Next() {
-			break
-		}
 
+	for rows.Next() {
 		var object DbObject
 
 		err := rows.Scan(&object.path, &object.mode, &object.size, &object.cached, &object.packed, &object.deleted, &object.hash.H1, &object.hash.H2)
@@ -134,6 +131,11 @@ func executeQuery(ctx context.Context, tx pgx.Tx, queryBuilder *queryBuilder) ([
 		}
 
 		dbObjects = append(dbObjects, object)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("failed to iterate rows: %w", err)
 	}
 
 	return dbObjects, nil
@@ -351,6 +353,10 @@ func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, CloseFunc, er
 
 	return func() (int64, []byte, *Hash, error) {
 		if !rows.Next() {
+			err := rows.Err()
+			if err != nil {
+				return 0, nil, nil, fmt.Errorf("failed to iterate rows: %w", err)
+			}
 			return 0, nil, nil, io.EOF
 		}
 

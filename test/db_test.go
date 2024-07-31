@@ -53,6 +53,7 @@ func latestCacheVersionHashes(tc util.TestCtx) (int64, []db.Hash) {
 
 		hashes = append(hashes, hash)
 	}
+	require.NoError(tc.T(), rows.Err(), "iterate rows")
 
 	return version, hashes
 }
