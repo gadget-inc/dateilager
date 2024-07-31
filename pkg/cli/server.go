@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/pprof"
 	"syscall"
 
@@ -34,15 +35,16 @@ func NewServerCommand() *cobra.Command {
 	)
 
 	var (
-		level       *zapcore.Level
-		encoding    string
-		tracing     bool
-		profilePath string
-		port        int
-		dbUri       string
-		certFile    string
-		keyFile     string
-		pasetoFile  string
+		level          *zapcore.Level
+		encoding       string
+		tracing        bool
+		profilePath    string
+		memProfilePath string
+		port           int
+		dbUri          string
+		certFile       string
+		keyFile        string
+		pasetoFile     string
 	)
 
 	cmd := &cobra.Command{
@@ -128,6 +130,21 @@ func NewServerCommand() *cobra.Command {
 			signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
 			go func() {
 				<-osSignals
+
+				if memProfilePath != "" {
+					memProfile, err := os.Create(memProfilePath)
+					if err != nil {
+						logger.Error(ctx, "cannot create heap profile file", zap.Error(err), zap.String("path", memProfilePath))
+					}
+					defer memProfile.Close()
+					runtime.GC()
+
+					err = pprof.WriteHeapProfile(memProfile)
+					if err != nil {
+						logger.Error(ctx, "cannot write heap profile", zap.Error(err), zap.String("path", memProfilePath))
+					}
+				}
+
 				s.Grpc.GracefulStop()
 			}()
 
@@ -153,7 +170,8 @@ func NewServerCommand() *cobra.Command {
 	flags.AddGoFlag(flag.CommandLine.Lookup("log-level"))
 	flags.StringVar(&encoding, "log-encoding", "console", "Log encoding (console | json)")
 	flags.BoolVar(&tracing, "tracing", false, "Whether tracing is enabled")
-	flags.StringVar(&profilePath, "profile", "", "CPU profile output path (profiling enabled if set)")
+	flags.StringVar(&profilePath, "profile", "", "CPU profile output path (CPU profiling enabled if set)")
+	flags.StringVar(&memProfilePath, "memprofile", "", "Memory profile output path")
 
 	flags.IntVar(&port, "port", 5051, "GRPC server port")
 	flags.StringVar(&dbUri, "dburi", "postgres://postgres@127.0.0.1:5432/dl", "Postgres URI")
