@@ -125,7 +125,7 @@ server: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
 
 server-profile: export DL_ENV=dev
 server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
-	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT) --profile cpu.prof --memprofile mem.pb.gz --log-level info
+	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT) --profile cpu.prof --log-level info
 
 cached: export DL_ENV=dev
 cached: export DL_TOKEN=$(DEV_SHARED_READER_TOKEN)

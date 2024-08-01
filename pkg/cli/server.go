@@ -130,23 +130,35 @@ func NewServerCommand() *cobra.Command {
 			signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
 			go func() {
 				<-osSignals
-
-				if memProfilePath != "" {
-					memProfile, err := os.Create(memProfilePath)
-					if err != nil {
-						logger.Error(ctx, "cannot create heap profile file", zap.Error(err), zap.String("path", memProfilePath))
-					}
-					defer memProfile.Close()
-					runtime.GC()
-
-					err = pprof.WriteHeapProfile(memProfile)
-					if err != nil {
-						logger.Error(ctx, "cannot write heap profile", zap.Error(err), zap.String("path", memProfilePath))
-					}
-				}
-
 				s.Grpc.GracefulStop()
 			}()
+
+			if memProfilePath != "" {
+				memSnapshotSignals := make(chan os.Signal, 1)
+				signal.Notify(memSnapshotSignals, syscall.SIGUSR2)
+
+				go func() {
+					for {
+						<-memSnapshotSignals
+
+						logger.Info(ctx, "SIGUSR2 received, building heap profile", zap.String("path", memProfilePath))
+
+						memProfile, err := os.Create(memProfilePath)
+						if err != nil {
+							logger.Error(ctx, "cannot create heap profile file", zap.Error(err), zap.String("path", memProfilePath))
+						}
+
+						runtime.GC()
+
+						err = pprof.WriteHeapProfile(memProfile)
+						if err != nil {
+							logger.Error(ctx, "cannot write heap profile", zap.Error(err), zap.String("path", memProfilePath))
+						}
+
+						memProfile.Close()
+					}
+				}()
+			}
 
 			logger.Info(ctx, "start fs server", key.Port.Field(port), key.Environment.Field(env.String()))
 			return s.Serve(listen)
@@ -171,7 +183,7 @@ func NewServerCommand() *cobra.Command {
 	flags.StringVar(&encoding, "log-encoding", "console", "Log encoding (console | json)")
 	flags.BoolVar(&tracing, "tracing", false, "Whether tracing is enabled")
 	flags.StringVar(&profilePath, "profile", "", "CPU profile output path (CPU profiling enabled if set)")
-	flags.StringVar(&memProfilePath, "memprofile", "", "Memory profile output path")
+	flags.StringVar(&memProfilePath, "memprofile", "mem.pb.gz", "Memory profile output path")
 
 	flags.IntVar(&port, "port", 5051, "GRPC server port")
 	flags.StringVar(&dbUri, "dburi", "postgres://postgres@127.0.0.1:5432/dl", "Postgres URI")
