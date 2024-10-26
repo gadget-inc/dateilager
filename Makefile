@@ -120,11 +120,11 @@ build-cache-version:
 	psql $(DB_URI) -c "with impactful_packed_objects as (select hash, count(*) as count from dl.objects where packed = true and stop_version is null group by hash order by count desc limit 20) insert into dl.cache_versions (hashes) select coalesce(array_agg(hash), '{}') from impactful_packed_objects;"
 
 server: export DL_ENV=dev
-server: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
+server: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go development/server.crt
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT)
 
 server-profile: export DL_ENV=dev
-server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go
+server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go development/server.crt
 	go run cmd/server/main.go --dburi $(DB_URI) --port $(GRPC_PORT) --profile cpu.prof --log-level info
 
 cached: export DL_ENV=dev
