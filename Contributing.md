@@ -185,6 +185,15 @@ git push origin v0.0.x
 
 We also need to build the server docker image and push it to Gadget's container registry.
 
+If you haven't already, make sure you're using docker buildx for multi-arch builds.
+
+```bash
+docker buildx create --name mybuilder --use
+docker buildx install
+```
+
+Then build and push the image:
+
 ```bash
 make upload-container-image version=0.0.x
 ```
