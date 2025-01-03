@@ -37,7 +37,7 @@
           callPackage = pkgs.newScope (flake.packages // { inherit lib callPackage; });
         in
         {
-          packages =  {
+          packages = {
             ## DateiLager development scripts
 
             clean = callPackage ./development/nix/scripts/clean.nix { };
@@ -53,6 +53,8 @@
             nodejs = pkgs.nodejs-18_x;
 
             postgresql = pkgs.postgresql_14;
+
+            google-cloud-sdk = pkgs.google-cloud-sdk;
 
             golangci-lint = pkgs.golangci-lint;
 
@@ -77,6 +79,7 @@
               flake.packages.clean
               flake.packages.golangci-lint
               flake.packages.glibcLocales
+              flake.packages.google-cloud-sdk
               git
               protobuf
               protoc-gen-go
@@ -91,7 +94,7 @@
 
               # silence ginko deprecations -- they come from the csi test suite that we don't control
               export ACK_GINKGO_DEPRECATIONS=1.16.5
-          '';
+            '';
           };
         }
       )));
