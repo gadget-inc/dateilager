@@ -23,6 +23,7 @@ PROTO_FILES := $(shell find internal/pb/ -type f -name '*.proto')
 
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
+BENCH_PROFILE ?= ""
 
 .PHONY: migrate migrate-create clean build lint release
 .PHONY: test test-one test-fuzz test-js lint-js install-js build-js
