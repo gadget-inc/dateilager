@@ -107,7 +107,10 @@ endif
 
 bench: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 bench: migrate
-	cd test && go test -bench . -run=^#
+	cd test && go test -bench . -run=^# $(BENCH_PROFILE)
+
+bench/cpu: export BENCH_PROFILE = -cpuprofile cpu.pprof
+bench/cpu: bench
 
 test-fuzz: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 test-fuzz: export DL_SKIP_SSL_VERIFICATION=1
