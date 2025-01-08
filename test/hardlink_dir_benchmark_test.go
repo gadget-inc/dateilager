@@ -36,10 +36,19 @@ func BenchmarkHardlinkDir(b *testing.B) {
 	tmpDir := emptyTmpDir(b)
 	defer os.RemoveAll(tmpDir)
 
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		err := files.HardlinkDir(bigDir, path.Join(tmpDir, "node_modules", fmt.Sprintf("%d", n)))
+		copyDir := path.Join(tmpDir, "node_modules", fmt.Sprintf("%d", n))
+		err := files.HardlinkDir(bigDir, copyDir)
+		b.StopTimer()
 		if err != nil {
 			b.Error(err)
 		}
+
+		err = CompareDirectories(bigDir, copyDir)
+		if err != nil {
+			b.Error(err)
+		}
+		b.StartTimer()
 	}
 }

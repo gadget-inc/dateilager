@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charlievieth/fastwalk"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gobwas/glob"
@@ -211,7 +212,10 @@ func HardlinkDir(olddir, newdir string) error {
 		return fmt.Errorf("cannot create new root dir %v: %w", olddir, err)
 	}
 
-	return filepath.WalkDir(olddir, func(oldpath string, d os.DirEntry, err error) error {
+	fastwalkConf := fastwalk.DefaultConfig.Copy()
+	fastwalkConf.Sort = fastwalk.SortDirsFirst
+
+	return fastwalk.Walk(fastwalkConf, olddir, func(oldpath string, d os.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to walk dir: %v, %w", oldpath, err)
 		}
