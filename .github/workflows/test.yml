@@ -20,6 +20,9 @@ jobs:
 
       - name: Start background services
         run: dev &
+      
+      - name: Install js modules for HardLink tests
+        run: make install-js
 
       - name: Build Go binaries
         run: make build
@@ -38,6 +41,9 @@ jobs:
 
       - name: Start background services
         run: dev &
+      
+      - name: Install js modules for HardLink tests
+        run: make install-js
 
       - name: Build Go binaries
         run: make build
