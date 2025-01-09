@@ -214,6 +214,7 @@ func HardlinkDir(olddir, newdir string) error {
 
 	fastwalkConf := fastwalk.DefaultConfig.Copy()
 	fastwalkConf.Sort = fastwalk.SortDirsFirst
+	dirPermissions := rootInfo.Mode()
 
 	return fastwalk.Walk(fastwalkConf, olddir, func(oldpath string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -223,13 +224,7 @@ func HardlinkDir(olddir, newdir string) error {
 		newpath := filepath.Join(newdir, strings.TrimPrefix(oldpath, olddir))
 
 		if d.IsDir() {
-			info, err := d.Info()
-
-			if err != nil {
-				return fmt.Errorf("unable to get directory info %v: %w", oldpath, err)
-			}
-
-			err = os.MkdirAll(newpath, info.Mode())
+			err = os.Mkdir(newpath, dirPermissions)
 			if err != nil {
 				return fmt.Errorf("cannot create dir %v: %w", newpath, err)
 			}
