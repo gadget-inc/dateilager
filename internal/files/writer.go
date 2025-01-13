@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charlievieth/fastwalk"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gobwas/glob"
@@ -201,15 +202,38 @@ func HardlinkDir(olddir, newdir string) error {
 		}
 	}
 
-	return filepath.Walk(olddir, func(oldpath string, info fs.FileInfo, err error) error {
+	rootInfo, err := os.Lstat(olddir)
+	if err != nil {
+		return fmt.Errorf("cannot stat olddir %v: %w", olddir, err)
+	}
+
+	err = os.MkdirAll(newdir, rootInfo.Mode())
+	if err != nil {
+		return fmt.Errorf("cannot create new root dir %v: %w", olddir, err)
+	}
+
+	fastwalkConf := fastwalk.DefaultConfig.Copy()
+	fastwalkConf.Sort = fastwalk.SortDirsFirst
+
+	return fastwalk.Walk(fastwalkConf, olddir, func(oldpath string, d os.DirEntry, err error) error {
 		if err != nil {
-			return fmt.Errorf("failed to walk dir: %v, %w", info, err)
+			return fmt.Errorf("failed to walk dir: %v, %w", oldpath, err)
 		}
 
 		newpath := filepath.Join(newdir, strings.TrimPrefix(oldpath, olddir))
 
-		if info.IsDir() {
-			err := os.MkdirAll(newpath, info.Mode())
+		// The new "root" already exists so don't recreate it
+		if newpath == newdir {
+			return nil
+		}
+
+		if d.IsDir() {
+			info, err := d.Info()
+			if err != nil {
+				return fmt.Errorf("unable to get directory info %v: %w", oldpath, err)
+			}
+
+			err = os.Mkdir(newpath, info.Mode())
 			if err != nil {
 				return fmt.Errorf("cannot create dir %v: %w", newpath, err)
 			}
