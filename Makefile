@@ -220,7 +220,7 @@ upload-container-image:
 ifndef version
 	$(error version variable must be set)
 else
-	docker build --platform linux/arm64,linux/amd64 --push -t gcr.io/gadget-core-production/dateilager:$(version) -t gcr.io/gadget-core-production/dateilager:latest .
+	docker build --platform linux/arm64,linux/amd64 --push -t us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:$(version) -t us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:latest .
 endif
 
 upload-prerelease-container-image:
