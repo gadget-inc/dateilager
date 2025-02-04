@@ -117,9 +117,10 @@ func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
 	require.NoError(t, err, "cached.Prepare must succeed")
 
 	targetDir := path.Join(tmpDir, "vol-target")
+	stagingDir := path.Join(tmpDir, "vol-staging-target")
 	_, err = cached.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
 		VolumeId:          "foobar",
-		StagingTargetPath: path.Join(tmpDir, "vol-staging-target"),
+		StagingTargetPath: stagingDir,
 		TargetPath:        targetDir,
 		VolumeCapability:  &csi.VolumeCapability{},
 		VolumeContext:     map[string]string{"placeCacheAtPath": "inner_mount"},
