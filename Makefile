@@ -24,6 +24,7 @@ PROTO_FILES := $(shell find internal/pb/ -type f -name '*.proto')
 MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 BENCH_PROFILE ?= ""
+KUBE_CONTEXT ?= orbstack
 
 .PHONY: migrate migrate-create clean build lint release
 .PHONY: test test-one test-fuzz test-js lint-js install-js build-js
@@ -33,7 +34,7 @@ BENCH_PROFILE ?= ""
 .PHONY: cachedclient-probe cachedclient-populate cachedclient-stats
 .PHONY: health upload-container-image upload-prerelease-container-image run-container gen-docs
 .PHONY: load-test-new load-test-update load-test-update-large load-test-get load-test-get-compress
-
+.PHONY: k8s k8s/start k8s/stop k8s/delete k8s/reset k8s/deploy
 migrate:
 	migrate -database $(DB_URI)?sslmode=disable -path $(MIGRATE_DIR) up
 
@@ -283,3 +284,26 @@ lint-js: js/node_modules js/src/pb
 install-js: js/node_modules
 
 build-js: js/dist
+
+k8s:
+	which orb >/dev/null 2>&1; if [ $$? -ne 0 ]; then echo "orb not found"; exit 1; fi
+k8s/start: k8s	
+	orb start k8s
+
+k8s/stop: k8s
+	orb stop k8s
+
+k8s/delete: k8s
+	orb delete k8s
+
+k8s/reset: k8s/stop k8s/delete k8s/start
+
+k8s/deploy: k8s k8s/start
+	kubectl --context=$(KUBE_CONTEXT) create namespace dateilager-local || true
+	kubectl --context=$(KUBE_CONTEXT) apply -f test/k8s-local/cached-csi.yaml -n dateilager-local
+	kubectl --context=$(KUBE_CONTEXT) apply -f test/k8s-local/cached-daemon.yaml -n dateilager-local
+
+k8s/reset_namespace: k8s k8s/start
+	kubectl --context=$(KUBE_CONTEXT) delete ds dateilager-csi-cached -n dateilager-local --force --grace-period=0 || true
+	kubectl --context=$(KUBE_CONTEXT) delete pod busybox-csi -n dateilager-local --force --grace-period=0 || true
+	kubectl --context=$(KUBE_CONTEXT) delete namespace dateilager-local || true

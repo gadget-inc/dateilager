@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: busybox-csi2
+spec:
+  containers:
+  - name: busybox
+    image: busybox
+    command: 
+      - "/bin/sh"
+      - "-c"
+      - "sleep infinity"
+    volumeMounts:
+    - name: gadget
+      mountPath: /gadget
+      subPath: gadget
+  volumes:
+  - name: gadget
+    csi:
+      driver: com.gadget.dateilager.cached
+      volumeAttributes:
+        placeCacheAtPath: "dl_cache"
+        mountCache: "true"
+      readOnly: false
