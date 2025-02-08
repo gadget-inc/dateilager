@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: busybox-csi
+  name: busybox-csi2
 spec:
   containers:
   - name: busybox
