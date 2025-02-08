@@ -152,7 +152,8 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	var cachePath string
 	var targetPermissions os.FileMode
 	var version int64
-	if suffix, exists := volumeAttributes["placeCacheAtPath"]; exists {
+	cachePathExists := false
+	if suffix, cachePathexists := volumeAttributes["placeCacheAtPath"]; cachePathexists {
 		// running in suffix mode, desired outcome:
 		//  - the mount point is writable by the pod
 		//  - the cache is mounted at the suffix, and is not writable
@@ -173,6 +174,8 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, fmt.Errorf("failed to change ownership of target directory %s: %s", targetPath, err)
 	}
 
+	// Perform an overlay mount if the mountCache attribute is true
+	// Mount the root `StagingPath` at `targetPath/gadget` making `targetPath/gadget` `0777`
 	if mountCache, exists := volumeAttributes["mountCache"]; exists && mountCache == "true" {
 		upperdir := path.Join(targetPath, "gadget_writeable")
 		err := os.MkdirAll(upperdir, 0777)
@@ -208,7 +211,30 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		if err != nil {
 			return nil, fmt.Errorf("failed to mount overlay: %s", err)
 		}
+
+		// Create the cache directory, we can make it writable by the pod
+		// Do this after we mount the overlayq
+		err = os.Chmod(gadgetDir, 0777)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create gadget directory %s: %v", gadgetDir, err)
+		}
+
+		if cachePathExists {
+			cachePath = path.Join(gadgetDir, volumeAttributes["placeCacheAtPath"])
+			info, err := os.Stat(cachePath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to stat cache path %s, this path should exist in the overlay mount at %s: %v", cachePath, gadgetDir, err)
+			}
+
+			if info.Mode()&os.ModePerm != 0755 {
+				err = os.Chmod(cachePath, 0755)
+				if err != nil {
+					return nil, fmt.Errorf("failed to change permissions of cache path %s: %v", cachePath, err)
+				}
+			}
+		}
 		version = c.currentVersion
+		logger.Info(ctx, "mounted overlay", key.TargetPath.Field(targetPath), key.Version.Field(version))
 	} else {
 		var err error
 		version, err = c.writeCache(cachePath)
