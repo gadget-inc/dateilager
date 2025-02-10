@@ -1,0 +1,95 @@
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dateilager-csi-cached
+  labels:
+    app: dateilager-csi-cached
+spec:
+  selector:
+    matchLabels:
+      app: dateilager-csi-cached
+  template:
+    metadata:
+      name: datailager-csi-cached
+      labels:
+        app: dateilager-csi-cached
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: csi-cached
+          image: dl-local:dev
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          command:
+            [
+              "./cached",
+              "--log-level=info",
+              "--log-encoding=json",
+              "--csi-socket=unix:///csi/csi.sock",
+              "--upstream-host=host.internal",
+              "--upstream-port=5051",
+              "--tracing",
+              "--staging-path=/var/lib/kubelet/dateilager_cache",
+            ]
+          env:
+            - name: DL_ENV
+              value: "dev"
+            - name: "LOG_LEVEL"
+              value: "debug"
+            - name: DL_PGX_TRACING
+              value: "1"
+            - name: DL_TOKEN
+              value: "v2.public.eyJzdWIiOiJzaGFyZWQtcmVhZGVyIn1CxWdB02s9el0Wt7qReARZ-7JtIb4Zj3D4Oiji1yXHqj0orkpbcVlswVUiekECJC16d1NrHwD2FWSwRORZn8gK"
+            - name: DL_SKIP_SSL_VERIFICATION
+              value: "1"
+            - name: BUMP_TO_ROLL
+              value: "2"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi/
+            - mountPath: "/var/lib/kubelet"
+              name: host-kubelet-dir
+              mountPropagation: "Bidirectional"
+        - name: csi-driver-registrar
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1
+          args:
+            - "--csi-address=/csi/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/com.gadget.dateilager.cached/csi.sock"
+            - "--health-port=9809"
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+          ports:
+            - containerPort: 9809
+              name: healthz
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+      volumes:
+        # a working directory for the two containers to share when registering the CSI
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/com.gadget.dateilager.cached
+            type: DirectoryOrCreate
+        # the directory for the driver-registrar sidecar container to register our driver with the kubelet
+        #
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: DirectoryOrCreate
+        # the host kubelet directory for the CSI driver to mount volumes in
+        - name: host-kubelet-dir
+          hostPath:
+            path: /var/lib/kubelet
