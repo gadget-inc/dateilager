@@ -26,6 +26,7 @@ func TestHardlinkDir(t *testing.T) {
 	require.NoError(t, err, "compareDirectories %s vs %s failed", bigDir, tmpDir)
 }
 
+//go:bench
 func BenchmarkHardlinkDir(b *testing.B) {
 	wd, err := os.Getwd()
 	if err != nil {
