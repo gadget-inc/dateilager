@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: busybox-csi2
+  name: busybox-csi
 spec:
   containers:
   - name: busybox
@@ -13,7 +13,6 @@ spec:
     volumeMounts:
     - name: gadget
       mountPath: /gadget
-      subPath: gadget
   volumes:
   - name: gadget
     csi:
