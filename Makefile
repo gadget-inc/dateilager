@@ -25,7 +25,7 @@ MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 BENCH_PROFILE ?= ""
 KUBE_CONTEXT ?= orbstack
-TEST_TAGS ?= ""
+
 
 .PHONY: migrate migrate-create clean build lint release prerelease
 .PHONY: test test-one test-fuzz test-js test-integration lint-js install-js build-js
@@ -107,7 +107,7 @@ endif
 
 test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test: migrate
-	cd test && go test -tags $(TEST_TAGS)
+	cd test && go test
 
 test-one: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test-one: migrate
@@ -116,9 +116,6 @@ ifndef name
 else
 	cd test && go test -run $(name)
 endif
-
-test-integration: export TEST_TAGS = integration
-test-integration: test
 
 bench: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 bench: migrate
