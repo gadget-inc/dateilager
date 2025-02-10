@@ -229,6 +229,13 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 
 	targetPath := req.GetTargetPath()
 
+	// First unmount the overlay
+	cmd := exec.Command("umount", targetPath)
+	err := cmd.Run()
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmount overlay: %s", err)
+	}
+
 	// Clean up directory
 	if err := os.RemoveAll(targetPath); err != nil {
 		return nil, fmt.Errorf("failed to remove directory %s: %s", targetPath, err)
