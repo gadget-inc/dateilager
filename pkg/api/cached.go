@@ -174,6 +174,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	}
 
 	mountArgs := []string{
+		"mount",
 		"-t",
 		"overlay",
 		"overlay",
@@ -183,7 +184,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		targetPath,
 	}
 
-	cmd := exec.Command("mount", mountArgs...)
+	cmd := exec.Command("sudo", mountArgs...)
 	err = cmd.Run()
 	if err != nil {
 		return nil, fmt.Errorf("failed to mount overlay: %s", err)
