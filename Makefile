@@ -108,6 +108,7 @@ else
 endif
 
 test-integration: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
+test-integration: export RUN_WITH_SUDO = true
 test-integration: migrate
 	cd test && go test -tags integration
 
