@@ -29,6 +29,8 @@ import (
 const (
 	DriverName        = "com.gadget.dateilager.cached"
 	CACHE_PATH_SUFFIX = "dl_cache"
+	UPPER_DIR         = "upper"
+	WORK_DIR          = "work"
 )
 
 type Cached struct {
@@ -153,13 +155,13 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	// Perform an overlay mount if the mountCache attribute is true
 	// Mount the root `StagingPath` at `targetPath/gadget` making `targetPath/gadget` `0777`
-	upperdir := path.Join(volumePath, "upper")
+	upperdir := path.Join(volumePath, UPPER_DIR)
 	err := os.MkdirAll(upperdir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create overlay upper directory %s: %v", upperdir, err)
 	}
 
-	workdir := path.Join(volumePath, "work")
+	workdir := path.Join(volumePath, WORK_DIR)
 	err = os.MkdirAll(workdir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create overlay work directory %s: %v", workdir, err)
@@ -216,6 +218,7 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	}
 
 	targetPath := req.GetTargetPath()
+	volumePath := path.Join(targetPath, "..")
 
 	// Unmount the overlay
 	cmd := exec.Command("umount", targetPath)
@@ -224,8 +227,11 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 		return nil, fmt.Errorf("failed to unmount overlay: %s", err)
 	}
 
-	// Clean up directory get rid of any stray files
-	if err := os.RemoveAll(targetPath); err != nil {
+	// Clean up upper and work directories from the overlay
+	if err := os.RemoveAll(path.Join(volumePath, UPPER_DIR)); err != nil {
+		return nil, fmt.Errorf("failed to remove directory %s: %s", targetPath, err)
+	}
+	if err := os.RemoveAll(path.Join(volumePath, WORK_DIR)); err != nil {
 		return nil, fmt.Errorf("failed to remove directory %s: %s", targetPath, err)
 	}
 
