@@ -11,19 +11,6 @@ defaults:
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      docker:
-        image: docker:dind
-        options: >-
-          --privileged
-        ports:
-          - 2375:2375
-    container:
-      image: golang:1.22
-      env:
-        DOCKER_HOST: tcp://docker:2375
-      volumes:
-        - /home
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
