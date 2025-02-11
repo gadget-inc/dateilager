@@ -174,7 +174,6 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	}
 
 	mountArgs := []string{
-		"mount",
 		"-t",
 		"overlay",
 		"overlay",
@@ -184,8 +183,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		targetPath,
 	}
 
-	cmd := exec.Command("sudo", mountArgs...)
-	err = cmd.Run()
+	err = execCommand("mount", mountArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to mount overlay: %s", err)
 	}
@@ -222,8 +220,7 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	volumePath := path.Join(targetPath, "..")
 
 	// Unmount the overlay
-	cmd := exec.Command("umount", targetPath)
-	err := cmd.Run()
+	err := execCommand("umount", targetPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmount overlay: %s", err)
 	}
@@ -329,4 +326,14 @@ func getFolderSize(path string) (int64, error) {
 		return nil
 	})
 	return totalSize, err
+}
+
+func execCommand(cmdName string, args ...string) error {
+	if os.Getenv("RUN_WITH_SUDO") == "true" {
+		cmd := exec.Command("sudo", append([]string{cmdName}, args...)...)
+		return cmd.Run()
+	}
+
+	cmd := exec.Command(cmdName, args...)
+	return cmd.Run()
 }
