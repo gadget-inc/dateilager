@@ -1,3 +1,6 @@
+//go:build integration
+// +build integration
+
 package test
 
 import (
@@ -10,6 +13,8 @@ import (
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
+	"github.com/gadget-inc/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/pkg/cached"
 	"github.com/kubernetes-csi/csi-test/pkg/sanity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -187,4 +192,27 @@ func TestCachedCSIDriverProbeFailsUntilPrepared(t *testing.T) {
 
 func formatFileMode(mode os.FileMode) string {
 	return fmt.Sprintf("%#o", mode)
+}
+
+func createTestCachedServer(tc util.TestCtx, tmpDir string) (*api.Cached, string, func()) {
+	cl, _, closeClient := createTestClient(tc)
+	_, grpcServer, _ := createTestGRPCServer(tc)
+
+	s := cached.CachedServer{
+		Grpc: grpcServer,
+	}
+
+	cached := tc.CachedApi(cl, path.Join(tmpDir, "cached", "staging"))
+	s.RegisterCached(cached)
+	s.RegisterCSI(cached)
+
+	socket := path.Join(tmpDir, "csi.sock")
+	endpoint := "unix://" + socket
+
+	go func() {
+		err := s.Serve(endpoint)
+		require.NoError(tc.T(), err, "CSI Server exited")
+	}()
+
+	return cached, endpoint, func() { closeClient(); s.Grpc.Stop() }
 }

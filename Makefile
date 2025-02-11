@@ -27,7 +27,7 @@ BENCH_PROFILE ?= ""
 KUBE_CONTEXT ?= orbstack
 
 .PHONY: migrate migrate-create clean build lint release
-.PHONY: test test-one test-fuzz test-js lint-js install-js build-js
+.PHONY: test test-one test-fuzz test-js test-integration lint-js install-js build-js
 .PHONY: reset-db setup-local build-cache-version server server-profile cached
 .PHONY: client-update client-large-update client-get client-rebuild client-rebuild-with-cache
 .PHONY: client-getcache client-gc-contents client-gc-project client-gc-random-projects
@@ -106,6 +106,10 @@ ifndef name
 else
 	cd test && go test -run $(name)
 endif
+
+test-integration: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
+test-integration: migrate
+	cd test && go test -tags integration
 
 bench: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 bench: migrate
