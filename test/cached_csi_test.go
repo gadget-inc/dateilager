@@ -76,8 +76,6 @@ func TestCachedCSIDriverMountsCache(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	targetDir = path.Join(targetDir, "dl_cache")
-
 	verifyDir(t, targetDir, -1, map[string]expectedFile{
 		fmt.Sprintf("objects/%v/pack/a/1", aHash): {content: "pack/a/1 v1"},
 		fmt.Sprintf("objects/%v/pack/a/2", aHash): {content: "pack/a/2 v1"},
@@ -125,16 +123,16 @@ func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
 		StagingTargetPath: stagingDir,
 		TargetPath:        targetDir,
 		VolumeCapability:  &csi.VolumeCapability{},
-		VolumeContext:     map[string]string{},
+		VolumeContext:     map[string]string{"placeCacheAtPath": "inner_mount"},
 	})
 	require.NoError(t, err)
 
 	verifyDir(t, path.Join(tmpDir, "vol-target"), -1, map[string]expectedFile{
-		fmt.Sprintf("dl_cache/objects/%v/pack/a/1", aHash): {content: "pack/a/1 v1"},
-		fmt.Sprintf("dl_cache/objects/%v/pack/a/2", aHash): {content: "pack/a/2 v1"},
-		fmt.Sprintf("dl_cache/objects/%v/pack/b/1", bHash): {content: "pack/b/1 v1"},
-		fmt.Sprintf("dl_cache/objects/%v/pack/b/2", bHash): {content: "pack/b/2 v1"},
-		"dl_cache/versions": {content: fmt.Sprintf("%v\n", version)},
+		fmt.Sprintf("inner_mount/objects/%v/pack/a/1", aHash): {content: "pack/a/1 v1"},
+		fmt.Sprintf("inner_mount/objects/%v/pack/a/2", aHash): {content: "pack/a/2 v1"},
+		fmt.Sprintf("inner_mount/objects/%v/pack/b/1", bHash): {content: "pack/b/1 v1"},
+		fmt.Sprintf("inner_mount/objects/%v/pack/b/2", bHash): {content: "pack/b/2 v1"},
+		"inner_mount/versions":                                {content: fmt.Sprintf("%v\n", version)},
 	})
 
 	fileInfo, err := os.Stat(targetDir)
@@ -144,12 +142,12 @@ func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
 	require.Equal(t, formatFileMode(os.FileMode(0777)), formatFileMode(fileInfo.Mode()&os.ModePerm))
 
 	// the cache dir should *not* be writable -- it's managed by the CSI and must remain pristine
-	cacheFileInfo, err := os.Stat(path.Join(targetDir, "dl_cache"))
+	cacheFileInfo, err := os.Stat(path.Join(targetDir, "inner_mount"))
 	require.NoError(t, err)
 	require.Equal(t, formatFileMode(os.FileMode(0755)), formatFileMode(cacheFileInfo.Mode()&os.ModePerm))
 
 	// files inside cache dir should *not* be writable -- it's managed by the CSI and must remain pristine
-	cacheFileInfo, err = os.Stat(path.Join(targetDir, fmt.Sprintf("dl_cache/objects/%v/pack/a/1", aHash)))
+	cacheFileInfo, err = os.Stat(path.Join(targetDir, fmt.Sprintf("inner_mount/objects/%v/pack/a/1", aHash)))
 	require.NoError(t, err)
 	require.Equal(t, formatFileMode(os.FileMode(0755)), formatFileMode(cacheFileInfo.Mode()))
 }
