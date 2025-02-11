@@ -117,6 +117,10 @@ else
 	cd test && go test -run $(name)
 endif
 
+test-integration: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
+test-integration: migrate
+	cd test && go test -tags integration
+
 bench: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 bench: migrate
 	cd test && go test -bench . -run=^# $(BENCH_PROFILE)

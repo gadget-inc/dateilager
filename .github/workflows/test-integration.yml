@@ -1,0 +1,44 @@
+name: Test Integration
+
+on:
+  push:
+  workflow_call:
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:dind
+        options: >-
+          --privileged
+        ports:
+          - 2375:2375
+    container:
+      image: golang:1.22
+      env:
+        DOCKER_HOST: tcp://docker:2375
+      volumes:
+        - /home
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup development environment
+        uses: ./.github/actions/setup-env
+
+      - name: Start background services
+        run: dev &
+      
+      - name: Install js modules for HardLink tests
+        run: make install-js
+
+      - name: Build Go binaries
+        run: make build
+
+      - name: Run Go tests
+        run: make test-integration
