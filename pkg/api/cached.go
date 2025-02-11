@@ -147,44 +147,39 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	}
 
 	targetPath := req.GetTargetPath()
+	// The parent of the target path and can store CSI metadata, it's the name given to the volume mount in the pod spec
+	volumePath := path.Join(targetPath, "..")
 	var version int64
-
-	if err := os.MkdirAll(targetPath, 0777); err != nil {
-		return nil, fmt.Errorf("failed to create target directory %s: %s", targetPath, err)
-	}
 
 	// Perform an overlay mount if the mountCache attribute is true
 	// Mount the root `StagingPath` at `targetPath/gadget` making `targetPath/gadget` `0777`
-	upperdir := path.Join(targetPath, "gadget_writeable")
+	upperdir := path.Join(volumePath, "upper")
 	err := os.MkdirAll(upperdir, 0777)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create gadget_writeable directory %s: %v", upperdir, err)
+		return nil, fmt.Errorf("failed to create overlay upper directory %s: %v", upperdir, err)
 	}
 
-	workdir := path.Join(targetPath, "work")
+	workdir := path.Join(volumePath, "work")
 	err = os.MkdirAll(workdir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create overlay work directory %s: %v", workdir, err)
 	}
 
 	// Create the cache directory, we can make it writable by the pod
-	gadgetDir := path.Join(targetPath)
-	err = os.MkdirAll(gadgetDir, 0777)
+	err = os.MkdirAll(targetPath, 0777)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create gadget directory %s: %v", gadgetDir, err)
+		return nil, fmt.Errorf("failed to create target path directory %s: %v", targetPath, err)
 	}
 
 	mountArgs := []string{
 		"-t",
 		"overlay",
 		"overlay",
-		gadgetDir,
 		"-n",
-		"-o",
-		fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", c.StagingPath, upperdir, workdir),
+		"--options",
+		fmt.Sprintf("redirect_dir=on,lowerdir=%s,upperdir=%s,workdir=%s", c.StagingPath, upperdir, workdir),
+		targetPath,
 	}
-
-	logger.Info(ctx, fmt.Sprintf("mounting overlay with args: %v", mountArgs))
 
 	cmd := exec.Command("mount", mountArgs...)
 	err = cmd.Run()
@@ -192,17 +187,10 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, fmt.Errorf("failed to mount overlay: %s", err)
 	}
 
-	// Create the cache directory, we can make it writable by the pod
-	// Do this after we mount the overlayq
-	err = os.Chmod(gadgetDir, 0777)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gadget directory %s: %v", gadgetDir, err)
-	}
-
-	cachePath := path.Join(gadgetDir, CACHE_PATH_SUFFIX)
+	cachePath := path.Join(targetPath, CACHE_PATH_SUFFIX)
 	info, err := os.Stat(cachePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to stat cache path %s, this path should exist in the overlay mount at %s: %v", cachePath, gadgetDir, err)
+		return nil, fmt.Errorf("failed to stat cache path %s, this path should exist in the overlay mount at %s: %v", cachePath, targetPath, err)
 	}
 
 	if info.Mode()&os.ModePerm != 0755 {
@@ -229,14 +217,14 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 
 	targetPath := req.GetTargetPath()
 
-	// First unmount the overlay
+	// Unmount the overlay
 	cmd := exec.Command("umount", targetPath)
 	err := cmd.Run()
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmount overlay: %s", err)
 	}
 
-	// Clean up directory
+	// Clean up directory get rid of any stray files
 	if err := os.RemoveAll(targetPath); err != nil {
 		return nil, fmt.Errorf("failed to remove directory %s: %s", targetPath, err)
 	}

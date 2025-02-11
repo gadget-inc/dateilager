@@ -3,6 +3,7 @@ kind: Pod
 metadata:
   name: busybox-csi
 spec:
+  terminationGracePeriodSeconds: 5
   containers:
   - name: busybox
     image: busybox
