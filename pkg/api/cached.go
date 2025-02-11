@@ -75,6 +75,13 @@ func (c *Cached) Prepare(ctx context.Context) error {
 		return err
 	}
 
+	// Once we've prepared the cache make it read-only for
+	// everyone except the user running the daemon
+	err = os.Chmod(c.GetCachePath(), 0755)
+	if err != nil {
+		return fmt.Errorf("failed to change permissions of cache path %s: %v", c.GetCachePath(), err)
+	}
+
 	c.currentVersion = version
 
 	logger.Info(ctx, c.GetCachePath())
@@ -153,18 +160,39 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	volumePath := path.Join(targetPath, "..")
 	var version int64
 
-	// Perform an overlay mount if the mountCache attribute is true
-	// Mount the root `StagingPath` at `targetPath/gadget` making `targetPath/gadget` `0777`
+	// Perform an overlay mount
 	upperdir := path.Join(volumePath, UPPER_DIR)
 	err := os.MkdirAll(upperdir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create overlay upper directory %s: %v", upperdir, err)
 	}
 
+	upperInfo, err := os.Stat(upperdir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat overlay upper directory %s: %v", upperdir, err)
+	}
+	if upperInfo.Mode()&os.ModePerm != 0777 {
+		err = os.Chmod(upperdir, 0777)
+		if err != nil {
+			return nil, fmt.Errorf("failed to change permissions of overlay upper directory %s: %v", upperdir, err)
+		}
+	}
+
 	workdir := path.Join(volumePath, WORK_DIR)
 	err = os.MkdirAll(workdir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create overlay work directory %s: %v", workdir, err)
+	}
+
+	workInfo, err := os.Stat(workdir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat overlay work directory %s: %v", workdir, err)
+	}
+	if workInfo.Mode()&os.ModePerm != 0777 {
+		err = os.Chmod(workdir, 0777)
+		if err != nil {
+			return nil, fmt.Errorf("failed to change permissions of overlay work directory %s: %v", workdir, err)
+		}
 	}
 
 	// Create the cache directory, we can make it writable by the pod
@@ -183,8 +211,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		targetPath,
 	}
 
-	cmd := exec.Command("mount", mountArgs...)
-	err = cmd.Run()
+	err = execCommand("mount", mountArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to mount overlay: %s", err)
 	}
@@ -221,10 +248,9 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	volumePath := path.Join(targetPath, "..")
 
 	// Unmount the overlay
-	cmd := exec.Command("umount", targetPath)
-	err := cmd.Run()
+	err := execCommand("umount", targetPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmount overlay: %s", err)
+		return nil, fmt.Errorf("failed to unmount overlay at %s: %v", targetPath, err)
 	}
 
 	// Clean up upper and work directories from the overlay
@@ -328,4 +354,14 @@ func getFolderSize(path string) (int64, error) {
 		return nil
 	})
 	return totalSize, err
+}
+
+func execCommand(cmdName string, args ...string) error {
+	if os.Getenv("RUN_WITH_SUDO") == "true" {
+		cmd := exec.Command("sudo", append([]string{cmdName}, args...)...)
+		return cmd.Run()
+	}
+
+	cmd := exec.Command(cmdName, args...)
+	return cmd.Run()
 }
