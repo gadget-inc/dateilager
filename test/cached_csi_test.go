@@ -81,9 +81,7 @@ func TestCachedCSIDriverMountsCache(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	targetDir = path.Join(targetDir, "dl_cache")
-
-	verifyDir(t, targetDir, -1, map[string]expectedFile{
+	verifyDir(t, path.Join(targetDir, "dl_cache"), -1, map[string]expectedFile{
 		fmt.Sprintf("objects/%v/pack/a/1", aHash): {content: "pack/a/1 v1"},
 		fmt.Sprintf("objects/%v/pack/a/2", aHash): {content: "pack/a/2 v1"},
 		fmt.Sprintf("objects/%v/pack/b/1", bHash): {content: "pack/b/1 v1"},
@@ -91,16 +89,34 @@ func TestCachedCSIDriverMountsCache(t *testing.T) {
 		"versions": {content: fmt.Sprintf("%v\n", version)},
 	})
 
+	// Check to see that we have created the upper and work directories
+	require.DirExists(t, path.Join(tmpDir, api.UPPER_DIR))
+	require.DirExists(t, path.Join(tmpDir, api.WORK_DIR))
+
+	upperInfo, err := os.Stat(path.Join(tmpDir, api.UPPER_DIR))
+	require.NoError(t, err)
+	require.Equal(t, formatFileMode(os.FileMode(0777)), formatFileMode(upperInfo.Mode()&os.ModePerm))
+
+	workInfo, err := os.Stat(path.Join(tmpDir, api.WORK_DIR))
+	require.NoError(t, err)
+	require.Equal(t, formatFileMode(os.FileMode(0777)), formatFileMode(workInfo.Mode()&os.ModePerm))
+
 	fileInfo, err := os.Stat(targetDir)
 	require.NoError(t, err)
 
 	// the target dir should not be world writable -- only by the user the CSI driver is running as (which will be root)
-	require.Equal(t, formatFileMode(os.FileMode(0755)), formatFileMode(fileInfo.Mode()&os.ModePerm))
+	require.Equal(t, formatFileMode(os.FileMode(0777)), formatFileMode(fileInfo.Mode()&os.ModePerm))
 
 	// files inside cache dir should also *not* be writable -- it's managed by the CSI and must remain pristine
-	cacheFileInfo, err := os.Stat(path.Join(targetDir, fmt.Sprintf("objects/%v/pack/a/1", aHash)))
+	cacheFileInfo, err := os.Stat(path.Join(targetDir, "dl_cache", fmt.Sprintf("objects/%v/pack/a/1", aHash)))
 	require.NoError(t, err)
 	require.Equal(t, formatFileMode(os.FileMode(0755)), formatFileMode(cacheFileInfo.Mode()&os.ModePerm))
+
+	_, err = cached.NodeUnpublishVolume(tc.Context(), &csi.NodeUnpublishVolumeRequest{
+		VolumeId:   "foobar",
+		TargetPath: targetDir,
+	})
+	require.NoError(t, err)
 }
 
 func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
@@ -124,6 +140,7 @@ func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
 	require.NoError(t, err, "cached.Prepare must succeed")
 
 	targetDir := path.Join(tmpDir, "vol-target")
+
 	stagingDir := path.Join(tmpDir, "vol-staging-target")
 	_, err = cached.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
 		VolumeId:          "foobar",
@@ -142,6 +159,18 @@ func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
 		"dl_cache/versions": {content: fmt.Sprintf("%v\n", version)},
 	})
 
+	// Check to see that we have created the upper and work directories
+	require.DirExists(t, path.Join(tmpDir, api.UPPER_DIR))
+	require.DirExists(t, path.Join(tmpDir, api.WORK_DIR))
+
+	upperInfo, err := os.Stat(path.Join(tmpDir, api.UPPER_DIR))
+	require.NoError(t, err)
+	require.Equal(t, formatFileMode(os.FileMode(0777)), formatFileMode(upperInfo.Mode()&os.ModePerm))
+
+	workInfo, err := os.Stat(path.Join(tmpDir, api.WORK_DIR))
+	require.NoError(t, err)
+	require.Equal(t, formatFileMode(os.FileMode(0777)), formatFileMode(workInfo.Mode()&os.ModePerm))
+
 	fileInfo, err := os.Stat(targetDir)
 	require.NoError(t, err)
 
@@ -157,6 +186,13 @@ func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
 	cacheFileInfo, err = os.Stat(path.Join(targetDir, fmt.Sprintf("dl_cache/objects/%v/pack/a/1", aHash)))
 	require.NoError(t, err)
 	require.Equal(t, formatFileMode(os.FileMode(0755)), formatFileMode(cacheFileInfo.Mode()))
+	require.Equal(t, targetDir, path.Join(tmpDir, "vol-target"))
+
+	_, err = cached.NodeUnpublishVolume(tc.Context(), &csi.NodeUnpublishVolumeRequest{
+		VolumeId:   "foobar",
+		TargetPath: targetDir,
+	})
+	require.NoError(t, err)
 }
 
 func TestCachedCSIDriverProbeFailsUntilPrepared(t *testing.T) {
