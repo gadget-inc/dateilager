@@ -84,7 +84,6 @@ func (c *Cached) Prepare(ctx context.Context) error {
 
 	c.currentVersion = version
 
-	logger.Info(ctx, c.GetCachePath())
 	logger.Info(ctx, "downloaded golden copy", key.DurationMS.Field(time.Since(start)), key.Version.Field(version), key.Count.Field(int64(count)))
 	return nil
 }
@@ -213,7 +212,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	err = execCommand("mount", mountArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to mount overlay: %s", err)
+		return nil, fmt.Errorf("failed to mount overlay 'mount %v': %v", mountArgs, err)
 	}
 
 	cachePath := path.Join(targetPath, CACHE_PATH_SUFFIX)
