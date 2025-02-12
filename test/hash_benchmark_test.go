@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+//go:bench
 func BenchmarkHex(b *testing.B) {
 	data := make([]byte, 64)
 	_, err := rand.Read(data)
