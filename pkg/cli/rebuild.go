@@ -23,6 +23,8 @@ func NewCmdRebuild() *cobra.Command {
 		cacheDir         string
 		fileMatchInclude string
 		fileMatchExclude string
+		useBindMount     bool
+		cachedSocket     string
 	)
 
 	cmd := &cobra.Command{
@@ -78,6 +80,8 @@ func NewCmdRebuild() *cobra.Command {
 	cmd.Flags().StringVar(&fileMatchInclude, "matchinclude", "", "Set fileMatch to true if the written files are matched by this glob pattern")
 	cmd.Flags().StringVar(&fileMatchExclude, "matchexclude", "", "Set fileMatch to false if the written files are matched by this glob pattern")
 	to = cmd.Flags().Int64("to", -1, "To version ID (optional)")
+	cmd.Flags().BoolVar(&useBindMount, "use-bind-mount", false, "Use bind mount to publish the volume")
+	cmd.Flags().StringVar(&cachedSocket, "cached-socket", "", "Path to the cached socket")
 
 	_ = cmd.MarkFlagRequired("project")
 

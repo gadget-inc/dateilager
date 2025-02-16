@@ -1,17 +1,17 @@
-//go:build integration
-// +build integration
-
 package test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
+	"runtime"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/cached"
@@ -53,6 +53,10 @@ func TestCachedCSIDriver(t *testing.T) {
 }
 
 func TestCachedCSIDriverMountsCache(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("skipping test on non-linux OS")
+	}
+
 	tc := util.NewTestCtx(t, auth.Admin, 1)
 	defer tc.Close()
 
@@ -120,6 +124,9 @@ func TestCachedCSIDriverMountsCache(t *testing.T) {
 }
 
 func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("skipping test on non-linux OS")
+	}
 	tc := util.NewTestCtx(t, auth.Admin, 1)
 	defer tc.Close()
 
@@ -226,6 +233,93 @@ func TestCachedCSIDriverProbeFailsUntilPrepared(t *testing.T) {
 
 	// ready because we Prepare-d
 	assert.Equal(t, true, response.Ready.Value)
+}
+
+func TestCachedCSIDriverBindMountSetsMigrationId(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2)
+	writeObject(tc, 1, 1, i(2), "a", "a v1")
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	cached, _, close := createTestCachedServer(tc, tmpDir)
+	defer close()
+
+	err := cached.Prepare(tc.Context())
+	require.NoError(t, err, "cached.Prepare must succeed")
+
+	targetDir := path.Join(tmpDir, "vol-target")
+	require.NoError(t, os.MkdirAll(targetDir, 0755))
+
+	stagingDir := path.Join(tmpDir, "vol-staging-target")
+	_, err = cached.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
+		VolumeId:          "foobar",
+		StagingTargetPath: stagingDir,
+		TargetPath:        targetDir,
+		VolumeCapability:  &csi.VolumeCapability{},
+		VolumeContext:     map[string]string{"useBindMount": "true", "podId": "1234567890"},
+	})
+	require.NoError(t, err)
+
+	mountIdFile, err := os.ReadFile(path.Join(targetDir, api.MOUNT_ID_FILE))
+	require.NoError(t, err)
+
+	mountId := map[string]string{}
+	err = json.Unmarshal(mountIdFile, &mountId)
+	require.NoError(t, err)
+
+	assert.Equal(t, "1234567890", mountId["podId"])
+	assert.Equal(t, "foobar", mountId["volumeId"])
+}
+
+func TestCachedServerBindMountsVolume(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("skipping test on non-linux OS")
+	}
+
+	tc := util.NewTestCtx(t, auth.Admin, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2)
+	writeObject(tc, 1, 1, i(2), "a", "a v1")
+	aHash := writePackedFiles(tc, 1, 1, nil, "pack/a")
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "", 100)
+	require.NoError(t, err)
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	cached, _, close := createTestCachedServer(tc, tmpDir)
+	defer close()
+
+	err = cached.Prepare(tc.Context())
+	require.NoError(t, err, "cached.Prepare must succeed")
+
+	targetDir := path.Join(tmpDir, "vol-target")
+	require.NoError(t, os.MkdirAll(targetDir, 0755))
+
+	stagingDir := path.Join(tmpDir, "vol-staging-target")
+	_, err = cached.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
+		VolumeId:          "foobar",
+		StagingTargetPath: stagingDir,
+		TargetPath:        targetDir,
+		VolumeCapability:  &csi.VolumeCapability{},
+		VolumeContext:     map[string]string{"useBindMount": "true", "podId": "1234567890"},
+	})
+	require.NoError(t, err)
+
+	_, err = cached.BindMountCacheDir(tc.Context(), &pb.BindMountCacheDirRequest{
+		Src: path.Join(cached.GetCachePath(), fmt.Sprintf("objects/%v/pack/a", aHash)),
+		Dst: path.Join(targetDir, "node_modules", "a"),
+	})
+	require.NoError(t, err)
+
+	verifyDir(t, path.Join(targetDir), -1, map[string]expectedFile{
+		"node_modules/a/1": {content: "pack/a/1 v1"},
+	})
 }
 
 func formatFileMode(mode os.FileMode) string {

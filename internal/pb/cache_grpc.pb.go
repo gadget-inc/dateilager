@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 
 const (
 	Cached_PopulateDiskCache_FullMethodName = "/pb.Cached/PopulateDiskCache"
+	Cached_BindMountCacheDir_FullMethodName = "/pb.Cached/BindMountCacheDir"
 )
 
 // CachedClient is the client API for Cached service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CachedClient interface {
 	PopulateDiskCache(ctx context.Context, in *PopulateDiskCacheRequest, opts ...grpc.CallOption) (*PopulateDiskCacheResponse, error)
+	BindMountCacheDir(ctx context.Context, in *BindMountCacheDirRequest, opts ...grpc.CallOption) (*BindMountCacheDirResponse, error)
 }
 
 type cachedClient struct {
@@ -46,11 +48,21 @@ func (c *cachedClient) PopulateDiskCache(ctx context.Context, in *PopulateDiskCa
 	return out, nil
 }
 
+func (c *cachedClient) BindMountCacheDir(ctx context.Context, in *BindMountCacheDirRequest, opts ...grpc.CallOption) (*BindMountCacheDirResponse, error) {
+	out := new(BindMountCacheDirResponse)
+	err := c.cc.Invoke(ctx, Cached_BindMountCacheDir_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CachedServer is the server API for Cached service.
 // All implementations must embed UnimplementedCachedServer
 // for forward compatibility
 type CachedServer interface {
 	PopulateDiskCache(context.Context, *PopulateDiskCacheRequest) (*PopulateDiskCacheResponse, error)
+	BindMountCacheDir(context.Context, *BindMountCacheDirRequest) (*BindMountCacheDirResponse, error)
 	mustEmbedUnimplementedCachedServer()
 }
 
@@ -60,6 +72,9 @@ type UnimplementedCachedServer struct {
 
 func (UnimplementedCachedServer) PopulateDiskCache(context.Context, *PopulateDiskCacheRequest) (*PopulateDiskCacheResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PopulateDiskCache not implemented")
+}
+func (UnimplementedCachedServer) BindMountCacheDir(context.Context, *BindMountCacheDirRequest) (*BindMountCacheDirResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BindMountCacheDir not implemented")
 }
 func (UnimplementedCachedServer) mustEmbedUnimplementedCachedServer() {}
 
@@ -92,6 +107,24 @@ func _Cached_PopulateDiskCache_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Cached_BindMountCacheDir_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BindMountCacheDirRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CachedServer).BindMountCacheDir(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Cached_BindMountCacheDir_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CachedServer).BindMountCacheDir(ctx, req.(*BindMountCacheDirRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Cached_ServiceDesc is the grpc.ServiceDesc for Cached service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -102,6 +135,10 @@ var Cached_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PopulateDiskCache",
 			Handler:    _Cached_PopulateDiskCache_Handler,
+		},
+		{
+			MethodName: "BindMountCacheDir",
+			Handler:    _Cached_BindMountCacheDir_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

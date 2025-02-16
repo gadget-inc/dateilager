@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -31,6 +33,7 @@ const (
 	CACHE_PATH_SUFFIX = "dl_cache"
 	UPPER_DIR         = "upper"
 	WORK_DIR          = "work"
+	MOUNT_ID_FILE     = ".mountId"
 )
 
 type Cached struct {
@@ -60,6 +63,41 @@ func (c *Cached) PopulateDiskCache(ctx context.Context, req *pb.PopulateDiskCach
 	}
 
 	return &pb.PopulateDiskCacheResponse{Version: version}, nil
+}
+
+func (c *Cached) BindMountCacheDir(ctx context.Context, req *pb.BindMountCacheDirRequest) (*pb.BindMountCacheDirResponse, error) {
+	sourceDir := req.Src
+	destinationDir := req.Dst
+
+	_, err := os.Stat(destinationDir)
+	if err != nil {
+		// If the error is anything other than the directory not existing, return an error
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("destination directory %s error: %v", destinationDir, err)
+		}
+
+		err = os.MkdirAll(destinationDir, 0755)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create destination directory %s: %v", destinationDir, err)
+		}
+	} else {
+		// If the directory exists try to unmount it
+		//TODO: Check to see if the error because the directory is not mounted.
+		// For now we'll just ignore the error.
+		_ = execCommand("umount", destinationDir)
+	}
+
+	mountArgs := []string{
+		"--bind",
+		"-o ro",
+		sourceDir,
+		destinationDir,
+	}
+	err = execCommand("mount", mountArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to bind mount source directory %s to destination directory %s: %v", sourceDir, destinationDir, err)
+	}
+	return &pb.BindMountCacheDirResponse{}, nil
 }
 
 func (c *Cached) GetCachePath() string {
@@ -156,6 +194,20 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	}
 
 	targetPath := req.GetTargetPath()
+	volumeAttributes := req.GetVolumeContext()
+
+	if _, ok := volumeAttributes["useBindMount"]; ok {
+		var podUID string
+		if podUID, ok = volumeAttributes["podId"]; !ok {
+			podUID = ""
+		}
+		err := publishVolumeForBindMount(targetPath, req.VolumeId, podUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to publish volume for bind mount: %v", err)
+		}
+		return &csi.NodePublishVolumeResponse{}, nil
+	}
+
 	// The parent of the target path and can store CSI metadata, it's the name given to the volume mount in the pod spec
 	volumePath := path.Join(targetPath, "..")
 	var version int64
@@ -364,4 +416,30 @@ func execCommand(cmdName string, args ...string) error {
 
 	cmd := exec.Command(cmdName, args...)
 	return cmd.Run()
+}
+
+func publishVolumeForBindMount(targetPath, volumeId, podUID string) error {
+	if podUID == "" {
+		pathParts := strings.Split(targetPath, "/")
+		podUID = pathParts[4] // /var/lib/kubelet/pods/<podUID>
+	}
+
+	// Need to leave some breadcrumbs to give the cached rebuild process
+	// the ability to find the mount.
+	mountId := map[string]string{
+		"podId":    podUID,
+		"volumeId": volumeId,
+	}
+
+	mountIdJSON, err := json.Marshal(mountId)
+	if err != nil {
+		return fmt.Errorf("failed to marshal mountId: %v", err)
+	}
+
+	err = os.WriteFile(path.Join(targetPath, MOUNT_ID_FILE), mountIdJSON, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write mountId: %v", err)
+	}
+
+	return nil
 }

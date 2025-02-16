@@ -20,8 +20,6 @@ tmp/*
 
 .vscode/*
 !.vscode/settings.example.json
-!.vscode/tasks.json
-!.vscode/launch.json
 !.vscode/extensions.json
 !.vscode/*.code-snippets
 

@@ -34,17 +34,18 @@ func NewCacheDaemonCommand() *cobra.Command {
 	)
 
 	var (
-		level        *zapcore.Level
-		encoding     string
-		tracing      bool
-		profilePath  string
-		upstreamHost string
-		upstreamPort uint16
-		healthzPort  uint16
-		timeout      uint
-		headlessHost string
-		stagingPath  string
-		csiSocket    string
+		level         *zapcore.Level
+		encoding      string
+		tracing       bool
+		profilePath   string
+		upstreamHost  string
+		upstreamPort  uint16
+		healthzPort   uint16
+		timeout       uint
+		headlessHost  string
+		stagingPath   string
+		csiSocket     string
+		sandboxSocket string
 	)
 
 	cmd := &cobra.Command{
@@ -139,6 +140,13 @@ func NewCacheDaemonCommand() *cobra.Command {
 				return s.Serve(csiSocket)
 			})
 
+			if sandboxSocket != "" {
+				group.Go(func() error {
+					logger.Info(ctx, "start cached<->sandbox server", key.Socket.Field(sandboxSocket))
+					return s.Serve(sandboxSocket)
+				})
+			}
+
 			group.Go(func() error {
 				err := healthServer.ListenAndServe()
 				if errors.Is(err, http.ErrServerClosed) {
@@ -178,6 +186,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 
 	flags.StringVar(&csiSocket, "csi-socket", "", "path for running the Kubernetes CSI Driver interface")
 	flags.StringVar(&stagingPath, "staging-path", "", "path for staging downloaded caches")
+	flags.StringVar(&sandboxSocket, "sandbox-socket", "", "path for running the sandbox<->cached interface")
 
 	_ = cmd.MarkPersistentFlagRequired("csi-socket")
 	_ = cmd.MarkPersistentFlagRequired("staging-path")
