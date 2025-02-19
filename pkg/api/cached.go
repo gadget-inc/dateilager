@@ -229,6 +229,17 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		}
 	}
 
+	// Create the app dir
+	err = os.MkdirAll(path.Join(targetPath, "app"), 0777)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create app directory %s: %v", path.Join(targetPath, "app"), err)
+	}
+
+	err = os.Chmod(path.Join(targetPath, "app"), 0777)
+	if err != nil {
+		return nil, fmt.Errorf("failed to change permissions of app directory %s: %v", path.Join(targetPath, "app"), err)
+	}
+
 	version = c.currentVersion
 	logger.Info(ctx, "mounted overlay", key.TargetPath.Field(targetPath), key.Version.Field(version))
 
