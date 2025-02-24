@@ -3,9 +3,8 @@ package test
 import (
 	"testing"
 
-	"github.com/gadget-inc/dateilager/internal/db"
-
 	"github.com/gadget-inc/dateilager/internal/auth"
+	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/stretchr/testify/assert"
@@ -351,7 +350,7 @@ func TestGetCompress(t *testing.T) {
 	fs := tc.FsApi()
 
 	stream := &mockGetCompressServer{ctx: tc.Context()}
-	err := fs.GetCompress(buildCompressRequest(1, nil, nil, ""), stream)
+	err := fs.GetCompress(buildCompressRequest(1, nil, nil, nil, ""), stream)
 	require.NoError(t, err, "fs.GetCompress")
 
 	assert.Equal(t, 1, len(stream.results), "expected 1 TAR files")
@@ -374,7 +373,7 @@ func TestGetCompressWithIgnorePattern(t *testing.T) {
 	fs := tc.FsApi()
 
 	stream := &mockGetCompressServer{ctx: tc.Context()}
-	err := fs.GetCompress(buildCompressRequest(1, nil, nil, "", "/a/e"), stream)
+	err := fs.GetCompress(buildCompressRequest(1, nil, nil, nil, "", "/a/e"), stream)
 	require.NoError(t, err, "fs.GetCompress")
 
 	assert.Equal(t, 1, len(stream.results), "expected 1 TAR files")
@@ -471,7 +470,7 @@ func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
 	fs := tc.FsApi()
 
 	stream := &mockGetCompressServer{ctx: tc.Context()}
-	err := fs.GetCompress(buildCompressRequest(1, nil, nil, ""), stream)
+	err := fs.GetCompress(buildCompressRequest(1, nil, nil, nil, ""), stream)
 	require.NoError(t, err, "fs.GetCompress")
 
 	assert.Equal(t, 2, len(stream.results), "expected 2 TAR files")
@@ -502,7 +501,7 @@ func TestGetCompressWithCacheVersions(t *testing.T) {
 	fs := tc.FsApi()
 
 	stream := &mockGetCompressServer{ctx: tc.Context()}
-	request := buildCompressRequest(1, nil, nil, "")
+	request := buildCompressRequest(1, nil, nil, nil, "")
 	request.AvailableCacheVersions = []int64{cacheVersion}
 
 	err = fs.GetCompress(request, stream)

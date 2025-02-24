@@ -358,7 +358,7 @@ func (t *rebuildResultTracker) result() RebuildResult {
 	}
 }
 
-func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, ignores []string, cacheDir string, matcher *files.FileMatcher, summarize bool) (RebuildResult, error) {
+func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, ignores []string, subpaths []string, cacheDir string, matcher *files.FileMatcher, summarize bool) (RebuildResult, error) {
 	ctx, span := telemetry.Start(ctx, "client.rebuild", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Prefix.Attribute(prefix),
@@ -381,6 +381,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		Path:     prefix,
 		IsPrefix: true,
 		Ignores:  ignores,
+		Subpaths: subpaths,
 	}
 
 	availableCacheVersions := ReadCacheVersionFile(cacheDir)
@@ -642,7 +643,7 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 			return -1, updateCount, err
 		}
 	} else {
-		result, err := c.Rebuild(rootCtx, project, "", nil, dir, nil, "", nil, true)
+		result, err := c.Rebuild(rootCtx, project, "", nil, dir, nil, nil, "", nil, true)
 		if err != nil {
 			return -1, updateCount, err
 		}
