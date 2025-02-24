@@ -25,7 +25,7 @@ MIGRATE_DIR := ./migrations
 SERVICE := $(PROJECT).server
 BENCH_PROFILE ?= ""
 
-.PHONY: migrate migrate-create clean build lint release
+.PHONY: migrate migrate-create clean build lint release prerelease
 .PHONY: test test-one test-fuzz test-js lint-js install-js build-js
 .PHONY: reset-db setup-local build-cache-version server server-profile cached
 .PHONY: client-update client-large-update client-get client-rebuild client-rebuild-with-cache
@@ -93,6 +93,21 @@ release: release/server_linux_amd64 release/server_macos_amd64 release/server_ma
 release: release/client_linux_amd64 release/client_macos_amd64 release/client_macos_arm64 release/client_linux_arm64
 release: release/cached_linux_amd64 release/cached_macos_amd64 release/cached_macos_arm64 release/cached_linux_arm64
 release: release/migrations.tar.gz
+
+prerelease: build
+prerelease:
+ifndef tag
+	$(error tag variable must be set)
+else
+	git tag -f $(tag) $(shell git rev-parse HEAD)
+endif
+prerelease:
+	echo "Pushing tag $(tag) to origin $(shell git branch --show-current)"
+ifndef force
+	git push origin $(shell git branch --show-current):prerelease
+else
+	git push origin +$(shell git branch --show-current):prerelease
+endif
 
 test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test: migrate
