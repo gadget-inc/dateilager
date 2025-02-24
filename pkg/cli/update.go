@@ -11,8 +11,9 @@ import (
 
 func NewCmdUpdate() *cobra.Command {
 	var (
-		project int64
-		dir     string
+		project  int64
+		dir      string
+		subpaths []string
 	)
 
 	cmd := &cobra.Command{
@@ -22,7 +23,7 @@ func NewCmdUpdate() *cobra.Command {
 
 			client := client.FromContext(ctx)
 
-			version, count, err := client.Update(ctx, project, dir)
+			version, count, err := client.Update(ctx, project, dir, subpaths)
 			if err != nil {
 				return fmt.Errorf("update objects: %w", err)
 			}
@@ -40,7 +41,7 @@ func NewCmdUpdate() *cobra.Command {
 
 	cmd.Flags().Int64Var(&project, "project", -1, "Project ID (required)")
 	cmd.Flags().StringVar(&dir, "dir", "", "Directory containing updated files")
-
+	cmd.Flags().StringSliceVar(&subpaths, "subpaths", nil, "Subpaths to update")
 	_ = cmd.MarkFlagRequired("project")
 
 	return cmd
