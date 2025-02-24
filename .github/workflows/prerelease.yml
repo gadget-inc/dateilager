@@ -2,8 +2,8 @@ name: Prerelease
 
 on:
   push:
-    branches:
-      - prerelease
+    tags:
+      - "*-pre"
 defaults:
   run:
     shell: bash -l {0}
@@ -25,24 +25,26 @@ jobs:
             echo "No tag found, use make prerelease to create a tag"
             exit 1
           fi
+      - name: Set env var for tag
+        run: echo "CUSTOM_VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
           
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v4
         with:
           version: latest
-          args: release --clean --snapshot -f .goreleaser.prerelease.yml
+          args: release --clean --snapshot -f .goreleaser.prerelease.yml 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+          CUSTOM_VERSION: ${{ env.CUSTOM_VERSION }}
       - name: Create prerelease
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: "pre-${{ github.sha }}"
+          tag_name: ${{ env.CUSTOM_VERSION }}
           prerelease: true
           make_latest: false
-          name: "Prelease: pre-${{ github.sha }}"
+          name: "Prelease: ${{ env.CUSTOM_VERSION }}"
           files: |
             dist/*.tar.gz
             dist/checksum*
