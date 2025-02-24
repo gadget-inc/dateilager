@@ -29,7 +29,7 @@ func TestCombined(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a": {content: "a v1"},
@@ -47,7 +47,7 @@ func TestCombined(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   2,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a": {content: "a v2"},
@@ -74,7 +74,7 @@ func TestCombinedWithIdenticalObjects(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a": {content: "a v1"},
@@ -104,12 +104,12 @@ func TestCombinedWithIdenticalObjects(t *testing.T) {
 	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
-	})
+	}, nil)
 
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1, // Only one file should be updated since /a and /b were identical but had new mod times
-	})
+	}, nil)
 }
 
 func TestCombinedWithEmptyDirectories(t *testing.T) {
@@ -130,7 +130,7 @@ func TestCombinedWithEmptyDirectories(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a/": {content: "", fileType: typeDirectory},
@@ -175,7 +175,7 @@ func TestCombinedWithChangingObjectTypes(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a":  {content: "a v1"},
@@ -195,7 +195,7 @@ func TestCombinedWithChangingObjectTypes(t *testing.T) {
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   3,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a/": {fileType: typeDirectory},
@@ -220,7 +220,7 @@ func TestCombinedNonEmptyDirectoryIntoFile(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   1,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"foo/bar": {content: "file contents"},
@@ -236,7 +236,7 @@ func TestCombinedNonEmptyDirectoryIntoFile(t *testing.T) {
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"foo": {content: "content"},
@@ -259,7 +259,7 @@ func TestCombinedNonEmptyDirectoryIntoSymlink(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   1,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"foo/bar": {content: "file contents"},
@@ -276,7 +276,7 @@ func TestCombinedNonEmptyDirectoryIntoSymlink(t *testing.T) {
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   2,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"target": {content: "content"},
@@ -300,7 +300,7 @@ func TestCombinedFileIntoNonEmptyDirectory(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   1,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"foo": {content: "file contents"},
@@ -316,7 +316,7 @@ func TestCombinedFileIntoNonEmptyDirectory(t *testing.T) {
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"foo/bar": {content: "content"},
@@ -339,7 +339,7 @@ func TestCombinedFileIntoEmptyDirectory(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   1,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"foo": {content: "file contents"},
@@ -355,7 +355,7 @@ func TestCombinedFileIntoEmptyDirectory(t *testing.T) {
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"foo/": {fileType: typeDirectory},
@@ -383,7 +383,7 @@ func TestCombinedWithPacked(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   4,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a/c": {content: "a/c v1"},
@@ -406,7 +406,7 @@ func TestCombinedWithPacked(t *testing.T) {
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   3, // We updated a pack so all of them were rebuilt
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a/c": {content: "a/c v2"},
@@ -438,7 +438,7 @@ func TestCombinedWithPackedSymlinks(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   6,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a/c":      {content: "a/c v1"},
@@ -462,7 +462,7 @@ func TestCombinedWithPackedSymlinks(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   6, // We updated one file in a pack so all of them were rebuilt
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a/c":      {content: "a/c v2"},
@@ -494,7 +494,7 @@ func TestCombinedWithPackAsASymlink(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a/c": {content: "a/c v1"},
@@ -515,7 +515,7 @@ func TestCombinedWithPackAsASymlink(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   4,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a/c": {content: "a/c v2"},
@@ -546,7 +546,7 @@ func TestCombinedWithIdenticalPackedObjects(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a/c": {content: "a/c v1"},
@@ -575,12 +575,12 @@ func TestCombinedWithIdenticalPackedObjects(t *testing.T) {
 	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
-	})
+	}, nil)
 
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1, // Only one file should be updated since /a and /b were identical but with a new mod times
-	})
+	}, nil)
 }
 
 func TestCombinedWithPrefixDirectoryBug(t *testing.T) {
@@ -599,7 +599,7 @@ func TestCombinedWithPrefixDirectoryBug(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   1,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a/": {content: "", fileType: typeDirectory},
