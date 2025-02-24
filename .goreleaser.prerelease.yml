@@ -31,7 +31,7 @@ builds:
         - tar -zcf dist/migrations.tar.gz migrations
 
 changelog:
-  skip: true
+  disable: true
 
 checksum:
   name_template: "checksums.txt"
