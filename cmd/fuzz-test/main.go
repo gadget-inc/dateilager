@@ -403,7 +403,7 @@ func runIteration(ctx context.Context, client *dlc.Client, project int64, operat
 		return -1, fmt.Errorf("failed to apply operation %s: %w", operation.String(), err)
 	}
 
-	version, _, err := client.Update(ctx, project, dirs.Base(project))
+	version, _, err := client.Update(ctx, project, dirs.Base(project), nil)
 	if err != nil {
 		return -1, fmt.Errorf("failed to update project %d: %w", project, err)
 	}
