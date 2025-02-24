@@ -6,7 +6,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=v{{.Version}}
+      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.Env.CUSTOM_VERSION}}
     goos:
       - linux
       - darwin
@@ -19,7 +19,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version=v{{.Version}}
+      - -s -w -X github.com/gadget-inc/dateilager/pkg/version.Version={{.Env.CUSTOM_VERSION}}
     goos:
       - linux
       - darwin
@@ -39,7 +39,7 @@ checksum:
     - glob: ./dist/migrations.tar.gz
 
 archives:
-  - name_template: "{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+  - name_template: "{{ .ProjectName }}-{{ .Env.CUSTOM_VERSION }}-{{ .Os }}-{{ .Arch }}"
 
 release:
   extra_files:
