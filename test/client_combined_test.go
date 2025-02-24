@@ -621,3 +621,50 @@ func TestCombinedWithPrefixDirectoryBug(t *testing.T) {
 		"abc": {content: "abc v2"},
 	})
 }
+
+func TestRebuildUpdateWithSubpaths(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "ab", "ab v1")
+	writePackedFiles(tc, 1, 1, nil, "pack/a")
+	writePackedFiles(tc, 1, 1, nil, "pack/sub/b")
+	writePackedFiles(tc, 1, 1, nil, "pack/sub/c")
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   4,
+	}, []string{"pack/sub"})
+
+	// Should only have the objects under the subpath
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"pack/sub/b/1": {content: "pack/sub/b/1 v1"},
+		"pack/sub/b/2": {content: "pack/sub/b/2 v1"},
+		"pack/sub/c/1": {content: "pack/sub/c/1 v1"},
+		"pack/sub/c/2": {content: "pack/sub/c/2 v1"},
+	})
+
+	writeFile(t, tmpDir, "pack/sub/c/1", "pack/sub/c/1 v2")
+	writeFile(t, tmpDir, "pack/a/1", "pack/a/1 v2")
+
+	// Should only update pack/sub/c which is part of the subpaths
+	update(tc, c, 1, tmpDir, expectedResponse{
+		version: 2,
+		count:   1,
+	}, []string{"pack/sub"})
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"pack/a/1":     {content: "pack/a/1 v2"},
+		"pack/sub/b/1": {content: "pack/sub/b/1 v1"},
+		"pack/sub/b/2": {content: "pack/sub/b/2 v1"},
+		"pack/sub/c/1": {content: "pack/sub/c/1 v2"},
+		"pack/sub/c/2": {content: "pack/sub/c/2 v1"},
+	})
+}
