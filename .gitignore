@@ -20,10 +20,10 @@ tmp/*
 
 .vscode/*
 !.vscode/settings.example.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
+!.vscode/tasks.example.json
+!.vscode/launch.example.json
+!.vscode/extensions.example.json
+!.vscode/*.example.code-snippets
 
 # Local History for Visual Studio Code
 .history/
