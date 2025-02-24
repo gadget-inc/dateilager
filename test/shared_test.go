@@ -477,14 +477,14 @@ func createTestCachedClient(tc util.TestCtx) (*client.CachedClient, *api.Cached,
 	return cachedClient, cached, func() { cachedClient.Close(); closeClient(); s.Stop() }
 }
 
-func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, cacheDir *string, expected expectedResponse) {
+func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, cacheDir *string, expected expectedResponse, subpaths []string) {
 	if cacheDir == nil {
 		newCacheDir := emptyTmpDir(tc.T())
 		defer os.RemoveAll(newCacheDir)
 		cacheDir = &newCacheDir
 	}
 
-	result, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, nil, *cacheDir, nil, true)
+	result, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, subpaths, *cacheDir, nil, true)
 	require.NoError(tc.T(), err, "client.Rebuild")
 
 	assert.Equal(tc.T(), expected.version, result.Version, "mismatch rebuild version")
