@@ -94,7 +94,7 @@ func TestCombinedWithIdenticalObjects(t *testing.T) {
 	update(tc, c, 1, tmpDir, expectedResponse{
 		version: 2,
 		count:   3,
-	})
+	}, nil)
 
 	// Reset the tmpdir to remove all state and updates
 	os.RemoveAll(tmpDir)
@@ -144,7 +144,7 @@ func TestCombinedWithEmptyDirectories(t *testing.T) {
 	update(tc, c, 1, tmpDir, expectedResponse{
 		version: 2,
 		count:   2,
-	})
+	}, nil)
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err := fs.Get(prefixQuery(1, nil, ""), stream)
@@ -566,7 +566,7 @@ func TestCombinedWithIdenticalPackedObjects(t *testing.T) {
 	update(tc, c, 1, tmpDir, expectedResponse{
 		version: 2,
 		count:   3,
-	})
+	}, nil)
 
 	os.RemoveAll(tmpDir)
 	err = os.Mkdir(tmpDir, 0775)
@@ -610,7 +610,7 @@ func TestCombinedWithPrefixDirectoryBug(t *testing.T) {
 	update(tc, c, 1, tmpDir, expectedResponse{
 		version: 2,
 		count:   1,
-	})
+	}, nil)
 
 	stream := &mockGetServer{ctx: tc.Context()}
 	err := fs.Get(prefixQuery(1, nil, ""), stream)

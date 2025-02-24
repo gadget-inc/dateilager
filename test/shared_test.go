@@ -503,8 +503,8 @@ func rebuildWithMatcher(tc util.TestCtx, c *client.Client, project int64, toVers
 	assert.Equal(tc.T(), expectedMatch, result.FileMatch, "unexpected file match")
 }
 
-func update(tc util.TestCtx, c *client.Client, project int64, dir string, expected expectedResponse) {
-	version, count, err := c.Update(tc.Context(), project, dir)
+func update(tc util.TestCtx, c *client.Client, project int64, dir string, expected expectedResponse, subpaths []string) {
+	version, count, err := c.Update(tc.Context(), project, dir, subpaths)
 	require.NoError(tc.T(), err, "client.Update")
 
 	assert.Equal(tc.T(), expected.version, version, "mismatch update version")
