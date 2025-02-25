@@ -57,6 +57,7 @@
     "pg": "^8.9.0",
     "prettier": "^2.8.8",
     "prettier-plugin-packagejson": "^2.2.18",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "yargs": "^17.7.2"
   }
 }
