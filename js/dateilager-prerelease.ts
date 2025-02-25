@@ -1,9 +1,9 @@
 #!/usr/bin/env -S  node --import @swc-node/register/esm-register
-import fs from 'fs';
-import { execSync } from 'child_process';
-import path from 'path';
-import yargs from 'yargs';
-import { hideBin } from 'yargs/helpers';
+import { execSync } from "child_process";
+import fs from "fs";
+import path from "path";
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
 
 //Define interface for package.json structure
 interface PackageJson {
@@ -14,23 +14,23 @@ interface PackageJson {
 }
 
 // Path to package.json (defaults to current directory)
-const packagePath: string = path.resolve(process.cwd(), 'package.json');
+const packagePath: string = path.resolve(process.cwd(), "package.json");
 
 // Get the current git commit SHA
 function getGitCommitSha(): string {
   try {
     // Execute git command to get the current commit SHA
-    const sha: string = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
+    const sha: string = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
     // Return only the first 7 characters
     return sha.substring(0, 7);
   } catch (error) {
-    console.error('Error getting git commit SHA:', (error as Error).message);
+    console.error("Error getting git commit SHA:", (error as Error).message);
     process.exit(1);
   }
 }
 
 function preReleaseVersion(baseVersion: string): string {
-  const sha = getGitCommitSha();  
+  const sha = getGitCommitSha();
   return `v${baseVersion}-pre.${sha}`;
 }
 
@@ -38,28 +38,24 @@ function preReleaseVersion(baseVersion: string): string {
 function updatePackageVersion(version: string): void {
   try {
     // Read the package.json file
-    const packageData: string = fs.readFileSync(packagePath, 'utf8');
-    const packageJson: PackageJson = JSON.parse(packageData) as PackageJson; 
+    const packageData: string = fs.readFileSync(packagePath, "utf8");
+    const packageJson: PackageJson = JSON.parse(packageData) as PackageJson;
 
     // Store the original version for logging
     const originalVersion: string = packageJson.version;
-    
+
     // Update the version with the git SHA
     packageJson.version = version;
-    
+
     // Write the updated package.json back to file
-    fs.writeFileSync(
-      packagePath,
-      JSON.stringify(packageJson, null, 2) + '\n',
-      'utf8'
-    );
-    
+    fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + "\n", "utf8");
+
     console.log(`Package version updated from "${originalVersion}" to "${version}"`);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       console.error(`Error: ${packagePath} not found`);
     } else {
-      console.error('Error updating package.json:', (error as Error).message);
+      console.error("Error updating package.json:", (error as Error).message);
     }
     process.exit(1);
   }
@@ -67,35 +63,34 @@ function updatePackageVersion(version: string): void {
 
 function tagGit(version: string): void {
   try {
-    execSync(`git tag -f ${version} $(git rev-parse HEAD)`, { stdio: 'inherit' });
-    execSync(`git push origin ${version}`, { stdio: 'inherit' });
+    execSync(`git tag -f ${version} $(git rev-parse HEAD)`, { stdio: "inherit" });
+    execSync(`git push origin ${version}`, { stdio: "inherit" });
   } catch (error) {
-    console.error('Error tagging git:', (error as Error).message);
+    console.error("Error tagging git:", (error as Error).message);
     process.exit(1);
   }
 }
 
 function publishPreReleaseToGithub(): void {
-  execSync(`npm run prerelease`, { stdio: 'inherit' });
+  execSync(`npm run prerelease`, { stdio: "inherit" });
 }
 
 function doPreRelease(): void {
   console.log(`Running prerelease with version: ${process.argv.toString()}`);
   const args = yargs(hideBin(process.argv))
-    .option('t', {
-      description: 'Version tag to release',
-      type: 'string',
-      alias: 'version-tag',
-      demandOption: true
+    .option("t", {
+      description: "Version tag to release",
+      type: "string",
+      alias: "version-tag",
+      demandOption: true,
     })
-    .help()
-    .argv;
-  
+    .help().argv;
+
   console.log(`Running prerelease with version: ${args.t}`);
 
   const version = preReleaseVersion(args.t);
   console.log(`Setting prerelease version to: ${version}`);
-  
+
   tagGit(version); // To kick off the prerelease build
 
   // Update the package version and publish to github
@@ -104,7 +99,7 @@ function doPreRelease(): void {
 
   console.log(`Prerelease version ${version} published`);
   console.warn(`The package.json version has been updated and is now ${version}`);
-}   
+}
 
 // Run the function
 if (require.main === module) {
