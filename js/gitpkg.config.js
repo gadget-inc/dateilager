@@ -1,5 +1,11 @@
 const { execSync } = require("child_process");
 
 module.exports = () => ({
-  getTagName: (pkg) => `${pkg.name}-v${pkg.version}-gitpkg-${execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim()}`,
+  getTagName: (pkg) => {
+    if (!pkg.version.includes("pre")) {
+      console.error(`Version ${pkg.version} does not include 'pre', please use 'make prerelease'`);
+      process.exit(1);
+    }
+    return `${pkg.name}-${pkg.version}-gitpkg`;
+  },
 });
