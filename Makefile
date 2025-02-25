@@ -99,14 +99,8 @@ prerelease:
 ifndef tag
 	$(error tag variable must be set)
 else
-	git tag -f v$(tag) $(shell git rev-parse HEAD)
+	cd js && npx ts-node dateilager-prerelease.ts -t "$(tag)"
 endif
-ifndef force
-	git push origin $(shell git branch --show-current)
-else
-	git push origin +$(shell git branch --show-current)
-endif
-	git push origin v$(tag)
 
 test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test: migrate
