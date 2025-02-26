@@ -157,13 +157,14 @@ export class DateiLagerBinaryClient {
 
   /**
    * Update objects in a project based on the differences in a local directory.
-   * @param project         The id of the project.
-   * @param directory       The path of the directory to send updates from.
-   * @param options         Object of options.
-   * @param options.timeout Number of milliseconds to wait before terminating the process.
-   * @returns               The latest project version or `null` if something went wrong.
+   * @param project          The id of the project.
+   * @param directory        The path of the directory to send updates from.
+   * @param options          Object of options.
+   * @param options.timeout  Number of milliseconds to wait before terminating the process.
+   * @param options.subpaths The paths to include when updating the FS.
+   * @returns                The latest project version or `null` if something went wrong.
    */
-  public async update(project: bigint, directory: string, options?: { timeout?: number }): Promise<bigint | null> {
+  public async update(project: bigint, directory: string, options?: { timeout?: number, subpaths?: string[] }): Promise<bigint | null> {
     return await trace(
       "dateilager-binary-client.update",
       {
@@ -174,6 +175,9 @@ export class DateiLagerBinaryClient {
       },
       async () => {
         const args = ["--dir", String(directory), "--project", String(project)];
+        if (options?.subpaths) {
+          args.push(`--subpaths=${options.subpaths.join(",")}`);
+        }
         const result = await this._call("update", args, directory, options);
 
         if (result.stdout == "-1") {
@@ -193,6 +197,7 @@ export class DateiLagerBinaryClient {
    * @param options              Object of options.
    * @param options.timeout      Number of milliseconds to wait before terminating the process.
    * @param options.ignores      The paths to ignore when rebuilding the FS.
+   * @param options.subpaths     The paths to include when rebuilding the FS.
    * @param options.summarize    Should produce the summary file after rebuilding.
    * @param options.cacheDir     Path where the cache directory is mounted.
    * @param options.matchInclude Set fileMatch to true if the written files are matched by this glob pattern
@@ -206,6 +211,7 @@ export class DateiLagerBinaryClient {
     options?: {
       timeout?: number;
       ignores?: string[];
+      subpaths?: string[];
       summarize?: boolean;
       cacheDir?: string;
       matchInclude?: string;
@@ -249,6 +255,10 @@ export class DateiLagerBinaryClient {
           args.push(`--matchexclude=${options.matchExclude}`);
         }
 
+        if (options?.subpaths) {
+          args.push(`--subpaths=${options.subpaths.join(",")}`);
+        }
+
         args.push("--project", String(project), "--dir", directory);
         const result = await this._call("rebuild", args, directory, options);
         const parsed = JSON.parse(result.stdout) as { version: number; count: number; fileMatch: boolean };
@@ -263,6 +273,7 @@ export class DateiLagerBinaryClient {
    * @param from            Where to start cleanup
    * @param options         dict options passed
    * @param options.timeout timeout limit for the request
+   * @returns               The number of records garbage collected
    */
   public async gcRandomProjects(sample: number, keep: number, from?: number, options?: { timeout?: number }): Promise<GCResult> {
     return await trace(
@@ -294,6 +305,7 @@ export class DateiLagerBinaryClient {
    * @param from            Where to start cleanup
    * @param options         dict options passed
    * @param options.timeout timeout limit for the request
+   * @returns               The number of records garbage collected
    */
   public async gcProject(project: number, keep: number, from?: number, options?: { timeout?: number }): Promise<GCResult> {
     return await trace(
@@ -322,6 +334,7 @@ export class DateiLagerBinaryClient {
    * @param sample          sample size of cleanup
    * @param options         dict options passed
    * @param options.timeout timeout limit for the request
+   * @returns               The number of records garbage collected
    */
   public async gcContents(sample: number, options?: { timeout?: number }): Promise<GCResult> {
     return await trace(
