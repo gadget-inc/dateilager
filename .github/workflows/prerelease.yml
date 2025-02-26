@@ -48,3 +48,22 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/checksum*
+  build-js:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup development environment
+        uses: ./.github/actions/setup-env
+
+      - name: Build JS package
+        run: make build-js
+
+      - uses: JS-DevTools/npm-publish@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          registry: https://npm.pkg.github.com
+          package: ./js/package.json
+          access: public
+          

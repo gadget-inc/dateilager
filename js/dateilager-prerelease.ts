@@ -71,10 +71,6 @@ function tagGit(version: string): void {
   }
 }
 
-function publishPreReleaseToGithub(): void {
-  execSync(`npm run prerelease`, { stdio: "inherit" });
-}
-
 function doPreRelease(): void {
   console.log(`Running prerelease with version: ${process.argv.toString()}`);
   const args = yargs(hideBin(process.argv))
@@ -95,9 +91,8 @@ function doPreRelease(): void {
 
   // Update the package version and publish to github
   updatePackageVersion(version);
-  publishPreReleaseToGithub();
-
-  console.log(`Prerelease version ${version} published`);
+ 
+  console.log(`Prerelease workflow building/publishing version ${version}`);
   console.warn(`The package.json version has been updated and is now ${version}`);
 }
 

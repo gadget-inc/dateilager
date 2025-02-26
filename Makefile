@@ -94,7 +94,7 @@ release: release/client_linux_amd64 release/client_macos_amd64 release/client_ma
 release: release/cached_linux_amd64 release/cached_macos_amd64 release/cached_macos_arm64 release/cached_linux_arm64
 release: release/migrations.tar.gz
 
-prerelease: build
+prerelease: build, build-js
 prerelease:
 ifndef tag
 	$(error tag variable must be set)
