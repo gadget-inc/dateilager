@@ -193,3 +193,69 @@ func TestGetCacheWithMultipleVersions(t *testing.T) {
 	}
 	assert.Equal(t, []string{"pack/a", "pack/b"}, paths)
 }
+
+func TestGetCacheWithSubpaths(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Admin)
+	defer tc.Close()
+
+	writeProject(tc, 1, 3, "pack/")
+	writePackedFiles(tc, 1, 1, nil, "pack/a")
+	writePackedFiles(tc, 1, 1, nil, "pack/sub/a")
+	writePackedFiles(tc, 1, 1, nil, "pack/sub/b")
+	writePackedFiles(tc, 1, 1, nil, "pack/sub/c")
+
+	firstVersion, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
+	require.NoError(t, err)
+
+	version, hashes := latestCacheVersionHashes(tc)
+	assert.Equal(t, firstVersion, version, "latest cache version matches newly created cache")
+	assert.Equal(t, 4, len(hashes), "cache hash count")
+
+	vrange, err := db.NewVersionRange(tc.Context(), tc.Connect(), 1, i(0), i(1))
+	require.NoError(t, err)
+
+	availableVersions := []int64{firstVersion}
+
+	query := &pb.ObjectQuery{
+		Path:     "pack",
+		IsPrefix: true,
+		Subpaths: []string{"pack/sub"},
+		Ignores:  []string{"pack/sub/c"},
+	}
+
+	tars, err := db.GetTars(tc.Context(), tc.Connect(), tc.ContentLookup(), 1, availableVersions, vrange, query)
+	require.NoError(t, err)
+
+	var paths []string
+
+	for {
+		tar, _, err := tars()
+		if err == io.EOF {
+			break
+		}
+		if err == db.SKIP {
+			continue
+		}
+		tarReader := db.NewTarReader()
+		tarReader.FromBytes(tar)
+
+		for {
+			header, err := tarReader.Next()
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+
+			content, err := tarReader.ReadContent()
+			require.NoError(t, err)
+
+			assert.Equal(t, pb.TarCached, int32(header.Typeflag))
+
+			hexContent := hex.EncodeToString(content)
+			assert.Regexp(t, regexp.MustCompile("[0-9a-f]{64}"), hexContent)
+
+			paths = append(paths, header.Name)
+		}
+	}
+	assert.Equal(t, []string{"pack/sub/a", "pack/sub/b"}, paths)
+}

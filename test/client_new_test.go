@@ -28,7 +28,7 @@ func TestClientNewProjectEmptyPackPattern(t *testing.T) {
 	require.NoError(t, err, "fs.Update")
 
 	stream := &mockGetCompressServer{ctx: tc.Context()}
-	err = fs.GetCompress(buildCompressRequest(1, nil, nil, ""), stream)
+	err = fs.GetCompress(buildCompressRequest(1, nil, nil, nil, ""), stream)
 	require.NoError(t, err, "fs.GetCompress")
 
 	// If the objects were marked as packed they would be returned as more than 1 TAR

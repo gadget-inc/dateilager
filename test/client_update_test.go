@@ -41,7 +41,7 @@ func TestUpdateObjects(t *testing.T) {
 	update(tc, c, 1, tmpDir, expectedResponse{
 		version: 2,
 		count:   3,
-	})
+	}, nil)
 
 	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
 	require.NoError(t, err, "client.GetLatest after update")
@@ -71,7 +71,7 @@ func TestUpdatePackedObjectsConsistentHashing(t *testing.T) {
 	update(tc, c, 1, tmpDir, expectedResponse{
 		version: 1,
 		count:   3,
-	})
+	}, nil)
 
 	var baseH1, baseH2 []byte
 
@@ -102,7 +102,7 @@ func TestUpdatePackedObjectsConsistentHashing(t *testing.T) {
 		update(tc, c, int64(idx), tmpDir, expectedResponse{
 			version: 1,
 			count:   3,
-		})
+		}, nil)
 
 		var newH1, newH2 []byte
 
@@ -151,7 +151,7 @@ func TestUpdateWithManyObjects(t *testing.T) {
 	update(tc, c, 1, tmpDir, expectedResponse{
 		version: 1,
 		count:   500,
-	})
+	}, nil)
 
 	objects, err := c.Get(tc.Context(), 1, "", nil, emptyVersionRange)
 	require.NoError(t, err, "client.GetLatest after update")
@@ -192,7 +192,7 @@ func TestConcurrentUpdatesSetsCorrectMetadata(t *testing.T) {
 	update(tc, c, 1, tmpDir, expectedResponse{
 		version: 3,
 		count:   2,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 3, map[string]expectedFile{
 		"a": {content: "a v3"},
@@ -220,7 +220,48 @@ func TestUpdateFailsWithTooLargeObject(t *testing.T) {
 	}
 
 	writeFile(t, tmpDir, "a", sb.String())
-	_, _, err := c.Update(tc.Context(), 1, tmpDir)
+	_, _, err := c.Update(tc.Context(), 1, tmpDir, nil)
 
 	assert.Error(tc.T(), err)
+}
+
+func TestUpdateWithSubpaths(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writePackedFiles(tc, 1, 1, nil, "pack/a")
+	writePackedFiles(tc, 1, 1, nil, "pack/sub/b")
+	writePackedFiles(tc, 1, 1, nil, "pack/sub/c")
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := writeTmpFiles(t, 1, map[string]string{
+		"pack/a/1":     "pack/a/1 v1",
+		"pack/a/2":     "pack/a/2 v1",
+		"pack/sub/b/1": "pack/sub/b/1 v1",
+		"pack/sub/b/2": "pack/sub/b/2 v1",
+		"pack/sub/c/1": "pack/sub/c/1 v1",
+		"pack/sub/c/2": "pack/sub/c/2 v1",
+	})
+	defer os.RemoveAll(tmpDir)
+
+	writeFile(t, tmpDir, "pack/sub/c/1", "pack/sub/c/1 v2")
+	writeFile(t, tmpDir, "pack/a/1", "pack/a/1 v2")
+
+	// Should only update pack/sub/c which is part of the subpaths
+	update(tc, c, 1, tmpDir, expectedResponse{
+		version: 2,
+		count:   1,
+	}, []string{"pack/sub"})
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"pack/a/1":     {content: "pack/a/1 v2"},
+		"pack/a/2":     {content: "pack/a/2 v1"},
+		"pack/sub/b/1": {content: "pack/sub/b/1 v1"},
+		"pack/sub/b/2": {content: "pack/sub/b/2 v1"},
+		"pack/sub/c/1": {content: "pack/sub/c/1 v2"},
+		"pack/sub/c/2": {content: "pack/sub/c/2 v1"},
+	})
 }

@@ -80,6 +80,7 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 			AND (o.stop_version IS NULL OR o.stop_version > __stop_version__)
 			%s
 			%s
+			%s
 			ORDER BY o.path
 	`
 
@@ -105,7 +106,12 @@ func (qb *queryBuilder) updatedObjectsCTE() string {
 		ignoresPredicate = "AND o.path NOT LIKE ALL(__ignores__::text[])"
 	}
 
-	return fmt.Sprintf(template, isCachedSelector, cacheJoin, pathPredicate, ignoresPredicate)
+	subpathsPredicate := ""
+	if len(qb.objectQuery.Subpaths) > 0 {
+		subpathsPredicate = "AND o.path LIKE ALL(__subpaths__::text[])"
+	}
+
+	return fmt.Sprintf(template, isCachedSelector, cacheJoin, pathPredicate, ignoresPredicate, subpathsPredicate)
 }
 
 func (qb *queryBuilder) removedObjectsCTE() string {
@@ -116,6 +122,7 @@ func (qb *queryBuilder) removedObjectsCTE() string {
 			AND o.start_version <= __start_version__
 			AND o.stop_version > __start_version__
 			AND o.stop_version <= __stop_version__
+			%s
 			%s
 			AND NOT (
 			    -- Skip removing files if they are in the updated_objects list
@@ -135,7 +142,12 @@ func (qb *queryBuilder) removedObjectsCTE() string {
 		ignoresPredicate = "AND o.path NOT LIKE ALL(__ignores__::text[])"
 	}
 
-	return fmt.Sprintf(template, ignoresPredicate)
+	subpathsPredicate := ""
+	if len(qb.objectQuery.Subpaths) > 0 {
+		subpathsPredicate = "AND o.path LIKE ALL(__subpaths__::text[])"
+	}
+
+	return fmt.Sprintf(template, ignoresPredicate, subpathsPredicate)
 }
 
 func (qb *queryBuilder) cachedObjectHashesCTE() string {
@@ -223,6 +235,15 @@ func (qb *queryBuilder) replaceQueryArgs(query string) (string, []any) {
 		}
 
 		args = append(args, ignorePatterns)
+	}
+
+	if len(qb.objectQuery.Subpaths) > 0 {
+		argNames = append(argNames, "__subpaths__")
+		subpathPatterns := []string{}
+		for _, subPath := range qb.objectQuery.Subpaths {
+			subpathPatterns = append(subpathPatterns, fmt.Sprintf("%s%%", subPath))
+		}
+		args = append(args, subpathPatterns)
 	}
 
 	if len(qb.cacheVersions) > 0 {

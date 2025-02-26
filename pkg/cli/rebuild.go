@@ -19,6 +19,7 @@ func NewCmdRebuild() *cobra.Command {
 		prefix           string
 		dir              string
 		ignores          string
+		subpaths         string
 		summarize        bool
 		cacheDir         string
 		fileMatchInclude string
@@ -40,12 +41,17 @@ func NewCmdRebuild() *cobra.Command {
 				ignoreList = strings.Split(ignores, ",")
 			}
 
+			var subpathList []string
+			if len(subpaths) > 0 {
+				subpathList = strings.Split(subpaths, ",")
+			}
+
 			matcher, err := files.NewFileMatcher(fileMatchInclude, fileMatchExclude)
 			if err != nil {
 				return err
 			}
 
-			result, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, cacheDir, matcher, summarize)
+			result, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, subpathList, cacheDir, matcher, summarize)
 			if err != nil {
 				return fmt.Errorf("could not rebuild project: %w", err)
 			}
@@ -73,6 +79,7 @@ func NewCmdRebuild() *cobra.Command {
 	cmd.Flags().StringVar(&prefix, "prefix", "", "Search prefix")
 	cmd.Flags().StringVar(&dir, "dir", "", "Output directory")
 	cmd.Flags().StringVar(&ignores, "ignores", "", "Comma separated list of ignore paths")
+	cmd.Flags().StringVar(&subpaths, "subpaths", "", "Comma separated list of subpaths to include")
 	cmd.Flags().BoolVar(&summarize, "summarize", true, "Should include the summary file (required for future updates)")
 	cmd.Flags().StringVar(&cacheDir, "cachedir", "", "Path where the cache folder is mounted")
 	cmd.Flags().StringVar(&fileMatchInclude, "matchinclude", "", "Set fileMatch to true if the written files are matched by this glob pattern")

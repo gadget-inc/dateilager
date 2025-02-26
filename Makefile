@@ -95,6 +95,7 @@ release: release/cached_linux_amd64 release/cached_macos_amd64 release/cached_ma
 release: release/migrations.tar.gz
 
 prerelease: build
+prerelease: build-js
 prerelease:
 ifndef tag
 	$(error tag variable must be set)
