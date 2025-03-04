@@ -36,7 +36,7 @@ func TestRebuild(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a": {content: "a v1"},
@@ -72,7 +72,7 @@ func TestRebuildWithOverwritesAndDeletes(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   4,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a": {content: "a v2"},
@@ -102,7 +102,7 @@ func TestRebuildWithEmptyDirAndSymlink(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   5,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a":     {content: "a v1"},
@@ -130,7 +130,7 @@ func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   2,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a/": {content: "", fileType: typeDirectory},
@@ -147,7 +147,7 @@ func TestRebuildWithUpdatedEmptyDirectories(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a/c": {content: "a/c v2"},
@@ -179,7 +179,7 @@ func TestRebuildWithManyObjects(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   500,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, expectedFiles)
 }
@@ -204,7 +204,7 @@ func TestRebuildWithUpdatedObjectToDirectory(t *testing.T) {
 	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   1,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a": {content: "a v1"},
@@ -213,7 +213,7 @@ func TestRebuildWithUpdatedObjectToDirectory(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 4,
 		count:   2,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 4, map[string]expectedFile{
 		"a":   {content: "a v1"},
@@ -239,7 +239,7 @@ func TestRebuildWithPackedObjects(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   4,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"pack/a/1": {content: "pack/a/1 v1"},
@@ -275,7 +275,7 @@ func TestRebuildWithCache(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, &cacheDir, expectedResponse{
 		version: 1,
 		count:   2,
-	})
+	}, nil)
 
 	aCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), ha, "pack/a")
 	bCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), hb, "pack/b")
@@ -319,7 +319,7 @@ func TestRebuildWithInexistantCacheDir(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, &badPath, expectedResponse{
 		version: 1,
 		count:   2,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"pack/a/1": {content: "pack/a/1 v1"},
@@ -474,7 +474,7 @@ func TestRebuildWithMissingMetadataDir(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"ab":       {content: "ab v1"},
@@ -487,7 +487,7 @@ func TestRebuildWithMissingMetadataDir(t *testing.T) {
 	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   3,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"ab":       {content: "ab v1"},
@@ -513,7 +513,7 @@ func TestRebuildFileBecomesADir(t *testing.T) {
 	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
 		version: 1,
 		count:   1,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
 		"a.html": {content: "a v1"},
@@ -522,9 +522,39 @@ func TestRebuildFileBecomesADir(t *testing.T) {
 	rebuild(tc, c, 1, i(2), tmpDir, nil, expectedResponse{
 		version: 2,
 		count:   1,
-	})
+	}, nil)
 
 	verifyDir(t, tmpDir, 2, map[string]expectedFile{
 		"a.html/foo": {content: "a v2"},
+	})
+}
+
+func TestRebuildWithSubpaths(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "ab", "ab v1")
+	writePackedFiles(tc, 1, 1, nil, "pack/a")
+	writePackedFiles(tc, 1, 1, nil, "pack/sub/b")
+	writePackedFiles(tc, 1, 1, nil, "pack/sub/c")
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   4,
+	}, []string{"pack/sub"})
+
+	// Should only have the objects under the subpath
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"pack/sub/b/1": {content: "pack/sub/b/1 v1"},
+		"pack/sub/b/2": {content: "pack/sub/b/2 v1"},
+		"pack/sub/c/1": {content: "pack/sub/c/1 v1"},
+		"pack/sub/c/2": {content: "pack/sub/c/2 v1"},
 	})
 }

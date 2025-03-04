@@ -200,6 +200,7 @@ export class DateiLagerGrpcClient {
                 path,
                 ignores,
                 isPrefix: true,
+                subpaths: [],
               },
             ],
           },
@@ -248,7 +249,7 @@ export class DateiLagerGrpcClient {
       },
       async () => {
         const call = this._client.getUnary(
-          { project, fromVersion: from, toVersion: to, queries: [{ path, ignores, isPrefix: true }] },
+          { project, fromVersion: from, toVersion: to, queries: [{ path, ignores, isPrefix: true, subpaths: [] }] },
           this._rpcOptions()
         );
         return await call.response;
@@ -286,6 +287,7 @@ export class DateiLagerGrpcClient {
                 path,
                 isPrefix: false,
                 ignores: [],
+                subpaths: [],
               },
             ],
           },

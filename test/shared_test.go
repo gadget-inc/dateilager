@@ -477,14 +477,14 @@ func createTestCachedClient(tc util.TestCtx) (*client.CachedClient, *api.Cached,
 	return cachedClient, cached, func() { cachedClient.Close(); closeClient(); s.Stop() }
 }
 
-func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, cacheDir *string, expected expectedResponse) {
+func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, cacheDir *string, expected expectedResponse, subpaths []string) {
 	if cacheDir == nil {
 		newCacheDir := emptyTmpDir(tc.T())
 		defer os.RemoveAll(newCacheDir)
 		cacheDir = &newCacheDir
 	}
 
-	result, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, *cacheDir, nil, true)
+	result, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, subpaths, *cacheDir, nil, true)
 	require.NoError(tc.T(), err, "client.Rebuild")
 
 	assert.Equal(tc.T(), expected.version, result.Version, "mismatch rebuild version")
@@ -495,7 +495,7 @@ func rebuildWithMatcher(tc util.TestCtx, c *client.Client, project int64, toVers
 	newCacheDir := emptyTmpDir(tc.T())
 	defer os.RemoveAll(newCacheDir)
 
-	result, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, newCacheDir, matcher, true)
+	result, err := c.Rebuild(tc.Context(), project, "", toVersion, dir, nil, nil, newCacheDir, matcher, true)
 	require.NoError(tc.T(), err, "client.Rebuild")
 
 	assert.Equal(tc.T(), expected.version, result.Version, "mismatch rebuild version")
@@ -503,8 +503,8 @@ func rebuildWithMatcher(tc util.TestCtx, c *client.Client, project int64, toVers
 	assert.Equal(tc.T(), expectedMatch, result.FileMatch, "unexpected file match")
 }
 
-func update(tc util.TestCtx, c *client.Client, project int64, dir string, expected expectedResponse) {
-	version, count, err := c.Update(tc.Context(), project, dir)
+func update(tc util.TestCtx, c *client.Client, project int64, dir string, expected expectedResponse, subpaths []string) {
+	version, count, err := c.Update(tc.Context(), project, dir, subpaths)
 	require.NoError(tc.T(), err, "client.Update")
 
 	assert.Equal(tc.T(), expected.version, version, "mismatch update version")
@@ -642,13 +642,18 @@ func rangeQuery(project int64, fromVersion, toVersion *int64, paths ...string) *
 	return buildRequest(project, fromVersion, toVersion, true, paths...)
 }
 
-func buildCompressRequest(project int64, fromVersion, toVersion *int64, paths ...string) *pb.GetCompressRequest {
+func buildCompressRequest(project int64, fromVersion, toVersion *int64, subpaths []string, paths ...string) *pb.GetCompressRequest {
 	path, ignores := paths[0], paths[1:]
+
+	if subpaths == nil {
+		subpaths = []string{}
+	}
 
 	query := &pb.ObjectQuery{
 		Path:     path,
 		IsPrefix: true,
 		Ignores:  ignores,
+		Subpaths: subpaths,
 	}
 
 	return &pb.GetCompressRequest{

@@ -358,7 +358,7 @@ func (t *rebuildResultTracker) result() RebuildResult {
 	}
 }
 
-func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, ignores []string, cacheDir string, matcher *files.FileMatcher, summarize bool) (RebuildResult, error) {
+func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, ignores []string, subpaths []string, cacheDir string, matcher *files.FileMatcher, summarize bool) (RebuildResult, error) {
 	ctx, span := telemetry.Start(ctx, "client.rebuild", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Prefix.Attribute(prefix),
@@ -381,6 +381,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		Path:     prefix,
 		IsPrefix: true,
 		Ignores:  ignores,
+		Subpaths: subpaths,
 	}
 
 	availableCacheVersions := ReadCacheVersionFile(cacheDir)
@@ -504,7 +505,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 	return result, nil
 }
 
-func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int64, uint32, error) {
+func (c *Client) Update(rootCtx context.Context, project int64, dir string, subpaths []string) (int64, uint32, error) {
 	rootCtx, span := telemetry.Start(rootCtx, "client.update", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Directory.Attribute(dir),
@@ -523,6 +524,19 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 
 	if len(diff.Updates) == 0 {
 		return fromVersion, 0, nil
+	}
+
+	if len(subpaths) > 0 {
+		filteredUpdates := make([]*fsdiff_pb.Update, 0, len(diff.Updates))
+		for _, update := range diff.Updates {
+			for _, subpath := range subpaths {
+				if strings.HasPrefix(update.Path, subpath) {
+					filteredUpdates = append(filteredUpdates, update)
+					break
+				}
+			}
+		}
+		diff.Updates = filteredUpdates
 	}
 
 	toVersion := int64(-1)
@@ -642,7 +656,7 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string) (int
 			return -1, updateCount, err
 		}
 	} else {
-		result, err := c.Rebuild(rootCtx, project, "", nil, dir, nil, "", nil, true)
+		result, err := c.Rebuild(rootCtx, project, "", nil, dir, nil, nil, "", nil, true)
 		if err != nil {
 			return -1, updateCount, err
 		}
