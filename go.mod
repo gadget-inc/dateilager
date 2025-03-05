@@ -16,7 +16,7 @@ require (
 	github.com/minio/sha256-simd v1.0.0
 	github.com/o1egl/paseto v1.0.0
 	github.com/spf13/cobra v1.6.0
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.42.0
 	go.opentelemetry.io/otel v1.34.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.34.0
