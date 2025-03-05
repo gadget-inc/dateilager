@@ -81,7 +81,6 @@
               flake.packages.glibcLocales
               flake.packages.google-cloud-sdk
               git
-              k3d
               protobuf
               protoc-gen-go
               protoc-gen-go-grpc

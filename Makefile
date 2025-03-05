@@ -36,6 +36,7 @@ KUBE_CONTEXT ?= orbstack
 .PHONY: health upload-container-image upload-prerelease-container-image run-container gen-docs
 .PHONY: load-test-new load-test-update load-test-update-large load-test-get load-test-get-compress
 .PHONY: k8s k8s/start k8s/stop k8s/delete k8s/reset k8s/deploy
+
 migrate:
 	migrate -database $(DB_URI)?sslmode=disable -path $(MIGRATE_DIR) up
 
