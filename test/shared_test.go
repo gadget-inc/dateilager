@@ -407,6 +407,7 @@ func createTestGRPCServer(tc util.TestCtx) (*bufconn.Listener, *grpc.Server, fun
 	}
 
 	getConn := func() *grpc.ClientConn {
+		//nolint:staticcheck, nolintlint // Using DialContext until we're ready to migrate to NewClient
 		conn, err := grpc.DialContext(tc.Context(), "bufnet", grpc.WithContextDialer(dialer), grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(tc.T(), err, "Failed to dial bufnet")
 		return conn

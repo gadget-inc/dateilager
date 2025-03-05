@@ -130,6 +130,7 @@ func grpcClientConn(ctx context.Context, host string, port uint16, opts ...func(
 		server = fmt.Sprintf("%s:%d", o.headlessHost, port)
 	}
 
+	//nolint:staticcheck // Using DialContext until we're ready to migrate to NewClient
 	return grpc.DialContext(connectCtx, server,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(auth),
@@ -1006,6 +1007,7 @@ func NewCachedUnixClient(ctx context.Context, socket string) (*CachedClient, err
 
 	bc := backoff.DefaultConfig
 	bc.MaxDelay = time.Second
+	//nolint:staticcheck, nolintlint // Using WithBlock for now
 	dialOptions := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithConnectParams(grpc.ConnectParams{Backoff: bc}),
@@ -1021,6 +1023,7 @@ func NewCachedUnixClient(ctx context.Context, socket string) (*CachedClient, err
 		}),
 	}
 
+	//nolint:staticcheck, nolintlint // Using DialContext until we're ready to migrate to NewClient
 	conn, err := grpc.DialContext(ctx, socket, dialOptions...)
 	if err != nil {
 		return nil, err

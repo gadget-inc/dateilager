@@ -19,10 +19,10 @@ import (
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/version"
-	"github.com/golang/protobuf/ptypes/wrappers"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	wrappers "google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 const (
