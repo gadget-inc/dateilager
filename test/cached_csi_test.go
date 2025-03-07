@@ -232,11 +232,12 @@ func TestCachedCSIDriverMountCanDoAFullRebuild(t *testing.T) {
 	tc := util.NewTestCtx(t, auth.Project, 1)
 	defer tc.Close()
 
-	writeProject(tc, 1, 1)
-	writeObject(tc, 1, 1, nil, "ab", "ab v1")
-	writePackedFiles(tc, 1, 1, nil, "pack/a")
-	writePackedFiles(tc, 1, 1, nil, "pack/sub/b")
-	writePackedFiles(tc, 1, 1, nil, "pack/sub/c")
+	writeProject(tc, 1, 4)
+	writeObject(tc, 1, 1, nil, "a", "a v1")
+	writeObject(tc, 1, 2, i(3), "b", "b v2")
+	writeObject(tc, 1, 3, i(4), "b/c", "b/c v3")
+	writeObject(tc, 1, 3, nil, "b/d", "b/d v3")
+	writeObject(tc, 1, 4, nil, "b/e", "b/e v4")
 
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
@@ -262,17 +263,24 @@ func TestCachedCSIDriverMountCanDoAFullRebuild(t *testing.T) {
 	c, _, close := createTestClient(tc)
 	defer close()
 
-	rebuild(tc, c, 1, nil, targetDir, nil, expectedResponse{
-		version: 1,
-		count:   4,
-	}, []string{"pack/sub"})
+	appDir := path.Join(targetDir, "app")
+	dlCacheDir := path.Join(targetDir, "dl_cache")
 
-	// Should only have the objects under the subpath
-	verifyDir(t, targetDir, 1, map[string]expectedFile{
-		"pack/sub/b/1": {content: "pack/sub/b/1 v1"},
-		"pack/sub/b/2": {content: "pack/sub/b/2 v1"},
-		"pack/sub/c/1": {content: "pack/sub/c/1 v1"},
-		"pack/sub/c/2": {content: "pack/sub/c/2 v1"},
+	// Do the initial build
+	rebuild(tc, c, 1, i(1), appDir, &dlCacheDir, expectedResponse{
+		version: 1,
+		count:   1,
+	}, nil)
+
+	rebuild(tc, c, 1, nil, appDir, &dlCacheDir, expectedResponse{
+		version: 4,
+		count:   2,
+	}, nil)
+
+	verifyDir(t, appDir, 4, map[string]expectedFile{
+		"a":   {content: "a v1"},
+		"b/d": {content: "b/d v3"},
+		"b/e": {content: "b/e v4"},
 	})
 
 }
