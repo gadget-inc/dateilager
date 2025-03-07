@@ -84,7 +84,6 @@ func (c *Cached) Prepare(ctx context.Context) error {
 
 	c.currentVersion = version
 
-	logger.Info(ctx, c.GetCachePath())
 	logger.Info(ctx, "downloaded golden copy", key.DurationMS.Field(time.Since(start)), key.Version.Field(version), key.Count.Field(int64(count)))
 	return nil
 }

@@ -228,6 +228,54 @@ func TestCachedCSIDriverProbeFailsUntilPrepared(t *testing.T) {
 	assert.Equal(t, true, response.Ready.Value)
 }
 
+func TestCachedCSIDriverMountCanDoAFullRebuild(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1)
+	writeObject(tc, 1, 1, nil, "ab", "ab v1")
+	writePackedFiles(tc, 1, 1, nil, "pack/a")
+	writePackedFiles(tc, 1, 1, nil, "pack/sub/b")
+	writePackedFiles(tc, 1, 1, nil, "pack/sub/c")
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	cached, _, close := createTestCachedServer(tc, tmpDir)
+	defer close()
+
+	err := cached.Prepare(tc.Context())
+	require.NoError(t, err, "cached.Prepare must succeed")
+
+	targetDir := path.Join(tmpDir, "vol-target")
+
+	stagingDir := path.Join(tmpDir, "vol-staging-target")
+	_, err = cached.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
+		VolumeId:          "foobar",
+		StagingTargetPath: stagingDir,
+		TargetPath:        targetDir,
+		VolumeCapability:  &csi.VolumeCapability{},
+		VolumeContext:     map[string]string{},
+	})
+	require.NoError(t, err)
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	rebuild(tc, c, 1, nil, targetDir, nil, expectedResponse{
+		version: 1,
+		count:   4,
+	}, []string{"pack/sub"})
+
+	// Should only have the objects under the subpath
+	verifyDir(t, targetDir, 1, map[string]expectedFile{
+		"pack/sub/b/1": {content: "pack/sub/b/1 v1"},
+		"pack/sub/b/2": {content: "pack/sub/b/2 v1"},
+		"pack/sub/c/1": {content: "pack/sub/c/1 v1"},
+		"pack/sub/c/2": {content: "pack/sub/c/2 v1"},
+	})
+
+}
 func formatFileMode(mode os.FileMode) string {
 	return fmt.Sprintf("%#o", mode)
 }
