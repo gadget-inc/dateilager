@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"syscall"
@@ -26,7 +27,10 @@ import (
 )
 
 const (
-	DriverName = "com.gadget.dateilager.cached"
+	DriverName        = "com.gadget.dateilager.cached"
+	CACHE_PATH_SUFFIX = "dl_cache"
+	UPPER_DIR         = "upper"
+	WORK_DIR          = "work"
 )
 
 type Cached struct {
@@ -58,13 +62,24 @@ func (c *Cached) PopulateDiskCache(ctx context.Context, req *pb.PopulateDiskCach
 	return &pb.PopulateDiskCacheResponse{Version: version}, nil
 }
 
+func (c *Cached) GetCachePath() string {
+	return filepath.Join(c.StagingPath, CACHE_PATH_SUFFIX)
+}
+
 // Fetch the cache into the staging dir
 func (c *Cached) Prepare(ctx context.Context) error {
 	start := time.Now()
 
-	version, count, err := c.Client.GetCache(ctx, c.StagingPath)
+	version, count, err := c.Client.GetCache(ctx, c.GetCachePath())
 	if err != nil {
 		return err
+	}
+
+	// Once we've prepared the cache make it read-only for
+	// everyone except the user running the daemon
+	err = os.Chmod(c.GetCachePath(), 0755)
+	if err != nil {
+		return fmt.Errorf("failed to change permissions of cache path %s: %v", c.GetCachePath(), err)
 	}
 
 	c.currentVersion = version
@@ -140,39 +155,92 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	}
 
 	targetPath := req.GetTargetPath()
-	volumeID := req.GetVolumeId()
-	volumeAttributes := req.GetVolumeContext()
+	// The parent of the target path and can store CSI metadata, it's the name given to the volume mount in the pod spec
+	volumePath := path.Join(targetPath, "..")
+	var version int64
 
-	var cachePath string
-	var targetPermissions os.FileMode
-
-	if suffix, exists := volumeAttributes["placeCacheAtPath"]; exists {
-		// running in suffix mode, desired outcome:
-		//  - the mount point is writable by the pod
-		//  - the cache is mounted at the suffix, and is not writable
-		cachePath = path.Join(targetPath, suffix)
-		targetPermissions = 0777
-	} else {
-		// running in unsuffixed mode, desired outcome:
-		//  - the mount point *is* the cache, and is not writable by the pod
-		cachePath = targetPath
-		targetPermissions = 0755
-	}
-
-	if err := os.MkdirAll(targetPath, targetPermissions); err != nil {
-		return nil, fmt.Errorf("failed to create target directory %s: %s", targetPath, err)
-	}
-
-	if err := os.Chmod(targetPath, targetPermissions); err != nil {
-		return nil, fmt.Errorf("failed to change ownership of target directory %s: %s", targetPath, err)
-	}
-
-	version, err := c.writeCache(cachePath)
+	// Perform an overlay mount
+	upperdir := path.Join(volumePath, UPPER_DIR)
+	err := os.MkdirAll(upperdir, 0777)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create overlay upper directory %s: %v", upperdir, err)
 	}
 
-	logger.Info(ctx, "volume published", key.VolumeID.Field(volumeID), key.TargetPath.Field(targetPath), key.Version.Field(version))
+	upperInfo, err := os.Stat(upperdir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat overlay upper directory %s: %v", upperdir, err)
+	}
+	if upperInfo.Mode()&os.ModePerm != 0777 {
+		err = os.Chmod(upperdir, 0777)
+		if err != nil {
+			return nil, fmt.Errorf("failed to change permissions of overlay upper directory %s: %v", upperdir, err)
+		}
+	}
+
+	workdir := path.Join(volumePath, WORK_DIR)
+	err = os.MkdirAll(workdir, 0777)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create overlay work directory %s: %v", workdir, err)
+	}
+
+	workInfo, err := os.Stat(workdir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat overlay work directory %s: %v", workdir, err)
+	}
+	if workInfo.Mode()&os.ModePerm != 0777 {
+		err = os.Chmod(workdir, 0777)
+		if err != nil {
+			return nil, fmt.Errorf("failed to change permissions of overlay work directory %s: %v", workdir, err)
+		}
+	}
+
+	// Create the cache directory, we can make it writable by the pod
+	err = os.MkdirAll(targetPath, 0777)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create target path directory %s: %v", targetPath, err)
+	}
+
+	mountArgs := []string{
+		"-t",
+		"overlay",
+		"overlay",
+		"-n",
+		"--options",
+		fmt.Sprintf("redirect_dir=on,lowerdir=%s,upperdir=%s,workdir=%s", c.StagingPath, upperdir, workdir),
+		targetPath,
+	}
+
+	err = execCommand("mount", mountArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mount overlay: %s", err)
+	}
+
+	cachePath := path.Join(targetPath, CACHE_PATH_SUFFIX)
+	info, err := os.Stat(cachePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat cache path %s, this path should exist in the overlay mount at %s: %v", cachePath, targetPath, err)
+	}
+
+	if info.Mode()&os.ModePerm != 0755 {
+		err = os.Chmod(cachePath, 0755)
+		if err != nil {
+			return nil, fmt.Errorf("failed to change permissions of cache path %s: %v", cachePath, err)
+		}
+	}
+
+	// Create the app dir
+	err = os.MkdirAll(path.Join(targetPath, "app"), 0777)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create app directory %s: %v", path.Join(targetPath, "app"), err)
+	}
+
+	err = os.Chmod(path.Join(targetPath, "app"), 0777)
+	if err != nil {
+		return nil, fmt.Errorf("failed to change permissions of app directory %s: %v", path.Join(targetPath, "app"), err)
+	}
+
+	version = c.currentVersion
+	logger.Info(ctx, "mounted overlay", key.TargetPath.Field(targetPath), key.Version.Field(version))
 
 	return &csi.NodePublishVolumeResponse{}, nil
 }
@@ -187,9 +255,19 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	}
 
 	targetPath := req.GetTargetPath()
+	volumePath := path.Join(targetPath, "..")
 
-	// Clean up directory
-	if err := os.RemoveAll(targetPath); err != nil {
+	// Unmount the overlay
+	err := execCommand("umount", targetPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmount overlay at %s: %v", targetPath, err)
+	}
+
+	// Clean up upper and work directories from the overlay
+	if err := os.RemoveAll(path.Join(volumePath, UPPER_DIR)); err != nil {
+		return nil, fmt.Errorf("failed to remove directory %s: %s", targetPath, err)
+	}
+	if err := os.RemoveAll(path.Join(volumePath, WORK_DIR)); err != nil {
 		return nil, fmt.Errorf("failed to remove directory %s: %s", targetPath, err)
 	}
 
@@ -260,7 +338,7 @@ func (c *Cached) writeCache(destination string) (int64, error) {
 		}
 	}
 
-	err = files.HardlinkDir(c.StagingPath, destination)
+	err = files.HardlinkDir(c.GetCachePath(), destination)
 	if err != nil {
 		return -1, fmt.Errorf("failed to hardlink cache to destination %s: %v", destination, err)
 	}
@@ -286,4 +364,14 @@ func getFolderSize(path string) (int64, error) {
 		return nil
 	})
 	return totalSize, err
+}
+
+func execCommand(cmdName string, args ...string) error {
+	if os.Getenv("RUN_WITH_SUDO") == "true" {
+		cmd := exec.Command("sudo", append([]string{cmdName}, args...)...)
+		return cmd.Run()
+	}
+
+	cmd := exec.Command(cmdName, args...)
+	return cmd.Run()
 }

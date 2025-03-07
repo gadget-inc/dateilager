@@ -1,0 +1,31 @@
+name: Test Integration
+
+on:
+  push:
+  workflow_call:
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup development environment
+        uses: ./.github/actions/setup-env
+
+      - name: Start background services
+        run: dev &
+      
+      - name: Install js modules for HardLink tests
+        run: make install-js
+
+      - name: Build Go binaries
+        run: make build
+
+      - name: Run Go tests
+        run: make test-integration
