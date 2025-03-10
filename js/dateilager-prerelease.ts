@@ -51,40 +51,12 @@ function updatePackageVersion(version: string): void {
     // Write the updated package.json back to file
     fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + "\n", "utf8");
 
+    execSync(`cd js && npm install`, { stdio: "inherit" });
+
     console.log(`Package version updated from "${originalVersion}" to "${version}"`);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       console.error(`Error: ${packagePath} not found`);
-    } else {
-      console.error("Error updating package.json:", (error as Error).message);
-    }
-    process.exit(1);
-  }
-}
-
-function updatePackageLockVersion(version: string): void {
-  try {
-    // Read the package.json file
-    const packageData: string = fs.readFileSync(packageLockPath, "utf8");
-    const packageJson: PackageJson = JSON.parse(packageData) as PackageJson;
-
-    // Store the original version for logging
-    const originalVersion: string = packageJson.version;
-  
-
-    // Update the version with the git SHA
-    packageJson.version = version;
-
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    packageJson["packages"][""]["version"] = version;
-
-    // Write the updated package.json back to file
-    fs.writeFileSync(packageLockPath, JSON.stringify(packageJson, null, 2) + "\n", "utf8");
-
-    console.log(`Package version updated from "${originalVersion}" to "${version}"`);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      console.error(`Error: ${packageLockPath} not found`);
     } else {
       console.error("Error updating package.json:", (error as Error).message);
     }
@@ -147,7 +119,6 @@ function doPreRelease(): void {
 
   // Update the package version and publish to github
   updatePackageVersion(version);
-  updatePackageLockVersion(version);
   updateDefaultNixVersion(version);
   gitAdd(version);
   tagGit(version); // To kick off the prerelease build
