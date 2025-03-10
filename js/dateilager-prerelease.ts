@@ -15,7 +15,6 @@ interface PackageJson {
 
 // Path to package.json (defaults to current directory)
 const packagePath: string = path.resolve(process.cwd(), "package.json");
-const packageLockPath: string = path.resolve(process.cwd(), "package-lock.json");
 const defaultNixPath: string = path.resolve(process.cwd(), "../default.nix");
 // Get the current git commit SHA
 function getGitCommitSha(): string {
@@ -51,7 +50,7 @@ function updatePackageVersion(version: string): void {
     // Write the updated package.json back to file
     fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + "\n", "utf8");
 
-    execSync(`cd js && npm install`, { stdio: "inherit" });
+    execSync(`npm install`, { stdio: "inherit" });
 
     console.log(`Package version updated from "${originalVersion}" to "${version}"`);
   } catch (error) {
