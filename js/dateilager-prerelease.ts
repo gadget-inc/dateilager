@@ -15,7 +15,8 @@ interface PackageJson {
 
 // Path to package.json (defaults to current directory)
 const packagePath: string = path.resolve(process.cwd(), "package.json");
-
+const packageLockPath: string = path.resolve(process.cwd(), "package-lock.json");
+const defaultNixPath: string = path.resolve(process.cwd(), "../default.nix");
 // Get the current git commit SHA
 function getGitCommitSha(): string {
   try {
@@ -31,7 +32,7 @@ function getGitCommitSha(): string {
 
 function preReleaseVersion(baseVersion: string): string {
   const sha = getGitCommitSha();
-  return `v${baseVersion}-pre.${sha}`;
+  return `${baseVersion}-pre.${sha}`;
 }
 
 // Read and update package.json
@@ -61,10 +62,63 @@ function updatePackageVersion(version: string): void {
   }
 }
 
+function updatePackageLockVersion(version: string): void {
+  try {
+    // Read the package.json file
+    const packageData: string = fs.readFileSync(packageLockPath, "utf8");
+    const packageJson: PackageJson = JSON.parse(packageData) as PackageJson;
+
+    // Store the original version for logging
+    const originalVersion: string = packageJson.version;
+  
+
+    // Update the version with the git SHA
+    packageJson.version = version;
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    packageJson["packages"][""]["version"] = version;
+
+    // Write the updated package.json back to file
+    fs.writeFileSync(packageLockPath, JSON.stringify(packageJson, null, 2) + "\n", "utf8");
+
+    console.log(`Package version updated from "${originalVersion}" to "${version}"`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      console.error(`Error: ${packageLockPath} not found`);
+    } else {
+      console.error("Error updating package.json:", (error as Error).message);
+    }
+    process.exit(1);
+  }
+}
+
+function updateDefaultNixVersion(version: string): void {
+  try {
+    // Read the package.json file
+    const defaultNix: string = fs.readFileSync(defaultNixPath, "utf8");
+    fs.writeFileSync(defaultNixPath, defaultNix.replace(/version = "[0-9.]+(-pre.*)?";/, `version = "${version}";`), "utf8");
+
+    console.log(`Default nix version updated from to "${version}"`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      console.error(`Error: ${defaultNixPath} not found`);
+    } else {
+      console.error("Error updating package.json:", (error as Error).message);
+    }
+    process.exit(1);
+  }
+}
+
+function gitAdd(version: string): void {
+  execSync(`git add package.json package-lock.json ../default.nix`, { stdio: "inherit" });
+  execSync(`git commit -m "Update version to ${version}"`, { stdio: "inherit" });
+  execSync(`git push origin HEAD`, { stdio: "inherit" });
+}
+
 function tagGit(version: string): void {
   try {
-    execSync(`git tag -f ${version} $(git rev-parse HEAD)`, { stdio: "inherit" });
-    execSync(`git push origin ${version}`, { stdio: "inherit" });
+    execSync(`git tag -f v${version} $(git rev-parse HEAD)`, { stdio: "inherit" });
+    execSync(`git push origin v${version}`, { stdio: "inherit" });
   } catch (error) {
     console.error("Error tagging git:", (error as Error).message);
     process.exit(1);
@@ -91,10 +145,12 @@ function doPreRelease(): void {
   const version = preReleaseVersion(args.t);
   console.log(`Setting prerelease version to: ${version}`);
 
-  tagGit(version); // To kick off the prerelease build
-
   // Update the package version and publish to github
   updatePackageVersion(version);
+  updatePackageLockVersion(version);
+  updateDefaultNixVersion(version);
+  gitAdd(version);
+  tagGit(version); // To kick off the prerelease build
   publishPreReleaseToGithub();
 
   console.log(`Prerelease version ${version} published`);

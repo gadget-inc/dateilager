@@ -105,7 +105,6 @@ ifndef tag
 else
 	cd js && npx ts-node dateilager-prerelease.ts -t "$(tag)"
 endif
-prerelease: upload-prerelease-container-image version_tag=$(tag)
 
 test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test: migrate
