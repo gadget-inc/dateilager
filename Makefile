@@ -27,7 +27,7 @@ BENCH_PROFILE ?= ""
 KUBE_CONTEXT ?= orbstack
 
 
-.PHONY: migrate migrate-create clean build lint release prerelease
+.PHONY: migrate migrate-create clean build lint release prerelease prerelease-reset
 .PHONY: test test-one test-fuzz test-js test-integration lint-js install-js build-js
 .PHONY: reset-db setup-local build-cache-version server server-profile cached
 .PHONY: client-update client-large-update client-get client-rebuild client-rebuild-with-cache
@@ -104,6 +104,14 @@ ifndef tag
 	$(error tag variable must be set)
 else
 	cd js && npx ts-node dateilager-prerelease.ts -t "$(tag)"
+endif
+
+prerelease-reset:
+	echo "Resetting js/package.json and default.nix to main, if you have installed packages you want to keep then run with a specific sha"
+ifndef sha
+	git checkout main -- js/package.json js/package-lock.json default.nix
+else
+	git checkout $(sha) -- js/package.json js/package-lock.json default.nix
 endif
 
 test: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
