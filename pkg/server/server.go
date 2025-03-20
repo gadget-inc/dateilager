@@ -140,7 +140,6 @@ func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certifica
 		grpc.UnaryInterceptor(
 			grpc_middleware.ChainUnaryServer(
 				grpc_recovery.UnaryServerInterceptor(),
-				otelgrpc.UnaryServerInterceptor(),
 				logger.UnaryServerInterceptor(),
 				ValidateTokenUnary(validator),
 			),
@@ -148,11 +147,11 @@ func NewServer(ctx context.Context, dbConn *DbPoolConnector, cert *tls.Certifica
 		grpc.StreamInterceptor(
 			grpc_middleware.ChainStreamServer(
 				grpc_recovery.StreamServerInterceptor(),
-				otelgrpc.StreamServerInterceptor(),
 				logger.StreamServerInterceptor(),
 				validateTokenStream(validator),
 			),
 		),
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ReadBufferSize(BUFFER_SIZE),
 		grpc.WriteBufferSize(BUFFER_SIZE),
 		grpc.InitialConnWindowSize(INITIAL_CONN_WINDOW_SIZE),
