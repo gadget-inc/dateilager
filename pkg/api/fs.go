@@ -518,9 +518,6 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	}
 	defer close(ctx)
 
-	contentEncoder := db.NewContentEncoder()
-	defer contentEncoder.Close()
-
 	var packManager *db.PackManager
 
 	var objectBuffer []*pb.Object
@@ -578,6 +575,9 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return stream.SendAndClose(&pb.UpdateResponse{Version: -1})
 	}
 
+	contentEncoder := db.NewContentEncoder()
+	defer contentEncoder.Close()
+
 	latestVersion := int64(-1)
 	nextVersion := int64(-1)
 	shouldUpdateVersion := false
@@ -594,27 +594,42 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		nextVersion = latestVersion + 1
 		logger.Info(ctx, "FS.Update[Init]", key.Project.Field(project), key.Version.Field(nextVersion))
 
+		var deletedPaths []string
+		var objectsToUpdate []*pb.Object
 		for _, object := range objectBuffer {
-			logger.Debug(ctx, "FS.Update[Object]",
-				key.Project.Field(project),
-				key.Version.Field(nextVersion),
-				key.ObjectPath.Field(object.Path),
-			)
-
 			if object.Deleted {
-				err = db.DeleteObject(ctx, tx, project, nextVersion, object.Path)
-				shouldUpdateVersion = true
+				logger.Debug(ctx, "FS.Delete[Object]",
+					key.Project.Field(project),
+					key.Version.Field(nextVersion),
+					key.ObjectPath.Field(object.Path),
+				)
+				deletedPaths = append(deletedPaths, object.Path)
 			} else {
-				var contentChanged bool
-				contentChanged, err = db.UpdateObject(ctx, tx, f.DbConn, contentEncoder, project, nextVersion, object)
-
-				if contentChanged {
-					shouldUpdateVersion = true
-				}
+				logger.Debug(ctx, "FS.Update[Object]",
+					key.Project.Field(project),
+					key.Version.Field(nextVersion),
+					key.ObjectPath.Field(object.Path),
+				)
+				objectsToUpdate = append(objectsToUpdate, object)
 			}
+		}
 
+		if len(deletedPaths) > 0 {
+			err = db.DeleteObjects(ctx, tx, project, nextVersion, deletedPaths)
 			if err != nil {
 				return status.Errorf(codes.Internal, "FS update: %v", err)
+			}
+			shouldUpdateVersion = true
+		}
+
+		if len(objectsToUpdate) > 0 {
+			contentChanged, err := db.UpdateObjects(ctx, tx, f.DbConn, contentEncoder, project, nextVersion, objectsToUpdate)
+			if err != nil {
+				return status.Errorf(codes.Internal, "FS update: %v", err)
+			}
+
+			if contentChanged {
+				shouldUpdateVersion = true
 			}
 		}
 
@@ -632,15 +647,15 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 				key.ObjectsParent.Field(parent),
 				key.ObjectsCount.Field(len(objects)),
 			)
+		}
 
-			contentChanged, err := db.UpdatePackedObjects(ctx, tx, f.DbConn, project, nextVersion, parent, objects)
-			if err != nil {
-				return status.Errorf(codes.Internal, "FS update packed objects for %v: %v", parent, err)
-			}
+		contentChanged, err := db.UpdatePackedObjects(ctx, tx, f.DbConn, project, nextVersion, packedBuffer)
+		if err != nil {
+			return status.Errorf(codes.Internal, "FS update packed objects in bulk: %v", err)
+		}
 
-			if contentChanged {
-				shouldUpdateVersion = true
-			}
+		if contentChanged {
+			shouldUpdateVersion = true
 		}
 
 		return nil
