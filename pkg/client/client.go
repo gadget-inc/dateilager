@@ -147,8 +147,7 @@ func grpcClientConn(ctx context.Context, host string, port uint16, opts ...func(
 			Timeout:             1 * time.Second,
 			PermitWithoutStream: true,
 		}),
-		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		grpc.WithDefaultServiceConfig(`
 			{
 				"loadBalancingConfig": [{ "round_robin": {} }],
@@ -740,7 +739,7 @@ func (c *Client) Reset(ctx context.Context, state string) error {
 }
 
 func obtainCacheLockFile(cacheRootDir string) (*os.File, error) {
-	lockFile, err := os.OpenFile(filepath.Join(cacheRootDir, ".lock"), os.O_CREATE|os.O_EXCL, 0600)
+	lockFile, err := os.OpenFile(filepath.Join(cacheRootDir, ".lock"), os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("unable to obtain cache lock file; another process may be using it: %w", err)
 	}
@@ -755,7 +754,7 @@ func cleanupCacheLockFile(lockFile *os.File) {
 
 func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, uint32, error) {
 	objectDir := CacheObjectsDir(cacheRootDir)
-	err := os.MkdirAll(objectDir, 0755)
+	err := os.MkdirAll(objectDir, 0o755)
 	if err != nil {
 		return -1, 0, fmt.Errorf("cannot create object folder: %w", err)
 	}
@@ -763,7 +762,7 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, uint
 	tmpObjectDir := CacheTmpDir(cacheRootDir)
 	os.RemoveAll(tmpObjectDir)
 
-	err = os.MkdirAll(tmpObjectDir, 0755)
+	err = os.MkdirAll(tmpObjectDir, 0o755)
 	if err != nil {
 		return -1, 0, fmt.Errorf("cannot create tmp folder to unpack cached objects: %w", err)
 	}
@@ -893,7 +892,7 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, uint
 		return -1, writtenObjectCount.Load(), err
 	}
 
-	versionFile, err := os.OpenFile(cacheVersionPath(cacheRootDir), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	versionFile, err := os.OpenFile(cacheVersionPath(cacheRootDir), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		return -1, writtenObjectCount.Load(), fmt.Errorf("fs.GetCache cannot open cache versions file for writing: %w", err)
 	}

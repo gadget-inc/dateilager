@@ -25,10 +25,10 @@ type CachedServer struct {
 
 func NewServer(ctx context.Context) *CachedServer {
 	grpcServer := grpc.NewServer(
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.UnaryInterceptor(
 			grpc_middleware.ChainUnaryServer(
 				grpc_recovery.UnaryServerInterceptor(),
-				otelgrpc.UnaryServerInterceptor(),
 				logger.UnaryServerInterceptor(),
 			),
 		),
