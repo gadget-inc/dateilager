@@ -335,8 +335,10 @@ func TestCachedCSIDriverAppUserSet(t *testing.T) {
 
 	appUser, err := os.Stat(appDir)
 	require.NoError(t, err)
-	require.Equal(t, 1000, appUser.Sys().(syscall.Stat_t).Uid)
-	require.Equal(t, 1000, appUser.Sys().(syscall.Stat_t).Gid)
+
+	sysstat := appUser.Sys().(*syscall.Stat_t)
+	require.Equal(t, 1000, int(sysstat.Uid))
+	require.Equal(t, 1000, int(sysstat.Gid))
 }
 
 func formatFileMode(mode os.FileMode) string {

@@ -250,27 +250,20 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, fmt.Errorf("failed to create app directory %s: %v", path.Join(targetPath, "app"), err)
 	}
 
-	err = os.Chown(path.Join(targetPath, "app"), appUser, appGroup)
-	if err != nil {
-		stat, newErr := os.Stat(targetPath)
-		if newErr != nil {
-			return nil, fmt.Errorf("failed to stat target path %s: %v", targetPath, newErr)
-		}
-		sysstat := stat.Sys().(*syscall.Stat_t)
-		fmt.Printf("target path owner uid=%d gid=%d\n", sysstat.Uid, sysstat.Gid)
-
-		stat, newErr = os.Stat(path.Join(targetPath, "app"))
-		if newErr != nil {
-			return nil, fmt.Errorf("failed to stat app directory %s: %v", path.Join(targetPath, "app"), newErr)
-		}
-		sysstat = stat.Sys().(*syscall.Stat_t)
-		fmt.Printf("app path owner uid=%d gid=%d\n", sysstat.Uid, sysstat.Gid)
-		return nil, fmt.Errorf("failed to chown app directory %s: %v", path.Join(targetPath, "app"), err)
-	}
-
 	err = os.Chmod(path.Join(targetPath, "app"), 0777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to change permissions of app directory %s: %v", path.Join(targetPath, "app"), err)
+	}
+
+	// For testing where we're not running as root, we need to chown the app dir via the command line :(
+	if appUser != NO_CHANGE_USER && os.Getenv("RUN_WITH_SUDO") == "true" {
+		err = execCommand("chown", "-R", fmt.Sprintf("%d:%d", appUser, appGroup), path.Join(targetPath, "app"))
+	} else {
+		err = os.Chown(path.Join(targetPath, "app"), appUser, appGroup)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to chown app directory %s: %v", path.Join(targetPath, "app"), err)
 	}
 
 	version = c.currentVersion
