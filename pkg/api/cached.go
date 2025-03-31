@@ -256,10 +256,12 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	}
 
 	// For testing where we're not running as root, we need to chown the app dir via the command line :(
-	if appUser != NO_CHANGE_USER && os.Getenv("RUN_WITH_SUDO") == "true" {
-		err = execCommand("chown", "-R", fmt.Sprintf("%d:%d", appUser, appGroup), path.Join(targetPath, "app"))
-	} else {
-		err = os.Chown(path.Join(targetPath, "app"), appUser, appGroup)
+	if appUser != NO_CHANGE_USER {
+		if os.Getenv("RUN_WITH_SUDO") == "true" {
+			err = execCommand("chown", "-R", fmt.Sprintf("%d:%d", appUser, appGroup), path.Join(targetPath, "app"))
+		} else {
+			err = os.Chown(path.Join(targetPath, "app"), appUser, appGroup)
+		}
 	}
 
 	if err != nil {
