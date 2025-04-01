@@ -38,7 +38,7 @@ func TestCachedCSIDriver(t *testing.T) {
 	cached, endpoint, close := createTestCachedServer(tc, tmpDir)
 	defer close()
 
-	err = cached.Prepare(tc.Context())
+	err = cached.Prepare(tc.Context(), -1)
 	require.NoError(t, err, "cached.Prepare must succeed")
 
 	sanityPath := path.Join(tmpDir, "csi")
@@ -70,7 +70,7 @@ func TestCachedCSIDriverMountsCache(t *testing.T) {
 	cached, _, close := createTestCachedServer(tc, tmpDir)
 	defer close()
 
-	require.NoError(t, cached.Prepare(tc.Context()), "cached.Prepare must succeed")
+	require.NoError(t, cached.Prepare(tc.Context(), -1), "cached.Prepare must succeed")
 
 	targetDir := path.Join(tmpDir, "vol-target")
 
@@ -137,7 +137,7 @@ func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
 	cached, _, close := createTestCachedServer(tc, tmpDir)
 	defer close()
 
-	err = cached.Prepare(tc.Context())
+	err = cached.Prepare(tc.Context(), -1)
 	require.NoError(t, err, "cached.Prepare must succeed")
 
 	targetDir := path.Join(tmpDir, "vol-target")
@@ -219,7 +219,7 @@ func TestCachedCSIDriverProbeFailsUntilPrepared(t *testing.T) {
 	// not ready because we haven't Prepare-d yet
 	assert.Equal(t, false, response.Ready.Value)
 
-	err = cached.Prepare(tc.Context())
+	err = cached.Prepare(tc.Context(), -1)
 	require.NoError(t, err, "cached.Prepare must succeed")
 
 	response, err = cached.Probe(tc.Context(), &csi.ProbeRequest{})
@@ -246,7 +246,7 @@ func TestCachedCSIDriverMountCanDoAFullRebuild(t *testing.T) {
 	cached, _, close := createTestCachedServer(tc, tmpDir)
 	defer close()
 
-	err := cached.Prepare(tc.Context())
+	err := cached.Prepare(tc.Context(), -1)
 	require.NoError(t, err, "cached.Prepare must succeed")
 
 	targetDir := path.Join(tmpDir, "vol-target")
@@ -283,7 +283,6 @@ func TestCachedCSIDriverMountCanDoAFullRebuild(t *testing.T) {
 		"b/d": {content: "b/d v3"},
 		"b/e": {content: "b/e v4"},
 	})
-
 }
 
 func TestCachedCSIDriverAppUserSet(t *testing.T) {
@@ -303,7 +302,7 @@ func TestCachedCSIDriverAppUserSet(t *testing.T) {
 	cached, _, close := createTestCachedServer(tc, tmpDir)
 	defer close()
 
-	err := cached.Prepare(tc.Context())
+	err := cached.Prepare(tc.Context(), -1)
 	require.NoError(t, err, "cached.Prepare must succeed")
 
 	targetDir := path.Join(tmpDir, "vol-target")

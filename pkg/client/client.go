@@ -752,7 +752,7 @@ func cleanupCacheLockFile(lockFile *os.File) {
 	os.Remove(lockFile.Name())
 }
 
-func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, uint32, error) {
+func (c *Client) GetCache(ctx context.Context, cacheRootDir string, cacheVersion int64) (int64, uint32, error) {
 	objectDir := CacheObjectsDir(cacheRootDir)
 	err := os.MkdirAll(objectDir, 0o755)
 	if err != nil {
@@ -778,6 +778,9 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, uint
 	defer span.End()
 
 	request := &pb.GetCacheRequest{}
+	if cacheVersion != -1 {
+		request.Version = &cacheVersion
+	}
 
 	stream, err := c.fs.GetCache(ctx, request)
 	if err != nil {
@@ -793,9 +796,13 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, uint
 	if err != nil {
 		return -1, 0, fmt.Errorf("fs.GetCache receive: %w", err)
 	}
-	version := response.Version
+	if cacheVersion == -1 {
+		cacheVersion = response.Version
+	} else if cacheVersion != response.Version {
+		return -1, 0, fmt.Errorf("fs.GetCache version mismatch: %d, %d", cacheVersion, response.Version)
+	}
 
-	// We cannot early exist here, even if `version` is already available locally
+	// We cannot early exist here, even if `cacheVersion` is already available locally
 	// since we've opened the GRPC stream we need to go ahead and read the whole thing
 	// this should be split into 2 requests, one to get the latest version and another to download it.
 
@@ -817,9 +824,9 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, uint
 				if err == io.EOF {
 					return nil
 				}
-				if response.Version != version {
+				if response.Version != cacheVersion {
 					cancel()
-					return fmt.Errorf("fs.GetCache version mismatch: %d, %d", response.Version, version)
+					return fmt.Errorf("fs.GetCache version mismatch: %d, %d", response.Version, cacheVersion)
 				}
 				if err != nil {
 					cancel()
@@ -898,12 +905,12 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string) (int64, uint
 	}
 	defer versionFile.Close()
 
-	_, err = versionFile.WriteString(fmt.Sprintf("%d\n", version))
+	_, err = versionFile.WriteString(fmt.Sprintf("%d\n", cacheVersion))
 	if err != nil {
 		return -1, writtenObjectCount.Load(), fmt.Errorf("fs.GetCache failed to update the versions file: %w", err)
 	}
 
-	return version, writtenObjectCount.Load(), nil
+	return cacheVersion, writtenObjectCount.Load(), nil
 }
 
 func (c *Client) GcProject(ctx context.Context, project int64, keep int64, from *int64) (int64, error) {

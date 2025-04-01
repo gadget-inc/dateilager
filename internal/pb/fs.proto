@@ -205,7 +205,9 @@ message CloneToProjectResponse {
     int64 latest_version = 1;
 }
 
-message GetCacheRequest {};
+message GetCacheRequest {
+    optional int64 version = 1;
+};
 
 message GetCacheResponse {
     enum Format {

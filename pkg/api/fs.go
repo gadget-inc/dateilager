@@ -18,9 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var (
-	ErrMultipleProjectsPerUpdate = errors.New("multiple objects in one update")
-)
+var ErrMultipleProjectsPerUpdate = errors.New("multiple objects in one update")
 
 func requireAdminAuth(ctx context.Context) error {
 	ctxAuth := ctx.Value(auth.AuthCtxKey).(auth.Auth)
@@ -963,8 +961,13 @@ func (f *Fs) GcContents(ctx context.Context, req *pb.GcContentsRequest) (*pb.GcC
 }
 
 func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) error {
+	cacheVersion := int64(-1)
+	if req.Version != nil {
+		cacheVersion = *req.Version
+	}
+
 	ctx := stream.Context()
-	trace.SpanFromContext(ctx)
+	trace.SpanFromContext(ctx).SetAttributes(key.CacheVersion.Attribute(cacheVersion))
 
 	err := requireSharedReaderAuth(ctx)
 	if err != nil {
@@ -977,9 +980,9 @@ func (f *Fs) GetCache(req *pb.GetCacheRequest, stream pb.Fs_GetCacheServer) erro
 	}
 	defer close(ctx)
 
-	logger.Debug(ctx, "FS.GetCache[Init]")
+	logger.Debug(ctx, "FS.GetCache[Init]", key.CacheVersion.Field(cacheVersion))
 
-	tars, closeFunc, err := db.GetCacheTars(ctx, tx)
+	tars, closeFunc, err := db.GetCacheTars(ctx, tx, cacheVersion)
 	defer closeFunc(ctx)
 	if err != nil {
 		return status.Errorf(codes.Internal, "FS get cached tars: %v", err)

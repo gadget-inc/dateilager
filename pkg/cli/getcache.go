@@ -9,7 +9,8 @@ import (
 
 func NewCmdGetCache() *cobra.Command {
 	var (
-		path string
+		path    string
+		version int64
 	)
 
 	cmd := &cobra.Command{
@@ -18,7 +19,7 @@ func NewCmdGetCache() *cobra.Command {
 			ctx := cmd.Context()
 			c := client.FromContext(ctx)
 
-			version, _, err := c.GetCache(ctx, path)
+			version, _, err := c.GetCache(ctx, path, version)
 			if err != nil {
 				return err
 			}
@@ -30,7 +31,7 @@ func NewCmdGetCache() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&path, "path", "", "Cache directory")
-
+	cmd.Flags().Int64Var(&version, "version", -1, "Cache version")
 	_ = cmd.MarkFlagRequired("path")
 
 	return cmd

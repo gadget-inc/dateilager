@@ -30,7 +30,7 @@ func TestPopulateCache(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	require.NoError(t, cached.Prepare(tc.Context()), "cached.Prepare must succeed")
+	require.NoError(t, cached.Prepare(tc.Context(), -1), "cached.Prepare must succeed")
 
 	_, err = c.PopulateDiskCache(tc.Context(), path.Join(tmpDir, "test"))
 	require.NoError(t, err, "Cached.PopulateDiskCache")
@@ -61,7 +61,7 @@ func TestPopulateEmptyCache(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	require.NoError(t, cached.Prepare(tc.Context()), "cached.Prepare must succeed")
+	require.NoError(t, cached.Prepare(tc.Context(), -1), "cached.Prepare must succeed")
 
 	_, err = c.PopulateDiskCache(tc.Context(), path.Join(tmpDir, "test"))
 	require.NoError(t, err, "PopulateDiskCache must succeed")
@@ -88,10 +88,10 @@ func TestPopulateCacheToPathWithNoWritePermissions(t *testing.T) {
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	require.NoError(t, cached.Prepare(tc.Context()), "cached.Prepare must succeed")
+	require.NoError(t, cached.Prepare(tc.Context(), -1), "cached.Prepare must succeed")
 
 	// Create a directory with no write permissions
-	err = os.Mkdir(path.Join(tmpDir, "test"), 0000)
+	err = os.Mkdir(path.Join(tmpDir, "test"), 0o000)
 	require.NoError(t, err)
 
 	_, err = c.PopulateDiskCache(tc.Context(), path.Join(tmpDir, "test"))
