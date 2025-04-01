@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -31,6 +32,7 @@ const (
 	CACHE_PATH_SUFFIX = "dl_cache"
 	UPPER_DIR         = "upper"
 	WORK_DIR          = "work"
+	NO_CHANGE_USER    = -1
 )
 
 type Cached struct {
@@ -154,6 +156,19 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
 	}
 
+	volumeAttributes := req.GetVolumeContext()
+	var appUser int
+	var appGroup int
+	var err error
+	if appUser, err = strconv.Atoi(volumeAttributes["appUser"]); err != nil {
+		appUser = NO_CHANGE_USER
+	}
+
+	// If only appUser is provided, use the same value for appGroup
+	if appGroup, err = strconv.Atoi(volumeAttributes["appGroup"]); err != nil {
+		appGroup = appUser
+	}
+
 	targetPath := req.GetTargetPath()
 	// The parent of the target path and can store CSI metadata, it's the name given to the volume mount in the pod spec
 	volumePath := path.Join(targetPath, "..")
@@ -161,7 +176,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	// Perform an overlay mount
 	upperdir := path.Join(volumePath, UPPER_DIR)
-	err := os.MkdirAll(upperdir, 0777)
+	err = os.MkdirAll(upperdir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create overlay upper directory %s: %v", upperdir, err)
 	}
@@ -170,6 +185,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat overlay upper directory %s: %v", upperdir, err)
 	}
+
 	if upperInfo.Mode()&os.ModePerm != 0777 {
 		err = os.Chmod(upperdir, 0777)
 		if err != nil {
@@ -237,6 +253,19 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	err = os.Chmod(path.Join(targetPath, "app"), 0777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to change permissions of app directory %s: %v", path.Join(targetPath, "app"), err)
+	}
+
+	// For testing where we're not running as root, we need to chown the app dir via the command line :(
+	if appUser != NO_CHANGE_USER {
+		if os.Getenv("RUN_WITH_SUDO") == "true" {
+			err = execCommand("chown", "-R", fmt.Sprintf("%d:%d", appUser, appGroup), path.Join(targetPath, "app"))
+		} else {
+			err = os.Chown(path.Join(targetPath, "app"), appUser, appGroup)
+		}
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to chown app directory %s: %v", path.Join(targetPath, "app"), err)
 	}
 
 	version = c.currentVersion
