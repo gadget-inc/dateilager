@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"syscall"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -284,6 +285,62 @@ func TestCachedCSIDriverMountCanDoAFullRebuild(t *testing.T) {
 	})
 
 }
+
+func TestCachedCSIDriverAppUserSet(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 4)
+	writeObject(tc, 1, 1, nil, "a", "a v1")
+	writeObject(tc, 1, 2, i(3), "b", "b v2")
+	writeObject(tc, 1, 3, i(4), "b/c", "b/c v3")
+	writeObject(tc, 1, 3, nil, "b/d", "b/d v3")
+	writeObject(tc, 1, 4, nil, "b/e", "b/e v4")
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	cached, _, close := createTestCachedServer(tc, tmpDir)
+	defer close()
+
+	err := cached.Prepare(tc.Context())
+	require.NoError(t, err, "cached.Prepare must succeed")
+
+	targetDir := path.Join(tmpDir, "vol-target")
+
+	stagingDir := path.Join(tmpDir, "vol-staging-target")
+	_, err = cached.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
+		VolumeId:          "foobar",
+		StagingTargetPath: stagingDir,
+		TargetPath:        targetDir,
+		VolumeCapability:  &csi.VolumeCapability{},
+		VolumeContext: map[string]string{
+			"appUser":  "1000",
+			"appGroup": "1000",
+		},
+	})
+	require.NoError(t, err)
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	appDir := path.Join(targetDir, "app")
+	dlCacheDir := path.Join(targetDir, "dl_cache")
+
+	// Do the initial build
+	rebuild(tc, c, 1, i(1), appDir, &dlCacheDir, expectedResponse{
+		version: 1,
+		count:   1,
+	}, nil)
+
+	appUser, err := os.Stat(appDir)
+	require.NoError(t, err)
+
+	sysstat := appUser.Sys().(*syscall.Stat_t)
+	require.Equal(t, 1000, int(sysstat.Uid))
+	require.Equal(t, 1000, int(sysstat.Gid))
+}
+
 func formatFileMode(mode os.FileMode) string {
 	return fmt.Sprintf("%#o", mode)
 }
