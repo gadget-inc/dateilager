@@ -45,6 +45,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 		headlessHost string
 		stagingPath  string
 		csiSocket    string
+		cacheVersion int64
 	)
 
 	cmd := &cobra.Command{
@@ -119,7 +120,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 				BaseContext: func(l net.Listener) context.Context { return ctx },
 			}
 
-			err = cached.Prepare(ctx)
+			err = cached.Prepare(ctx, cacheVersion)
 			if err != nil {
 				return fmt.Errorf("failed to prepare cache daemon in %s: %w", stagingPath, err)
 			}
@@ -178,6 +179,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 
 	flags.StringVar(&csiSocket, "csi-socket", "", "path for running the Kubernetes CSI Driver interface")
 	flags.StringVar(&stagingPath, "staging-path", "", "path for staging downloaded caches")
+	flags.Int64Var(&cacheVersion, "cache-version", -1, "cache version to use")
 
 	_ = cmd.MarkPersistentFlagRequired("csi-socket")
 	_ = cmd.MarkPersistentFlagRequired("staging-path")

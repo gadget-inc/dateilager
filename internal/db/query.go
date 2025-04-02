@@ -23,8 +23,10 @@ var (
 	ErrNotFound = errors.New("resource not found")
 )
 
-type EncodedContent = []byte
-type DecodedContent = []byte
+type (
+	EncodedContent = []byte
+	DecodedContent = []byte
+)
 
 type DbObject struct {
 	hash    Hash
@@ -319,20 +321,20 @@ func GetTars(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, project int6
 
 type cacheTarStream func() (int64, []byte, *Hash, error)
 
-func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, CloseFunc, error) {
-	var version int64
-
-	err := tx.QueryRow(ctx, `
-		SELECT version
-		FROM dl.cache_versions
-		ORDER BY version DESC
-		LIMIT 1
-	`).Scan(&version)
-	if err == pgx.ErrNoRows {
-		return func() (int64, []byte, *Hash, error) { return 0, nil, nil, io.EOF }, func(_ context.Context) {}, nil
-	}
-	if err != nil {
-		return nil, func(_ context.Context) {}, fmt.Errorf("GetCacheTars latest cache version: %w", err)
+func GetCacheTars(ctx context.Context, tx pgx.Tx, cacheVersion int64) (cacheTarStream, CloseFunc, error) {
+	if cacheVersion == -1 {
+		err := tx.QueryRow(ctx, `
+			SELECT version
+			FROM dl.cache_versions
+			ORDER BY version DESC
+			LIMIT 1
+		`).Scan(&cacheVersion)
+		if err == pgx.ErrNoRows {
+			return func() (int64, []byte, *Hash, error) { return 0, nil, nil, io.EOF }, func(_ context.Context) {}, nil
+		}
+		if err != nil {
+			return nil, func(_ context.Context) {}, fmt.Errorf("GetCacheTars latest cache version: %w", err)
+		}
 	}
 
 	rows, err := tx.Query(ctx, `
@@ -345,7 +347,7 @@ func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, CloseFunc, er
 		FROM version_hashes h
 		JOIN dl.contents c
 		  ON h.hash = c.hash
-	`, version)
+	`, cacheVersion)
 	closeFunc := func(_ context.Context) { rows.Close() }
 	if err != nil {
 		return nil, closeFunc, fmt.Errorf("GetCacheTars query: %w", err)
@@ -368,7 +370,7 @@ func GetCacheTars(ctx context.Context, tx pgx.Tx) (cacheTarStream, CloseFunc, er
 			return 0, nil, nil, fmt.Errorf("GetCacheTars scan: %w", err)
 		}
 
-		return version, encoded, &hash, nil
+		return cacheVersion, encoded, &hash, nil
 	}, closeFunc, nil
 }
 

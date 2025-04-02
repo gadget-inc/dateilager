@@ -69,17 +69,17 @@ func (c *Cached) GetCachePath() string {
 }
 
 // Fetch the cache into the staging dir
-func (c *Cached) Prepare(ctx context.Context) error {
+func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 	start := time.Now()
 
-	version, count, err := c.Client.GetCache(ctx, c.GetCachePath())
+	version, count, err := c.Client.GetCache(ctx, c.GetCachePath(), cacheVersion)
 	if err != nil {
 		return err
 	}
 
 	// Once we've prepared the cache make it read-only for
 	// everyone except the user running the daemon
-	err = os.Chmod(c.GetCachePath(), 0755)
+	err = os.Chmod(c.GetCachePath(), 0o755)
 	if err != nil {
 		return fmt.Errorf("failed to change permissions of cache path %s: %v", c.GetCachePath(), err)
 	}
@@ -176,7 +176,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	// Perform an overlay mount
 	upperdir := path.Join(volumePath, UPPER_DIR)
-	err = os.MkdirAll(upperdir, 0777)
+	err = os.MkdirAll(upperdir, 0o777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create overlay upper directory %s: %v", upperdir, err)
 	}
@@ -186,15 +186,15 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, fmt.Errorf("failed to stat overlay upper directory %s: %v", upperdir, err)
 	}
 
-	if upperInfo.Mode()&os.ModePerm != 0777 {
-		err = os.Chmod(upperdir, 0777)
+	if upperInfo.Mode()&os.ModePerm != 0o777 {
+		err = os.Chmod(upperdir, 0o777)
 		if err != nil {
 			return nil, fmt.Errorf("failed to change permissions of overlay upper directory %s: %v", upperdir, err)
 		}
 	}
 
 	workdir := path.Join(volumePath, WORK_DIR)
-	err = os.MkdirAll(workdir, 0777)
+	err = os.MkdirAll(workdir, 0o777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create overlay work directory %s: %v", workdir, err)
 	}
@@ -203,15 +203,15 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat overlay work directory %s: %v", workdir, err)
 	}
-	if workInfo.Mode()&os.ModePerm != 0777 {
-		err = os.Chmod(workdir, 0777)
+	if workInfo.Mode()&os.ModePerm != 0o777 {
+		err = os.Chmod(workdir, 0o777)
 		if err != nil {
 			return nil, fmt.Errorf("failed to change permissions of overlay work directory %s: %v", workdir, err)
 		}
 	}
 
 	// Create the cache directory, we can make it writable by the pod
-	err = os.MkdirAll(targetPath, 0777)
+	err = os.MkdirAll(targetPath, 0o777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create target path directory %s: %v", targetPath, err)
 	}
@@ -237,20 +237,20 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, fmt.Errorf("failed to stat cache path %s, this path should exist in the overlay mount at %s: %v", cachePath, targetPath, err)
 	}
 
-	if info.Mode()&os.ModePerm != 0755 {
-		err = os.Chmod(cachePath, 0755)
+	if info.Mode()&os.ModePerm != 0o755 {
+		err = os.Chmod(cachePath, 0o755)
 		if err != nil {
 			return nil, fmt.Errorf("failed to change permissions of cache path %s: %v", cachePath, err)
 		}
 	}
 
 	// Create the app dir
-	err = os.MkdirAll(path.Join(targetPath, "app"), 0777)
+	err = os.MkdirAll(path.Join(targetPath, "app"), 0o777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create app directory %s: %v", path.Join(targetPath, "app"), err)
 	}
 
-	err = os.Chmod(path.Join(targetPath, "app"), 0777)
+	err = os.Chmod(path.Join(targetPath, "app"), 0o777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to change permissions of app directory %s: %v", path.Join(targetPath, "app"), err)
 	}

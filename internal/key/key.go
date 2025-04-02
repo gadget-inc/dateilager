@@ -10,6 +10,7 @@ import (
 
 const (
 	CacheVersions     = Int64SliceKey("dl.cache_versions")
+	CacheVersion      = Int64Key("dl.cache_version")
 	Count             = Int64Key("dl.count")
 	DiffCount         = Uint32Key("dl.diff_count")
 	Directory         = StringKey("dl.directory")
@@ -46,9 +47,7 @@ const (
 	TargetPath        = StringKey("dl.target_path")
 )
 
-var (
-	ObjectContent = ShortenedStringKey{"dl.object.content", 10}
-)
+var ObjectContent = ShortenedStringKey{"dl.object.content", 10}
 
 type BoolKey string
 
