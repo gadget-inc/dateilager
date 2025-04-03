@@ -3,13 +3,21 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime/pprof"
 	"strings"
+	"time"
 
 	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/spf13/cobra"
+)
+
+const (
+	profileName = "dateilager-profile-%s.prof"
 )
 
 func NewCmdRebuild() *cobra.Command {
@@ -24,6 +32,7 @@ func NewCmdRebuild() *cobra.Command {
 		cacheDir         string
 		fileMatchInclude string
 		fileMatchExclude string
+		profilePath      string
 	)
 
 	cmd := &cobra.Command{
@@ -51,7 +60,18 @@ func NewCmdRebuild() *cobra.Command {
 				return err
 			}
 
+			if profilePath != "" {
+				profileName := fmt.Sprintf(profileName, time.Now().Format("2006-01-02-15-04-05"))
+				file, err := os.Create(filepath.Join(profilePath, profileName))
+				if err != nil {
+					return fmt.Errorf("cannot open profile path %s: %w", profilePath, err)
+				}
+				_ = pprof.StartCPUProfile(file)
+			}
 			result, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, subpathList, cacheDir, matcher, summarize)
+			if profilePath != "" {
+				pprof.StopCPUProfile()
+			}
 			if err != nil {
 				return fmt.Errorf("could not rebuild project: %w", err)
 			}
@@ -84,8 +104,8 @@ func NewCmdRebuild() *cobra.Command {
 	cmd.Flags().StringVar(&cacheDir, "cachedir", "", "Path where the cache folder is mounted")
 	cmd.Flags().StringVar(&fileMatchInclude, "matchinclude", "", "Set fileMatch to true if the written files are matched by this glob pattern")
 	cmd.Flags().StringVar(&fileMatchExclude, "matchexclude", "", "Set fileMatch to false if the written files are matched by this glob pattern")
+	cmd.Flags().StringVar(&profilePath, "profile", "", "Path to the file where the profile will be written")
 	to = cmd.Flags().Int64("to", -1, "To version ID (optional)")
-
 	_ = cmd.MarkFlagRequired("project")
 
 	return cmd
