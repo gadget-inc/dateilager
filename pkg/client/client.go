@@ -449,6 +449,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 	workerCount := parallelWorkerCount()
 	span.SetAttributes(key.WorkerCount.Attribute(workerCount))
+	hasReflinkSupport := files.HasReflinkSupport(cacheDir)
 
 	for i := 0; i < workerCount; i++ {
 		// create the attribute here when `i` is different
@@ -471,7 +472,7 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 					tarReader.FromBytes(response.Bytes)
 
-					count, match, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath, matcher)
+					count, match, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath, matcher, hasReflinkSupport)
 					if err != nil {
 						cancel()
 						return err
@@ -877,7 +878,7 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string, cacheVersion
 						}
 					}
 
-					count, _, err := files.WriteTar(tempDest, CacheObjectsDir(cacheRootDir), tarReader, nil, nil)
+					count, _, err := files.WriteTar(tempDest, CacheObjectsDir(cacheRootDir), tarReader, nil, nil, false)
 					if err != nil {
 						cancel()
 						return err
