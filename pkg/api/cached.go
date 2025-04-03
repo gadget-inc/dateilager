@@ -47,6 +47,7 @@ type Cached struct {
 
 	// the current version of the cache on disk
 	currentVersion int64
+	reflinkSupport bool
 }
 
 func (c *Cached) PopulateDiskCache(ctx context.Context, req *pb.PopulateDiskCacheRequest) (*pb.PopulateDiskCacheResponse, error) {
@@ -85,6 +86,7 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 	}
 
 	c.currentVersion = version
+	c.reflinkSupport = files.HasReflinkSupport(c.GetCachePath())
 
 	logger.Info(ctx, "downloaded golden copy", key.DurationMS.Field(time.Since(start)), key.Version.Field(version), key.Count.Field(int64(count)))
 	return nil
@@ -367,7 +369,12 @@ func (c *Cached) writeCache(destination string) (int64, error) {
 		}
 	}
 
-	err = files.HardlinkDir(c.GetCachePath(), destination)
+	if c.reflinkSupport {
+		err = files.ReflinkDir(c.GetCachePath(), destination)
+	} else {
+		err = files.HardlinkDir(c.GetCachePath(), destination)
+	}
+
 	if err != nil {
 		return -1, fmt.Errorf("failed to hardlink cache to destination %s: %v", destination, err)
 	}
