@@ -19,8 +19,6 @@ jobs:
         if: matrix.filesystem == 'xfs'
         run: |
           cd /
-          sudo apt-get update
-          sudo apt-get install -y xfsprogs util-linux
           sudo mkdir -p /mnt/xfs
           sudo dd if=/dev/zero of=/mnt/xfs.img bs=2G count=10
           sudo mkfs.xfs /mnt/xfs.img
