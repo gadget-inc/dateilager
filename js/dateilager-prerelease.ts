@@ -1,4 +1,3 @@
-#!/usr/bin/env -S  node --import @swc-node/register/esm-register
 import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
@@ -13,9 +12,10 @@ interface PackageJson {
   version: string;
 }
 
-// Path to package.json (defaults to current directory)
-const packagePath: string = path.resolve(process.cwd(), "package.json");
-const defaultNixPath: string = path.resolve(process.cwd(), "../default.nix");
+const rootDir = path.resolve(__dirname, "..");
+const packagePath = path.join(rootDir, "js", "package.json");
+const defaultNixPath = path.join(rootDir, "default.nix");
+
 // Get the current git commit SHA
 function getGitCommitSha(): string {
   try {
@@ -50,7 +50,7 @@ function updatePackageVersion(version: string): void {
     // Write the updated package.json back to file
     fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + "\n", "utf8");
 
-    execSync(`npm install`, { stdio: "inherit" });
+    execSync(`npm install`, { stdio: "inherit", cwd: path.join(rootDir, "js") });
 
     console.log(`Package version updated from "${originalVersion}" to "${version}"`);
   } catch (error) {
@@ -80,8 +80,12 @@ function updateDefaultNixVersion(version: string): void {
   }
 }
 
+function buildDockerContainer(versionTag: string): void {
+  execSync(`make upload-prerelease-container-image version_tag=${versionTag}`, { stdio: "inherit" });
+}
+
 function gitAdd(version: string): void {
-  execSync(`git add package.json package-lock.json ../default.nix`, { stdio: "inherit" });
+  execSync(`git add js/package.json js/package-lock.json default.nix`, { stdio: "inherit" });
   execSync(`git commit -m "Update version to ${version}"`, { stdio: "inherit" });
   execSync(`git push origin HEAD`, { stdio: "inherit" });
 }
@@ -115,6 +119,9 @@ function doPreRelease(): void {
 
   const version = preReleaseVersion(args.t);
   console.log(`Setting prerelease version to: ${version}`);
+
+  // build and push docker container at prerelease version
+  buildDockerContainer(version);
 
   // Update the package version and publish to github
   updatePackageVersion(version);
