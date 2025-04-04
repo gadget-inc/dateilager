@@ -86,6 +86,11 @@ export interface DateiLagerBinaryClientOptions {
      */
     log: (level: "debug" | "info" | "warn" | "error", msg: string, fields: Record<string, unknown>) => void;
   };
+
+  /**
+   * The path to the file where the profile will be written.
+   */
+  profile?: string;
 }
 
 /**
@@ -152,6 +157,7 @@ export class DateiLagerBinaryClient {
             },
       tracing: options.tracing ?? false,
       logger: options.logger,
+      profile: options.profile,
     };
   }
 
@@ -257,6 +263,10 @@ export class DateiLagerBinaryClient {
 
         if (options?.subpaths) {
           args.push(`--subpaths=${options.subpaths.join(",")}`);
+        }
+
+        if (this._options.profile) {
+          args.push(`--profile=${this._options.profile}`);
         }
 
         args.push("--project", String(project), "--dir", directory);
