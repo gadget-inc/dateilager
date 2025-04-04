@@ -4,6 +4,7 @@ package files
 
 import (
 	"errors"
+	"io/fs"
 )
 
 // reflinkFile performs the actual reflink action using the FICLONE ioctl
@@ -12,6 +13,6 @@ import (
 //
 // This operation requires both files to be on the same filesystem that supports
 // reflinks (like btrfs or xfs with reflink=1 mount option).
-func reflinkFile(source, target string) error {
+func reflinkFile(source, target string, perm fs.FileMode) error {
 	return errors.New("reflink failed: not supported on this platform")
 }

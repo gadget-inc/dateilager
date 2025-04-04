@@ -300,22 +300,16 @@ func ReflinkDir(olddir, newdir string) error {
 
 		// For regular files, use reflink
 		if info.Mode().IsRegular() {
-			err = reflinkFile(oldpath, newpath)
+			err = reflinkFile(oldpath, newpath, info.Mode())
 			if err != nil {
 				return fmt.Errorf("reflink %v to %v: %w", oldpath, newpath, err)
 			}
 		} else {
 			// For symlinks and other types, just copy the file
-			err = copyFile(oldpath, newpath)
+			err = copyFile(oldpath, newpath, info.Mode())
 			if err != nil {
 				return fmt.Errorf("copy %v to %v: %w", oldpath, newpath, err)
 			}
-		}
-
-		// Ensure the correct permissions are set
-		err = os.Chmod(newpath, info.Mode())
-		if err != nil {
-			return fmt.Errorf("chmod %v: %w", newpath, err)
 		}
 
 		return nil
@@ -323,14 +317,14 @@ func ReflinkDir(olddir, newdir string) error {
 }
 
 // copyFile copies a file from src to dst, preserving metadata
-func copyFile(src, dst string) error {
+func copyFile(src, dst string, perm fs.FileMode) error {
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer sourceFile.Close()
 
-	destFile, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	destFile, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, perm)
 	if err != nil {
 		return err
 	}
@@ -417,6 +411,6 @@ func HasReflinkSupport(dir string) bool {
 	defer os.Remove(dstFile)
 
 	// Try to create a reflink
-	err = reflinkFile(srcFile, dstFile)
+	err = reflinkFile(srcFile, dstFile, 0644)
 	return err == nil
 }

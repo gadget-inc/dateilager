@@ -4,6 +4,8 @@ package files
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
 
 	"golang.org/x/sys/unix"
 )
@@ -14,13 +16,19 @@ import (
 //
 // This operation requires both files to be on the same filesystem that supports
 // reflinks (like APFS).
-func reflinkFile(source, target string) error {
+func reflinkFile(source, target string, perm fs.FileMode) error {
 	err := unix.Clonefile(source, target, unix.CLONE_NOFOLLOW)
 	if err != nil {
 		if err == unix.ENOTSUP || err == unix.EXDEV {
 			return fmt.Errorf("reflink not supported: %w", err)
 		}
 		return err
+	}
+
+	// Ensure the correct permissions are set
+	err = os.Chmod(target, perm)
+	if err != nil {
+		return fmt.Errorf("chmod %v: %w", target, err)
 	}
 
 	return nil
