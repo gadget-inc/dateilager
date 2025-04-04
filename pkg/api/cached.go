@@ -222,7 +222,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		"overlay",
 		"-n",
 		"--options",
-		fmt.Sprintf("redirect_dir=on,lowerdir=%s,upperdir=%s,workdir=%s", c.StagingPath, upperdir, workdir),
+		fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", c.StagingPath, upperdir, workdir),
 		targetPath,
 	}
 
@@ -257,7 +257,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	// For testing where we're not running as root, we need to chown the app dir via the command line :(
 	if appUser != NO_CHANGE_USER {
-		if os.Getenv("RUN_WITH_SUDO") == "true" {
+		if os.Getenv("RUN_WITH_SUDO") != "" {
 			err = execCommand("chown", "-R", fmt.Sprintf("%d:%d", appUser, appGroup), path.Join(targetPath, "app"))
 		} else {
 			err = os.Chown(path.Join(targetPath, "app"), appUser, appGroup)
@@ -293,11 +293,24 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	}
 
 	// Clean up upper and work directories from the overlay
-	if err := os.RemoveAll(path.Join(volumePath, UPPER_DIR)); err != nil {
-		return nil, fmt.Errorf("failed to remove directory %s: %s", targetPath, err)
-	}
-	if err := os.RemoveAll(path.Join(volumePath, WORK_DIR)); err != nil {
-		return nil, fmt.Errorf("failed to remove directory %s: %s", targetPath, err)
+	upperDir := path.Join(volumePath, UPPER_DIR)
+	workDir := path.Join(volumePath, WORK_DIR)
+	if os.Getenv("RUN_WITH_SUDO") != "" {
+		err = execCommand("rm", "-rf", upperDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to remove directory %s: %s", upperDir, err)
+		}
+		err = execCommand("rm", "-rf", workDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to remove directory %s: %s", workDir, err)
+		}
+	} else {
+		if err := os.RemoveAll(upperDir); err != nil {
+			return nil, fmt.Errorf("failed to remove directory %s: %s", upperDir, err)
+		}
+		if err := os.RemoveAll(workDir); err != nil {
+			return nil, fmt.Errorf("failed to remove directory %s: %s", workDir, err)
+		}
 	}
 
 	logger.Info(ctx, "volume unpublished and data removed", key.TargetPath.Field(targetPath))
@@ -396,7 +409,7 @@ func getFolderSize(path string) (int64, error) {
 }
 
 func execCommand(cmdName string, args ...string) error {
-	if os.Getenv("RUN_WITH_SUDO") == "true" {
+	if os.Getenv("RUN_WITH_SUDO") != "" {
 		cmd := exec.Command("sudo", append([]string{cmdName}, args...)...)
 		return cmd.Run()
 	}
