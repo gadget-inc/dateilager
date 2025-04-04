@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -17,7 +18,7 @@ import (
 )
 
 const (
-	profileName = "dateilager-profile-%s.prof"
+	PROFILE_NAME = "dateilager-profile-%s-%s.prof"
 )
 
 func NewCmdRebuild() *cobra.Command {
@@ -61,8 +62,24 @@ func NewCmdRebuild() *cobra.Command {
 			}
 
 			if profilePath != "" {
-				profileName := fmt.Sprintf(profileName, time.Now().Format("2006-01-02-15-04-05"))
-				file, err := os.Create(filepath.Join(profilePath, profileName))
+				args := []string{
+					fmt.Sprintf("project=%d", project),
+					fmt.Sprintf("prefix=%s", prefix),
+					fmt.Sprintf("dir=%s", dir),
+					fmt.Sprintf("ignores=%s", ignores),
+					fmt.Sprintf("subpaths=%s", subpaths),
+					fmt.Sprintf("summarize=%v", summarize),
+					fmt.Sprintf("cachedir=%s", cacheDir),
+					fmt.Sprintf("matchinclude=%s", fileMatchInclude),
+					fmt.Sprintf("matchexclude=%s", fileMatchExclude),
+				}
+				if to != nil {
+					args = append(args, fmt.Sprintf("to=%d", *to))
+				}
+
+				encoded := base64.StdEncoding.EncodeToString([]byte(strings.Join(args, ";")))
+				fileName := fmt.Sprintf(PROFILE_NAME, time.Now().Format("2006-01-02-15-04-05"), encoded)
+				file, err := os.Create(filepath.Join(profilePath, fileName))
 				if err != nil {
 					return fmt.Errorf("cannot open profile path %s: %w", profilePath, err)
 				}
