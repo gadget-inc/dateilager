@@ -222,7 +222,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		"overlay",
 		"-n",
 		"--options",
-		fmt.Sprintf("redirect_dir=on,lowerdir=%s,upperdir=%s,workdir=%s", c.StagingPath, upperdir, workdir),
+		fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", c.StagingPath, upperdir, workdir),
 		targetPath,
 	}
 
