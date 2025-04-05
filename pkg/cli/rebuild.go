@@ -1,15 +1,24 @@
 package cli
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime/pprof"
 	"strings"
+	"time"
 
 	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/spf13/cobra"
+)
+
+const (
+	PROFILE_NAME = "dateilager-profile-%s-%s.prof"
 )
 
 func NewCmdRebuild() *cobra.Command {
@@ -24,6 +33,7 @@ func NewCmdRebuild() *cobra.Command {
 		cacheDir         string
 		fileMatchInclude string
 		fileMatchExclude string
+		profilePath      string
 	)
 
 	cmd := &cobra.Command{
@@ -51,7 +61,34 @@ func NewCmdRebuild() *cobra.Command {
 				return err
 			}
 
+			if profilePath != "" {
+				args := []string{
+					fmt.Sprintf("project=%d", project),
+					fmt.Sprintf("prefix=%s", prefix),
+					fmt.Sprintf("dir=%s", dir),
+					fmt.Sprintf("ignores=%s", ignores),
+					fmt.Sprintf("subpaths=%s", subpaths),
+					fmt.Sprintf("summarize=%v", summarize),
+					fmt.Sprintf("cachedir=%s", cacheDir),
+					fmt.Sprintf("matchinclude=%s", fileMatchInclude),
+					fmt.Sprintf("matchexclude=%s", fileMatchExclude),
+				}
+				if to != nil {
+					args = append(args, fmt.Sprintf("to=%d", *to))
+				}
+
+				encoded := base64.StdEncoding.EncodeToString([]byte(strings.Join(args, ";")))
+				fileName := fmt.Sprintf(PROFILE_NAME, time.Now().Format("2006-01-02-15-04-05"), encoded)
+				file, err := os.Create(filepath.Join(profilePath, fileName))
+				if err != nil {
+					return fmt.Errorf("cannot open profile path %s: %w", profilePath, err)
+				}
+				_ = pprof.StartCPUProfile(file)
+			}
 			result, err := client.Rebuild(ctx, project, prefix, to, dir, ignoreList, subpathList, cacheDir, matcher, summarize)
+			if profilePath != "" {
+				pprof.StopCPUProfile()
+			}
 			if err != nil {
 				return fmt.Errorf("could not rebuild project: %w", err)
 			}
@@ -84,8 +121,8 @@ func NewCmdRebuild() *cobra.Command {
 	cmd.Flags().StringVar(&cacheDir, "cachedir", "", "Path where the cache folder is mounted")
 	cmd.Flags().StringVar(&fileMatchInclude, "matchinclude", "", "Set fileMatch to true if the written files are matched by this glob pattern")
 	cmd.Flags().StringVar(&fileMatchExclude, "matchexclude", "", "Set fileMatch to false if the written files are matched by this glob pattern")
+	cmd.Flags().StringVar(&profilePath, "profile", "", "Path to the file where the profile will be written")
 	to = cmd.Flags().Int64("to", -1, "To version ID (optional)")
-
 	_ = cmd.MarkFlagRequired("project")
 
 	return cmd
