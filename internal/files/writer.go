@@ -70,7 +70,6 @@ type retryableFileOperation[R any] func() (R, error)
 // if we encounter an error making a directory, symlink, or opening a file, we try to recover by just removing whatever is currently at the path, and trying again
 func retryFileErrors[R any](path string, fn retryableFileOperation[R]) (R, error) {
 	result, err := fn()
-
 	if err != nil {
 		err = os.RemoveAll(path)
 		if err != nil {
@@ -81,17 +80,17 @@ func retryFileErrors[R any](path string, fn retryableFileOperation[R]) (R, error
 	return result, err
 }
 
-func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, header *tar.Header, existingDirs map[string]bool) error {
+func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, header *tar.Header, existingDirs map[string]bool) (bool, error) {
 	path := filepath.Join(rootDir, header.Name)
 
 	switch header.Typeflag {
 	case pb.TarCached:
 		content, err := reader.ReadContent()
 		if err != nil {
-			return err
+			return false, err
 		}
 		hashHex := hex.EncodeToString(content)
-		return HardlinkDir(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
+		return true, HardlinkDir(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
 
 	case tar.TypeReg:
 		dir := filepath.Dir(path)
@@ -100,10 +99,10 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 		if _, exists := existingDirs[dir]; !exists {
 			_, err := retryFileErrors(dir, func() (interface{}, error) {
 				createdDir = true
-				return nil, os.MkdirAll(dir, 0777)
+				return nil, os.MkdirAll(dir, 0o777)
 			})
 			if err != nil {
-				return fmt.Errorf("mkdir -p %v: %w", dir, err)
+				return false, fmt.Errorf("mkdir -p %v: %w", dir, err)
 			}
 			existingDirs[dir] = true
 		}
@@ -112,29 +111,29 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 			return os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
 		})
 		if err != nil {
-			return fmt.Errorf("open file %v: %w", path, err)
+			return false, fmt.Errorf("open file %v: %w", path, err)
 		}
 
 		err = PreAllocate(file, header.Size)
 		if err != nil {
-			return fmt.Errorf("failed to pre allocate %v: %w", path, err)
+			return false, fmt.Errorf("failed to pre allocate %v: %w", path, err)
 		}
 		err = reader.CopyContent(file)
 		if err != nil {
-			return fmt.Errorf("write %v to disk: %w", path, err)
+			return false, fmt.Errorf("write %v to disk: %w", path, err)
 		}
 
 		// If we created the dir while writing this file, we know it is a new file with the correct mode
 		if !createdDir {
 			info, err := file.Stat()
 			if err != nil {
-				return fmt.Errorf("stat %v: %w", path, err)
+				return false, fmt.Errorf("stat %v: %w", path, err)
 			}
 
 			if info.Mode() != os.FileMode(header.Mode) {
 				err = file.Chmod(os.FileMode(header.Mode))
 				if err != nil {
-					return fmt.Errorf("chmod %v on disk: %w", path, err)
+					return false, fmt.Errorf("chmod %v on disk: %w", path, err)
 				}
 			}
 		}
@@ -144,16 +143,16 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 	case tar.TypeDir:
 		if _, exists := existingDirs[path]; !exists {
 			_, err := retryFileErrors(path, func() (interface{}, error) {
-				return nil, os.MkdirAll(path, 0777)
+				return nil, os.MkdirAll(path, 0o777)
 			})
 			if err != nil {
-				return fmt.Errorf("mkdir -p %v: %w", path, err)
+				return false, fmt.Errorf("mkdir -p %v: %w", path, err)
 			}
 			existingDirs[path] = true
 		}
 
 	case tar.TypeSymlink:
-		return makeSymlink(header.Linkname, path)
+		return false, makeSymlink(header.Linkname, path)
 
 	case 'D':
 		err := os.Remove(path)
@@ -165,20 +164,20 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("remove %v from disk: %w", path, err)
+			return false, fmt.Errorf("remove %v from disk: %w", path, err)
 		}
 
 	default:
-		return fmt.Errorf("unhandle TAR type: %v", header.Typeflag)
+		return false, fmt.Errorf("unhandle TAR type: %v", header.Typeflag)
 	}
 
-	return nil
+	return false, nil
 }
 
 func makeSymlink(oldname, newname string) error {
 	dir := filepath.Dir(newname)
 	_, err := retryFileErrors(dir, func() (interface{}, error) {
-		return nil, os.MkdirAll(dir, 0777)
+		return nil, os.MkdirAll(dir, 0o777)
 	})
 	if err != nil {
 		return fmt.Errorf("mkdir -p %v: %w", dir, err)
@@ -249,8 +248,9 @@ func HardlinkDir(olddir, newdir string) error {
 	})
 }
 
-func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, packPath *string, matcher *FileMatcher) (uint32, bool, error) {
+func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, packPath *string, matcher *FileMatcher) (uint32, uint32, bool, error) {
 	var count uint32
+	var cachedCount uint32
 	dir := finalDir
 
 	fileMatch := true
@@ -260,7 +260,7 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 	if packPath != nil && fileExists(filepath.Join(finalDir, *packPath)) {
 		tmpDir, err := os.MkdirTemp(filepath.Join(finalDir, ".dl"), "dateilager_pack_path_")
 		if err != nil {
-			return count, false, fmt.Errorf("cannot create tmp dir for packed tar: %w", err)
+			return count, cachedCount, false, fmt.Errorf("cannot create tmp dir for packed tar: %w", err)
 		}
 		defer os.RemoveAll(tmpDir)
 		dir = tmpDir
@@ -272,35 +272,38 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 			break
 		}
 		if err != nil {
-			return count, false, fmt.Errorf("read next TAR header: %w", err)
+			return count, cachedCount, false, fmt.Errorf("read next TAR header: %w", err)
 		}
 
 		if matcher != nil && !matcher.Match(header.Name) {
 			fileMatch = false
 		}
 
-		err = writeObject(dir, cacheObjectsDir, reader, header, existingDirs)
+		cached, err := writeObject(dir, cacheObjectsDir, reader, header, existingDirs)
 		if err != nil {
-			return count, false, err
+			return count, cachedCount, false, err
 		}
 
 		count += 1
+		if cached {
+			cachedCount += 1
+		}
 	}
 
 	if packPath != nil && dir != finalDir {
 		path := filepath.Join(finalDir, *packPath)
 		err := os.RemoveAll(path)
 		if err != nil {
-			return count, false, fmt.Errorf("cannot remove existing packed path %v: %w", path, err)
+			return count, cachedCount, false, fmt.Errorf("cannot remove existing packed path %v: %w", path, err)
 		}
 
 		if fileExists(filepath.Join(dir, *packPath)) {
 			err = os.Rename(filepath.Join(dir, *packPath), path)
 			if err != nil {
-				return count, false, fmt.Errorf("cannot rename packed path %v to %v: %w", filepath.Join(dir, *packPath), path, err)
+				return count, cachedCount, false, fmt.Errorf("cannot rename packed path %v to %v: %w", filepath.Join(dir, *packPath), path, err)
 			}
 		}
 	}
 
-	return count, fileMatch, nil
+	return count, cachedCount, fileMatch, nil
 }
