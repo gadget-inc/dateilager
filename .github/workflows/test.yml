@@ -52,13 +52,17 @@ jobs:
         run: make setup-local
 
       - name: Start DateiLager server
-        run: make server &
+        run: make server & > server.out
 
       - name: Wait for DateiLager server
-        run: sleep 5
+        run: sleep 10
 
       - name: Run fuzz tests
         run: make test-fuzz
+
+      - name: Get server output
+        if: always()
+        run: cat server.out
 
   test-js:
     runs-on: ubuntu-latest
