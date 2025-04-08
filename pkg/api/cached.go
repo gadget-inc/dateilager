@@ -365,7 +365,7 @@ func (c *Cached) writeCache(destination string) (int64, error) {
 		}
 	}
 
-	err = files.HardlinkDir(c.GetCachePath(), destination)
+	err = files.Hardlink(c.GetCachePath(), destination)
 	if err != nil {
 		return -1, fmt.Errorf("failed to hardlink cache to destination %s: %v", destination, err)
 	}

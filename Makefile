@@ -150,7 +150,7 @@ setup-local: reset-db
 	psql $(DB_URI) -c "insert into dl.projects (id, latest_version, pack_patterns) values (1, 0, '{\"node_modules/.*/\"}');"
 
 build-cache-version:
-	psql $(DB_URI) -c "with impactful_packed_objects as (select hash, count(*) as count from dl.objects where packed = true and stop_version is null group by hash order by count desc limit 20) insert into dl.cache_versions (hashes) select coalesce(array_agg(hash), '{}') from impactful_packed_objects;"
+	psql $(DB_URI) -c "with impactful_packed_objects as (select hash, count(*) as count from dl.objects where packed = true and stop_version is null group by hash order by count desc limit 100) insert into dl.cache_versions (hashes) select coalesce(array_agg(hash), '{}') from impactful_packed_objects;"
 
 server: export DL_ENV=dev
 server: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go development/server.crt
@@ -198,15 +198,15 @@ client-rebuild: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-rebuild: export DL_SKIP_SSL_VERIFICATION=1
 client-rebuild:
 ifndef to_version
-	go run cmd/client/main.go rebuild --host $(GRPC_HOST) --project 1 --prefix "$(prefix)" --dir $(dir)
+	go run cmd/client/main.go rebuild --host $(GRPC_HOST) --project 1 --prefix "$(prefix)" --dir "output/rebuild"
 else
-	go run cmd/client/main.go rebuild --host $(GRPC_HOST) --project 1 --to $(to_version) --prefix "$(prefix)" --dir $(dir)
+	go run cmd/client/main.go rebuild --host $(GRPC_HOST) --project 1 --to $(to_version) --prefix "$(prefix)" --dir "output/rebuild"
 endif
 
 client-rebuild-with-cache: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-rebuild-with-cache: export DL_SKIP_SSL_VERIFICATION=1
 client-rebuild-with-cache:
-	go run cmd/client/main.go rebuild --host $(GRPC_HOST) --project 1 --prefix "$(prefix)" --dir $(dir) --cachedir input/cache
+	go run cmd/client/main.go rebuild --host $(GRPC_HOST) --project 1 --prefix "$(prefix)" --dir "output/rebuild-with-cache" --cachedir input/cache
 
 client-getcache: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-getcache: export DL_SKIP_SSL_VERIFICATION=1
@@ -315,7 +315,7 @@ build-js: js/dist
 
 k8s:
 	which orb >/dev/null 2>&1; if [ $$? -ne 0 ]; then echo "orb not found"; exit 1; fi
-k8s/start: k8s	
+k8s/start: k8s
 	orb start k8s
 
 k8s/stop: k8s
