@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/charlievieth/fastwalk"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/files"
@@ -77,17 +76,9 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 		return err
 	}
 
-	// Once we've prepared the cache make it writable by everyone so we can hardlink it into the pod
-	err = fastwalk.Walk(nil, c.GetCachePath(), func(path string, de os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		err = os.Chmod(path, 0o777)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil // this is likely a symlink to a file that doesn't exist, ignore it
-		}
-		return err
-	})
+	// Once we've prepared the cache make it read-only for
+	// everyone except the user running the daemon
+	err = os.Chmod(c.GetCachePath(), 0o755)
 	if err != nil {
 		return fmt.Errorf("failed to change permissions of cache path %s: %v", c.GetCachePath(), err)
 	}
