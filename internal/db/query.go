@@ -144,6 +144,10 @@ func executeQuery(ctx context.Context, tx pgx.Tx, queryBuilder *queryBuilder) ([
 }
 
 func loadChunk(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, dbObjects []DbObject, startIdx int, chunkSize int) ([]DecodedContent, error) {
+	return loadChunkSizeLimited(ctx, tx, lookup, dbObjects, startIdx, chunkSize, -1)
+}
+
+func loadChunkSizeLimited(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, dbObjects []DbObject, startIdx int, chunkSize int, sizeLimit int64) ([]DecodedContent, error) {
 	hashes := make(map[Hash]bool, chunkSize)
 
 	for idx := 0; idx < chunkSize && idx+startIdx < len(dbObjects); idx++ {
@@ -154,7 +158,7 @@ func loadChunk(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, dbObjects 
 		}
 	}
 
-	uncachedContents, err := lookup.Lookup(ctx, tx, hashes)
+	uncachedContents, err := lookup.Lookup(ctx, tx, hashes, sizeLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +170,12 @@ func loadChunk(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, dbObjects 
 		if dbObject.cached {
 			decoded = append(decoded, dbObject.hash.Bytes())
 		} else {
-			decoded = append(decoded, uncachedContents[dbObject.hash])
+			uncachedEntry, found := uncachedContents[dbObject.hash]
+			if found {
+				decoded = append(decoded, uncachedEntry)
+			} else {
+				decoded = append(decoded, nil)
+			}
 		}
 	}
 
@@ -176,6 +185,10 @@ func loadChunk(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, dbObjects 
 type ObjectStream func() (*pb.Object, error)
 
 func GetObjects(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManager *PackManager, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, error) {
+	return GetObjectsSizeLimited(ctx, tx, lookup, packManager, project, vrange, objectQuery, -1)
+}
+
+func GetObjectsSizeLimited(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManager *PackManager, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery, sizeLimit int64) (ObjectStream, error) {
 	packParent := packManager.IsPathPacked(objectQuery.Path)
 	originalPath := objectQuery.Path
 	if packParent != nil {
@@ -190,7 +203,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManag
 
 	idx := 0
 	chunkIdx := 0
-	chunk, err := loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize)
+	chunk, err := loadChunkSizeLimited(ctx, tx, lookup, dbObjects, idx, chunkSize, sizeLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load chunk: %w", err)
 	}
@@ -211,14 +224,14 @@ func GetObjects(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManag
 
 		if chunkIdx >= len(chunk) {
 			chunkIdx = 0
-			chunk, err = loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize)
+			chunk, err = loadChunkSizeLimited(ctx, tx, lookup, dbObjects, idx, chunkSize, sizeLimit)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load chunk: %w", err)
 			}
 		}
 
 		dbObject := dbObjects[idx]
-		content := chunk[chunkIdx]
+		content := chunk[chunkIdx] // Can be nil if sizeLimit is used
 
 		idx += 1
 		chunkIdx += 1
@@ -227,7 +240,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManag
 			return nil, fmt.Errorf("getObjects scan, project %v vrange %v: returned non-nil hash when queried without cache", project, vrange)
 		}
 
-		if dbObject.packed {
+		if content != nil && dbObject.packed {
 			tarReader.FromBytes(content)
 			packBuffer, err = unpackObjects(tarReader)
 			if err != nil {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 
 	"github.com/dgraph-io/ristretto"
@@ -176,7 +177,7 @@ func NewContentLookup() (*ContentLookup, error) {
 	}, nil
 }
 
-func (cl *ContentLookup) Lookup(ctx context.Context, tx pgx.Tx, hashesToLookup map[Hash]bool) (map[Hash]DecodedContent, error) {
+func (cl *ContentLookup) Lookup(ctx context.Context, tx pgx.Tx, hashesToLookup map[Hash]bool, maxContentSize int64) (map[Hash]DecodedContent, error) {
 	var notFound []Hash
 	contents := make(map[Hash]DecodedContent, len(hashesToLookup))
 
@@ -204,6 +205,27 @@ func (cl *ContentLookup) Lookup(ctx context.Context, tx pgx.Tx, hashesToLookup m
 	}
 
 	if len(notFound) > 0 {
+		if maxContentSize > 0 { // If we are restricting fetching oversize content, drop it from what we lookup
+			overSizeRows, err := tx.Query(ctx, `
+			    SELECT (hash).h1, (hash).h2
+			    FROM dl.contents
+			    WHERE hash = ANY($1::hash[]) AND length(bytes) > $2
+		    `, notFound, maxContentSize)
+			if err != nil {
+				return nil, fmt.Errorf("lookup missing hash contents: %w", err)
+			}
+			for overSizeRows.Next() {
+				var oversizeHash Hash
+				err = overSizeRows.Scan(&oversizeHash.H1, &oversizeHash.H2)
+				if err != nil {
+					return nil, fmt.Errorf("content lookup scan: %w", err)
+				}
+				notFound = slices.DeleteFunc(notFound, func(hash Hash) bool {
+					return bytes.Equal(hash.H1[:], oversizeHash.H1[:]) && bytes.Equal(hash.H2[:], oversizeHash.H2[:])
+				})
+			}
+		}
+
 		rows, err := tx.Query(ctx, `
 			SELECT (hash).h1, (hash).h2, bytes
 			FROM dl.contents

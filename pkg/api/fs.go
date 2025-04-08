@@ -426,6 +426,13 @@ func (f *Fs) GetUnary(ctx context.Context, req *pb.GetUnaryRequest) (*pb.GetUnar
 		key.ToVersion.Attribute(req.ToVersion),
 	)
 
+	var maxContentSize int64
+	if req.MaxContentSendSize != nil {
+		maxContentSize = *req.MaxContentSendSize
+	} else {
+		maxContentSize = -1
+	}
+
 	project, err := requireProjectAuth(ctx)
 	if err != nil {
 		return nil, err
@@ -477,7 +484,7 @@ func (f *Fs) GetUnary(ctx context.Context, req *pb.GetUnaryRequest) (*pb.GetUnar
 			key.QueryIgnores.Field(query.Ignores),
 		)
 
-		objects, err := db.GetObjects(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query)
+		objects, err := db.GetObjectsSizeLimited(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query, maxContentSize)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "FS get objects: %v", err)
 		}
