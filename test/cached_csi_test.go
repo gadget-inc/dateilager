@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"syscall"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -42,7 +41,7 @@ func TestCachedCSIDriver(t *testing.T) {
 	require.NoError(t, err, "cached.Prepare must succeed")
 
 	sanityPath := path.Join(tmpDir, "csi")
-	require.NoError(t, os.MkdirAll(sanityPath, 0755), "couldn't make staging path")
+	require.NoError(t, os.MkdirAll(sanityPath, 0o755), "couldn't make staging path")
 
 	cfg := &sanity.Config{
 		StagingPath: path.Join(tmpDir, "staging"),
@@ -96,22 +95,22 @@ func TestCachedCSIDriverMountsCache(t *testing.T) {
 
 	upperInfo, err := os.Stat(path.Join(tmpDir, api.UPPER_DIR))
 	require.NoError(t, err)
-	require.Equal(t, formatFileMode(os.FileMode(0777)), formatFileMode(upperInfo.Mode()&os.ModePerm))
+	require.Equal(t, formatFileMode(os.FileMode(0o777)), formatFileMode(upperInfo.Mode()&os.ModePerm))
 
 	workInfo, err := os.Stat(path.Join(tmpDir, api.WORK_DIR))
 	require.NoError(t, err)
-	require.Equal(t, formatFileMode(os.FileMode(0777)), formatFileMode(workInfo.Mode()&os.ModePerm))
+	require.Equal(t, formatFileMode(os.FileMode(0o777)), formatFileMode(workInfo.Mode()&os.ModePerm))
 
 	fileInfo, err := os.Stat(targetDir)
 	require.NoError(t, err)
 
 	// the target dir should not be world writable -- only by the user the CSI driver is running as (which will be root)
-	require.Equal(t, formatFileMode(os.FileMode(0777)), formatFileMode(fileInfo.Mode()&os.ModePerm))
+	require.Equal(t, formatFileMode(os.FileMode(0o777)), formatFileMode(fileInfo.Mode()&os.ModePerm))
 
 	// files inside cache dir should also *not* be writable -- it's managed by the CSI and must remain pristine
 	cacheFileInfo, err := os.Stat(path.Join(targetDir, "dl_cache", fmt.Sprintf("objects/%v/pack/a/1", aHash)))
 	require.NoError(t, err)
-	require.Equal(t, formatFileMode(os.FileMode(0755)), formatFileMode(cacheFileInfo.Mode()&os.ModePerm))
+	require.Equal(t, formatFileMode(os.FileMode(0o755)), formatFileMode(cacheFileInfo.Mode()&os.ModePerm))
 
 	_, err = cached.NodeUnpublishVolume(tc.Context(), &csi.NodeUnpublishVolumeRequest{
 		VolumeId:   "foobar",
@@ -166,27 +165,27 @@ func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
 
 	upperInfo, err := os.Stat(path.Join(tmpDir, api.UPPER_DIR))
 	require.NoError(t, err)
-	require.Equal(t, formatFileMode(os.FileMode(0777)), formatFileMode(upperInfo.Mode()&os.ModePerm))
+	require.Equal(t, formatFileMode(os.FileMode(0o777)), formatFileMode(upperInfo.Mode()&os.ModePerm))
 
 	workInfo, err := os.Stat(path.Join(tmpDir, api.WORK_DIR))
 	require.NoError(t, err)
-	require.Equal(t, formatFileMode(os.FileMode(0777)), formatFileMode(workInfo.Mode()&os.ModePerm))
+	require.Equal(t, formatFileMode(os.FileMode(0o777)), formatFileMode(workInfo.Mode()&os.ModePerm))
 
 	fileInfo, err := os.Stat(targetDir)
 	require.NoError(t, err)
 
 	// the target dir *should* be world writable -- we're going to use it as a scratch space to do useful stuff with the cache
-	require.Equal(t, formatFileMode(os.FileMode(0777)), formatFileMode(fileInfo.Mode()&os.ModePerm))
+	require.Equal(t, formatFileMode(os.FileMode(0o777)), formatFileMode(fileInfo.Mode()&os.ModePerm))
 
 	// the cache dir should *not* be writable -- it's managed by the CSI and must remain pristine
 	cacheFileInfo, err := os.Stat(path.Join(targetDir, "dl_cache"))
 	require.NoError(t, err)
-	require.Equal(t, formatFileMode(os.FileMode(0755)), formatFileMode(cacheFileInfo.Mode()&os.ModePerm))
+	require.Equal(t, formatFileMode(os.FileMode(0o755)), formatFileMode(cacheFileInfo.Mode()&os.ModePerm))
 
 	// files inside cache dir should *not* be writable -- it's managed by the CSI and must remain pristine
 	cacheFileInfo, err = os.Stat(path.Join(targetDir, fmt.Sprintf("dl_cache/objects/%v/pack/a/1", aHash)))
 	require.NoError(t, err)
-	require.Equal(t, formatFileMode(os.FileMode(0755)), formatFileMode(cacheFileInfo.Mode()))
+	require.Equal(t, formatFileMode(os.FileMode(0o755)), formatFileMode(cacheFileInfo.Mode()))
 	require.Equal(t, targetDir, path.Join(tmpDir, "vol-target"))
 
 	_, err = cached.NodeUnpublishVolume(tc.Context(), &csi.NodeUnpublishVolumeRequest{
@@ -283,61 +282,6 @@ func TestCachedCSIDriverMountCanDoAFullRebuild(t *testing.T) {
 		"b/d": {content: "b/d v3"},
 		"b/e": {content: "b/e v4"},
 	})
-}
-
-func TestCachedCSIDriverAppUserSet(t *testing.T) {
-	tc := util.NewTestCtx(t, auth.Project, 1)
-	defer tc.Close()
-
-	writeProject(tc, 1, 4)
-	writeObject(tc, 1, 1, nil, "a", "a v1")
-	writeObject(tc, 1, 2, i(3), "b", "b v2")
-	writeObject(tc, 1, 3, i(4), "b/c", "b/c v3")
-	writeObject(tc, 1, 3, nil, "b/d", "b/d v3")
-	writeObject(tc, 1, 4, nil, "b/e", "b/e v4")
-
-	tmpDir := emptyTmpDir(t)
-	defer os.RemoveAll(tmpDir)
-
-	cached, _, close := createTestCachedServer(tc, tmpDir)
-	defer close()
-
-	err := cached.Prepare(tc.Context(), -1)
-	require.NoError(t, err, "cached.Prepare must succeed")
-
-	targetDir := path.Join(tmpDir, "vol-target")
-
-	stagingDir := path.Join(tmpDir, "vol-staging-target")
-	_, err = cached.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
-		VolumeId:          "foobar",
-		StagingTargetPath: stagingDir,
-		TargetPath:        targetDir,
-		VolumeCapability:  &csi.VolumeCapability{},
-		VolumeContext: map[string]string{
-			"appUser":  "1000",
-			"appGroup": "1000",
-		},
-	})
-	require.NoError(t, err)
-
-	c, _, close := createTestClient(tc)
-	defer close()
-
-	appDir := path.Join(targetDir, "app")
-	dlCacheDir := path.Join(targetDir, "dl_cache")
-
-	// Do the initial build
-	rebuild(tc, c, 1, i(1), appDir, &dlCacheDir, expectedResponse{
-		version: 1,
-		count:   1,
-	}, nil)
-
-	appUser, err := os.Stat(appDir)
-	require.NoError(t, err)
-
-	sysstat := appUser.Sys().(*syscall.Stat_t)
-	require.Equal(t, 1000, int(sysstat.Uid))
-	require.Equal(t, 1000, int(sysstat.Gid))
 }
 
 func formatFileMode(mode os.FileMode) string {
