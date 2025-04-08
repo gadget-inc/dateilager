@@ -87,13 +87,13 @@ function buildDockerContainer(versionTag: string): void {
 function gitAdd(version: string): void {
   execSync(`git add js/package.json js/package-lock.json default.nix`, { stdio: "inherit" });
   execSync(`git commit -m "Update version to ${version}"`, { stdio: "inherit" });
-  execSync(`git push origin HEAD`, { stdio: "inherit" });
+  execSync(`git push origin HEAD -f`, { stdio: "inherit" });
 }
 
 function tagGit(version: string): void {
   try {
     execSync(`git tag -f v${version} $(git rev-parse HEAD)`, { stdio: "inherit" });
-    execSync(`git push origin v${version}`, { stdio: "inherit" });
+    execSync(`git push origin v${version} -f`, { stdio: "inherit" });
   } catch (error) {
     console.error("Error tagging git:", (error as Error).message);
     process.exit(1);

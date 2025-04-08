@@ -19,7 +19,7 @@ func TestHardlinkDir(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	copyDir := path.Join(tmpDir, "node_modules")
-	err = files.HardlinkDir(bigDir, copyDir)
+	err = files.Hardlink(bigDir, copyDir)
 	require.NoError(t, err, "HardlinkDir failed")
 
 	err = CompareDirectories(bigDir, copyDir)
@@ -40,7 +40,7 @@ func BenchmarkHardlinkDir(b *testing.B) {
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		copyDir := path.Join(tmpDir, "node_modules", fmt.Sprintf("%d", n))
-		err := files.HardlinkDir(bigDir, copyDir)
+		err := files.Hardlink(bigDir, copyDir)
 		b.StopTimer()
 		if err != nil {
 			b.Error(err)
