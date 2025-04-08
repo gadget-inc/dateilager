@@ -148,17 +148,19 @@ func loadChunk(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, dbObjects 
 }
 
 func loadChunkSizeLimited(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, dbObjects []DbObject, startIdx int, chunkSize int, sizeLimit int64) ([]DecodedContent, error) {
-	hashes := make(map[Hash]bool, chunkSize)
+	hashes := make(map[Hash]LookupParams, chunkSize)
 
 	for idx := 0; idx < chunkSize && idx+startIdx < len(dbObjects); idx++ {
 		dbObject := dbObjects[idx+startIdx]
-
 		if !dbObject.cached {
-			hashes[dbObject.hash] = !dbObject.packed
+			hashes[dbObject.hash] = LookupParams{
+				IsEncoded:  !dbObject.packed,
+				IsOversize: sizeLimit > 0 && dbObject.size > sizeLimit,
+			}
 		}
 	}
 
-	uncachedContents, err := lookup.Lookup(ctx, tx, hashes, sizeLimit)
+	uncachedContents, err := lookup.Lookup(ctx, tx, hashes)
 	if err != nil {
 		return nil, err
 	}
