@@ -1,6 +1,5 @@
-import crypto from "crypto";
 import { decodeContent, encodeContent } from "../src";
-import {buildTestFiles, grpcClient} from "./util";
+import { buildTestFiles, grpcClient } from "./util";
 
 describe("grpc client operations", () => {
   afterEach(async () => {
@@ -28,7 +27,7 @@ describe("grpc client operations", () => {
     const projectId = 1337n;
     await grpcClient.newProject(projectId, []);
 
-    let objects = await buildTestFiles(64, 20, projectId);
+    const objects = await buildTestFiles(64, 20, projectId);
 
     const response = await grpcClient.getObjects(projectId, "");
     const receivedObjects = response.objects
@@ -46,16 +45,16 @@ describe("grpc client operations", () => {
     const projectId = 1337n;
     await grpcClient.newProject(projectId, []);
 
-    let objects = await buildTestFiles(64, 10, projectId);
+    const objects = await buildTestFiles(64, 10, projectId);
 
     const response = await grpcClient.getObjects(projectId, "", undefined, undefined, undefined, 256n);
     const receivedObjects = response.objects
-        .map((object) => ({ ...object, content: decodeContent(object.content) }))
-        .sort((a, b) => {
-          const aNum = parseInt(a.path.split("-")[1]!.slice(0, -4));
-          const bNum = parseInt(b.path.split("-")[1]!.slice(0, -4));
-          return aNum - bNum;
-        });
+      .map((object) => ({ ...object, content: decodeContent(object.content) }))
+      .sort((a, b) => {
+        const aNum = parseInt(a.path.split("-")[1]!.slice(0, -4));
+        const bNum = parseInt(b.path.split("-")[1]!.slice(0, -4));
+        return aNum - bNum;
+      });
 
     expect(receivedObjects).toEqual(objects);
   });
@@ -64,23 +63,23 @@ describe("grpc client operations", () => {
     const projectId = 1337n;
     await grpcClient.newProject(projectId, []);
 
-    let smallObjects = await buildTestFiles(32, 10, projectId);
-    let largeObjects = await buildTestFiles(64, 10, projectId, 10);
+    const smallObjects = await buildTestFiles(32, 10, projectId);
+    const largeObjects = await buildTestFiles(64, 10, projectId, 10);
 
     largeObjects.forEach((o) => {
       o.content = "";
     });
 
-    let objects = smallObjects.concat(largeObjects);
+    const objects = smallObjects.concat(largeObjects);
 
     const response = await grpcClient.getObjects(projectId, "", undefined, undefined, undefined, 100n);
     const receivedObjects = response.objects
-        .map((object) => ({ ...object, content: decodeContent(object.content) }))
-        .sort((a, b) => {
-          const aNum = parseInt(a.path.split("-")[1]!.slice(0, -4));
-          const bNum = parseInt(b.path.split("-")[1]!.slice(0, -4));
-          return aNum - bNum;
-        });
+      .map((object) => ({ ...object, content: decodeContent(object.content) }))
+      .sort((a, b) => {
+        const aNum = parseInt(a.path.split("-")[1]!.slice(0, -4));
+        const bNum = parseInt(b.path.split("-")[1]!.slice(0, -4));
+        return aNum - bNum;
+      });
 
     expect(receivedObjects).toEqual(objects);
   });

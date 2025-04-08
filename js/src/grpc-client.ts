@@ -236,7 +236,14 @@ export class DateiLagerGrpcClient {
    *   console.log("[getObjects] content:\n" + object.content);
    * }
    */
-  public async getObjects(project: bigint, path: string, ignores: string[] = [], from?: bigint, to?: bigint, maxSize?: bigint): Promise<GetUnaryResponse> {
+  public async getObjects(
+    project: bigint,
+    path: string,
+    ignores: string[] = [],
+    from?: bigint,
+    to?: bigint,
+    maxSize?: bigint
+  ): Promise<GetUnaryResponse> {
     return await trace(
       "dateilager-grpc-client.get-unary",
       {
@@ -251,7 +258,13 @@ export class DateiLagerGrpcClient {
       },
       async () => {
         const call = this._client.getUnary(
-          { project, fromVersion: from, toVersion: to, queries: [{ path, ignores, isPrefix: true, subpaths: [] }], maxContentSendSize: maxSize },
+          {
+            project,
+            fromVersion: from,
+            toVersion: to,
+            queries: [{ path, ignores, isPrefix: true, subpaths: [] }],
+            maxContentSendSize: maxSize,
+          },
           this._rpcOptions()
         );
         return await call.response;

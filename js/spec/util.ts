@@ -1,7 +1,7 @@
+import crypto from "crypto";
 import * as fs from "fs";
 import path from "path";
-import {DateiLagerBinaryClient, DateiLagerGrpcClient, encodeContent} from "../src";
-import crypto from "crypto";
+import { DateiLagerBinaryClient, DateiLagerGrpcClient, encodeContent } from "../src";
 
 export const devAdminToken =
   "v2.public.eyJzdWIiOiJhZG1pbiJ9yt40HNkcyOUtDeFa_WPS6vi0WiE4zWngDGJLh17TuYvssTudCbOdQEkVDRD-mSNTXLgSRDXUkO-AaEr4ZLO4BQ";
@@ -46,5 +46,5 @@ export async function buildTestFiles(size: number, count: number, projectId: big
   await Promise.all(objects.map((object) => stream.send({ ...object, content: encodeContent(object.content) })));
   await stream.complete();
 
-  return objects
+  return objects;
 }
