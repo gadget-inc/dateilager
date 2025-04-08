@@ -55,7 +55,10 @@ jobs:
         run: make server & > server.out
 
       - name: Wait for DateiLager server
-        run: sleep 10
+        uses: MaximeGoyette/wait-for-it-action@master
+        with:
+          host: localhost
+          port: 5051
 
       - name: Run fuzz tests
         run: make test-fuzz
