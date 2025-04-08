@@ -86,7 +86,7 @@ jobs:
         run: make server &
 
       - name: Wait for DateiLager server
-        run: sleep 5
+        run: timeout 20 sh -c 'until nc -z $0 $1; do sleep 1; done' localhost 5051
 
       - name: Run JS tests
         run: make test-js
