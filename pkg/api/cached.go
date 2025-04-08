@@ -9,10 +9,10 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/charlievieth/fastwalk"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/files"
@@ -77,9 +77,17 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 		return err
 	}
 
-	// Once we've prepared the cache make it read-only for
-	// everyone except the user running the daemon
-	err = os.Chmod(c.GetCachePath(), 0o755)
+	// Once we've prepared the cache make it writable by everyone so we can hardlink it into the pod
+	err = fastwalk.Walk(nil, c.GetCachePath(), func(path string, de os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		err = os.Chmod(path, 0o777)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil // this is likely a symlink to a file that doesn't exist, ignore it
+		}
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("failed to change permissions of cache path %s: %v", c.GetCachePath(), err)
 	}
@@ -156,27 +164,13 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
 	}
 
-	volumeAttributes := req.GetVolumeContext()
-	var appUser int
-	var appGroup int
-	var err error
-	if appUser, err = strconv.Atoi(volumeAttributes["appUser"]); err != nil {
-		appUser = NO_CHANGE_USER
-	}
-
-	// If only appUser is provided, use the same value for appGroup
-	if appGroup, err = strconv.Atoi(volumeAttributes["appGroup"]); err != nil {
-		appGroup = appUser
-	}
-
 	targetPath := req.GetTargetPath()
 	// The parent of the target path and can store CSI metadata, it's the name given to the volume mount in the pod spec
 	volumePath := path.Join(targetPath, "..")
-	var version int64
 
 	// Perform an overlay mount
 	upperdir := path.Join(volumePath, UPPER_DIR)
-	err = os.MkdirAll(upperdir, 0o777)
+	err := os.MkdirAll(upperdir, 0o777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create overlay upper directory %s: %v", upperdir, err)
 	}
@@ -255,21 +249,12 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, fmt.Errorf("failed to change permissions of app directory %s: %v", path.Join(targetPath, "app"), err)
 	}
 
-	// For testing where we're not running as root, we need to chown the app dir via the command line :(
-	if appUser != NO_CHANGE_USER {
-		if os.Getenv("RUN_WITH_SUDO") != "" {
-			err = execCommand("chown", "-R", fmt.Sprintf("%d:%d", appUser, appGroup), path.Join(targetPath, "app"))
-		} else {
-			err = os.Chown(path.Join(targetPath, "app"), appUser, appGroup)
-		}
-	}
-
+	err = os.Chown(path.Join(targetPath, "app"), 1005, 1005)
 	if err != nil {
 		return nil, fmt.Errorf("failed to chown app directory %s: %v", path.Join(targetPath, "app"), err)
 	}
 
-	version = c.currentVersion
-	logger.Info(ctx, "mounted overlay", key.TargetPath.Field(targetPath), key.Version.Field(version))
+	logger.Info(ctx, "mounted overlay", key.TargetPath.Field(targetPath), key.Version.Field(c.currentVersion))
 
 	return &csi.NodePublishVolumeResponse{}, nil
 }

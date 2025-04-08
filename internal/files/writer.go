@@ -226,25 +226,35 @@ func HardlinkDir(olddir, newdir string) error {
 			return nil
 		}
 
-		if d.IsDir() {
+		switch {
+		case d.IsDir():
 			info, err := d.Info()
 			if err != nil {
 				return fmt.Errorf("unable to get directory info %v: %w", oldpath, err)
 			}
-
 			err = os.Mkdir(newpath, info.Mode())
 			if err != nil {
 				return fmt.Errorf("cannot create dir %v: %w", newpath, err)
 			}
 			return nil
+		case d.Type() == fs.ModeSymlink:
+			// Create a new symlink at the destination pointing to the same target
+			target, err := os.Readlink(oldpath)
+			if err != nil {
+				return fmt.Errorf("unable to read symlink %v: %w", oldpath, err)
+			}
+			err = os.Symlink(target, newpath)
+			if err != nil {
+				return fmt.Errorf("cannot create symlink %v: %w", newpath, err)
+			}
+			return nil
+		default:
+			err = os.Link(oldpath, newpath)
+			if err != nil {
+				return fmt.Errorf("cannot create link %v: %w", newpath, err)
+			}
+			return nil
 		}
-
-		err = os.Link(oldpath, newpath)
-		if err != nil {
-			return fmt.Errorf("ln %v %v: %w", oldpath, newpath, err)
-		}
-
-		return nil
 	})
 }
 
