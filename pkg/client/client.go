@@ -296,32 +296,36 @@ func (c *Client) Get(ctx context.Context, project int64, prefix string, ignores 
 }
 
 type RebuildResult struct {
-	Version   int64  `json:"version"`
-	Count     uint32 `json:"count"`
-	FileMatch bool   `json:"fileMatch"`
+	Version     int64  `json:"version"`
+	Count       uint32 `json:"count"`
+	CachedCount uint32 `json:"cachedCount"`
+	FileMatch   bool   `json:"fileMatch"`
 }
 
 func emptyResult(version int64) RebuildResult {
 	return RebuildResult{
-		Version:   version,
-		Count:     0,
-		FileMatch: false,
+		Version:     version,
+		Count:       0,
+		CachedCount: 0,
+		FileMatch:   false,
 	}
 }
 
 type rebuildResultTracker struct {
-	version atomic.Int64
-	count   atomic.Uint32
-	match   atomic.Bool
-	matcher *files.FileMatcher
+	version     atomic.Int64
+	count       atomic.Uint32
+	cachedCount atomic.Uint32
+	match       atomic.Bool
+	matcher     *files.FileMatcher
 }
 
 func newResultTracker(matcher *files.FileMatcher) *rebuildResultTracker {
 	tracker := rebuildResultTracker{
-		version: atomic.Int64{},
-		count:   atomic.Uint32{},
-		match:   atomic.Bool{},
-		matcher: matcher,
+		version:     atomic.Int64{},
+		count:       atomic.Uint32{},
+		cachedCount: atomic.Uint32{},
+		match:       atomic.Bool{},
+		matcher:     matcher,
 	}
 
 	tracker.match.Store(true)
@@ -337,8 +341,9 @@ func (t *rebuildResultTracker) checkVersion(version int64) error {
 	return nil
 }
 
-func (t *rebuildResultTracker) add(count uint32, match bool) {
+func (t *rebuildResultTracker) add(count uint32, cachedCount uint32, match bool) {
 	t.count.Add(count)
+	t.cachedCount.Add(cachedCount)
 
 	if count > 0 && !match {
 		t.match.Store(false)
@@ -352,9 +357,10 @@ func (t *rebuildResultTracker) result() RebuildResult {
 	}
 
 	return RebuildResult{
-		Version:   t.version.Load(),
-		Count:     count,
-		FileMatch: t.match.Load(),
+		Version:     t.version.Load(),
+		Count:       count,
+		CachedCount: t.cachedCount.Load(),
+		FileMatch:   t.match.Load(),
 	}
 }
 
@@ -471,13 +477,13 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 					tarReader.FromBytes(response.Bytes)
 
-					count, match, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath, matcher)
+					count, cachedCount, match, err := files.WriteTar(dir, CacheObjectsDir(cacheDir), tarReader, response.PackPath, matcher)
 					if err != nil {
 						cancel()
 						return err
 					}
 
-					tracker.add(count, match)
+					tracker.add(count, cachedCount, match)
 				}
 			}
 		})
@@ -877,7 +883,7 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string, cacheVersion
 						}
 					}
 
-					count, _, err := files.WriteTar(tempDest, CacheObjectsDir(cacheRootDir), tarReader, nil, nil)
+					count, _, _, err := files.WriteTar(tempDest, CacheObjectsDir(cacheRootDir), tarReader, nil, nil)
 					if err != nil {
 						cancel()
 						return err

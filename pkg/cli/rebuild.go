@@ -62,6 +62,7 @@ func NewCmdRebuild() *cobra.Command {
 					key.Directory.Field(dir),
 					key.Version.Field(result.Version),
 					key.DiffCount.Field(result.Count),
+					key.CachedCount.Field(result.CachedCount),
 				)
 			}
 
