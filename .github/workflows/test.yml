@@ -57,7 +57,7 @@ jobs:
       - name: Wait for DateiLager server
         uses: MaximeGoyette/wait-for-it-action@master
         with:
-          host: "[::1]"
+          host: "::1"
           port: 5051
 
       - name: Run fuzz tests
