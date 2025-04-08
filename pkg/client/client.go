@@ -905,11 +905,17 @@ func (c *Client) GetCache(ctx context.Context, cacheRootDir string, cacheVersion
 		return -1, writtenObjectCount.Load(), err
 	}
 
-	versionFile, err := os.OpenFile(cacheVersionPath(cacheRootDir), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
+	versionFile, err := os.OpenFile(cacheVersionPath(cacheRootDir), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
 	if err != nil {
 		return -1, writtenObjectCount.Load(), fmt.Errorf("fs.GetCache cannot open cache versions file for writing: %w", err)
 	}
 	defer versionFile.Close()
+
+	// ensure the version file is readable by everyone else
+	err = os.Chmod(cacheVersionPath(cacheRootDir), 0o644)
+	if err != nil {
+		return -1, writtenObjectCount.Load(), fmt.Errorf("fs.GetCache cannot chmod cache versions file: %w", err)
+	}
 
 	_, err = versionFile.WriteString(fmt.Sprintf("%d\n", cacheVersion))
 	if err != nil {
