@@ -1,18 +1,7 @@
 import { execSync } from "child_process";
-import fs from "fs";
 import path from "path";
 
-//Define interface for package.json structure
-interface PackageJson {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any;
-  name: string;
-  version: string;
-}
-
 const rootDir = path.resolve(__dirname, "..");
-const packagePath = path.join(rootDir, "js", "package.json");
-const defaultNixPath = path.join(rootDir, "default.nix");
 
 // Ensure the git state is clean and the current commit has been pushed
 function ensureGitState(): void {
@@ -23,12 +12,7 @@ function ensureGitState(): void {
     process.exit(1);
   }
 
-  execSync("git diff-index --quiet HEAD", { encoding: "utf8" }).trim();
-  if (status !== "") {
-    console.error("You have unpushed changes");
-    console.error("Please push them before pre-releasing");
-    process.exit(1);
-  }
+  execSync("git push origin HEAD", { encoding: "utf8" }).trim();
 }
 
 // Get the current git commit SHA
@@ -49,60 +33,8 @@ function preReleaseVersion(): string {
   return `0.0.0-pre.${sha}`;
 }
 
-// Read and update package.json
-function updatePackageVersion(version: string): void {
-  try {
-    // Read the package.json file
-    const packageData: string = fs.readFileSync(packagePath, "utf8");
-    const packageJson: PackageJson = JSON.parse(packageData) as PackageJson;
-
-    // Store the original version for logging
-    const originalVersion: string = packageJson.version;
-
-    // Update the version with the git SHA
-    packageJson.version = version;
-
-    // Write the updated package.json back to file
-    fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + "\n", "utf8");
-
-    execSync(`npm install`, { stdio: "inherit", cwd: path.join(rootDir, "js") });
-
-    console.log(`Package version updated from "${originalVersion}" to "${version}"`);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      console.error(`Error: ${packagePath} not found`);
-    } else {
-      console.error("Error updating package.json:", (error as Error).message);
-    }
-    process.exit(1);
-  }
-}
-
-function updateDefaultNixVersion(version: string): void {
-  try {
-    // Read the package.json file
-    const defaultNix: string = fs.readFileSync(defaultNixPath, "utf8");
-    fs.writeFileSync(defaultNixPath, defaultNix.replace(/version = "[0-9.]+(-pre.*)?";/, `version = "${version}";`), "utf8");
-
-    console.log(`Default nix version updated from to "${version}"`);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      console.error(`Error: ${defaultNixPath} not found`);
-    } else {
-      console.error("Error updating package.json:", (error as Error).message);
-    }
-    process.exit(1);
-  }
-}
-
 function buildDockerContainer(versionTag: string): void {
   execSync(`make upload-prerelease-container-image version_tag=${versionTag}`, { stdio: "inherit" });
-}
-
-function gitAdd(version: string): void {
-  execSync(`git add js/package.json js/package-lock.json default.nix`, { stdio: "inherit" });
-  execSync(`git commit -m "Update version to ${version}"`, { stdio: "inherit" });
-  execSync(`git push origin HEAD`, { stdio: "inherit" });
 }
 
 function tagGit(version: string): void {
@@ -115,26 +47,18 @@ function tagGit(version: string): void {
   }
 }
 
-function publishPreReleaseToGithub(): void {
+function publishPreReleaseJsPackageToGithub(): void {
   execSync(`npm run prerelease`, { stdio: "inherit", cwd: path.join(rootDir, "js") });
 }
 
 function doPreRelease(): void {
   ensureGitState();
-  return;
-
   const version = preReleaseVersion();
   console.log(`Running prerelease with version: ${version}`);
 
-  // build and push docker container at prerelease version
-  buildDockerContainer(version);
-
-  // Update the package version and publish to github
-  updatePackageVersion(version);
-  updateDefaultNixVersion(version);
-  gitAdd(version);
-  tagGit(version); // To kick off the prerelease build
-  publishPreReleaseToGithub();
+  buildDockerContainer(version); // build and push docker container with the prerelease version
+  tagGit(version); // tag the current commit and push the tag to run the prerelease github action
+  publishPreReleaseJsPackageToGithub(); // publish the prerelease js package to github
 
   console.log(`Prerelease version ${version} published`);
   console.warn(`The package.json version has been updated and is now ${version}`);
