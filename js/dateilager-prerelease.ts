@@ -1,8 +1,6 @@
 import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import yargs from "yargs";
-import { hideBin } from "yargs/helpers";
 
 //Define interface for package.json structure
 interface PackageJson {
@@ -15,6 +13,23 @@ interface PackageJson {
 const rootDir = path.resolve(__dirname, "..");
 const packagePath = path.join(rootDir, "js", "package.json");
 const defaultNixPath = path.join(rootDir, "default.nix");
+
+// Ensure the git state is clean and the current commit has been pushed
+function ensureGitState(): void {
+  const status = execSync("git status --porcelain", { encoding: "utf8" }).trim();
+  if (status !== "") {
+    console.error("You have uncommitted changes");
+    console.error("Please commit or stash them before pre-releasing");
+    process.exit(1);
+  }
+
+  execSync("git diff-index --quiet HEAD", { encoding: "utf8" }).trim();
+  if (status !== "") {
+    console.error("You have unpushed changes");
+    console.error("Please push them before pre-releasing");
+    process.exit(1);
+  }
+}
 
 // Get the current git commit SHA
 function getGitCommitSha(): string {
@@ -29,9 +44,9 @@ function getGitCommitSha(): string {
   }
 }
 
-function preReleaseVersion(baseVersion: string): string {
+function preReleaseVersion(): string {
   const sha = getGitCommitSha();
-  return `${baseVersion}-pre.${sha}`;
+  return `0.0.0-pre.${sha}`;
 }
 
 // Read and update package.json
@@ -105,20 +120,11 @@ function publishPreReleaseToGithub(): void {
 }
 
 function doPreRelease(): void {
-  console.log(`Running prerelease with version: ${process.argv.toString()}`);
-  const args = yargs(hideBin(process.argv))
-    .option("t", {
-      description: "Version tag to release",
-      type: "string",
-      alias: "version-tag",
-      demandOption: true,
-    })
-    .help().argv;
+  ensureGitState();
+  return;
 
-  console.log(`Running prerelease with version: ${args.t}`);
-
-  const version = preReleaseVersion(args.t);
-  console.log(`Setting prerelease version to: ${version}`);
+  const version = preReleaseVersion();
+  console.log(`Running prerelease with version: ${version}`);
 
   // build and push docker container at prerelease version
   buildDockerContainer(version);

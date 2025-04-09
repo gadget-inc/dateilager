@@ -100,11 +100,7 @@ release: release/migrations.tar.gz
 prerelease: build
 prerelease: build-js
 prerelease:
-ifndef tag
-	$(error tag variable must be set)
-else
-	npx tsx js/dateilager-prerelease.ts -t "$(tag)"
-endif
+	npx tsx js/dateilager-prerelease.ts
 
 prerelease-reset:
 	echo "Resetting js/package.json and default.nix to main, if you have installed packages you want to keep then run with a specific sha"
@@ -315,7 +311,7 @@ build-js: js/dist
 
 k8s:
 	which orb >/dev/null 2>&1; if [ $$? -ne 0 ]; then echo "orb not found"; exit 1; fi
-k8s/start: k8s	
+k8s/start: k8s
 	orb start k8s
 
 k8s/stop: k8s
