@@ -3,7 +3,7 @@ import path from "path";
 
 const rootDir = path.resolve(__dirname, "..");
 
-// Ensure the git state is clean and the current commit has been pushed
+// Ensure the current git state is clean and the current commit has been pushed
 function ensureGitState(): void {
   const status = execSync("git status --porcelain", { encoding: "utf8" }).trim();
   if (status !== "") {
@@ -15,22 +15,9 @@ function ensureGitState(): void {
   execSync("git push origin HEAD", { encoding: "utf8" }).trim();
 }
 
-// Get the current git commit SHA
-function getGitCommitSha(): string {
-  try {
-    // Execute git command to get the current commit SHA
-    const sha: string = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
-    // Return only the first 7 characters
-    return sha.substring(0, 7);
-  } catch (error) {
-    console.error("Error getting git commit SHA:", (error as Error).message);
-    process.exit(1);
-  }
-}
-
 function preReleaseVersion(): string {
-  const sha = getGitCommitSha();
-  return `0.0.0-pre.${sha}`;
+  const gitSha = execSync("git rev-parse --short HEAD", { encoding: "utf8" }).trim();
+  return `0.0.0-pre.${gitSha}`;
 }
 
 function buildDockerContainer(versionTag: string): void {
