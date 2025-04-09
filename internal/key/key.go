@@ -9,13 +9,18 @@ import (
 )
 
 const (
-	CacheVersions     = Int64SliceKey("dl.cache_versions")
+	CachePath         = StringKey("dl.cache_path")
 	CacheVersion      = Int64Key("dl.cache_version")
+	CacheVersions     = Int64SliceKey("dl.cache_versions")
+	CachedCount       = Uint32Key("dl.cached_count")
+	CloneToProject    = Int64Key("dl.clone_to_project")
 	Count             = Int64Key("dl.count")
 	DiffCount         = Uint32Key("dl.diff_count")
 	Directory         = StringKey("dl.directory")
+	DurationMS        = DurationKey("dl.duration_ms")
 	Environment       = StringKey("dl.environment")
 	FromVersion       = Int64pKey("dl.from_version")
+	Ignores           = StringSliceKey("dl.ignores")
 	KeepVersions      = Int64Key("dl.keep_versions")
 	LatestVersion     = Int64Key("dl.latest_version")
 	LiveObjectsCount  = Int64Key("dl.live_objects_count")
@@ -33,18 +38,14 @@ const (
 	Server            = StringKey("dl.server")
 	Socket            = StringKey("dl.socket")
 	State             = StringKey("dl.state")
+	TargetPath        = StringKey("dl.target_path")
 	Template          = Int64pKey("dl.template")
 	ToVersion         = Int64pKey("dl.to_version")
 	TotalObjectsCount = Int64Key("dl.total_objects_count")
 	Version           = Int64Key("dl.version")
+	VolumeID          = StringKey("dl.volume_id")
 	Worker            = IntKey("dl.worker")
 	WorkerCount       = IntKey("dl.worker_count")
-	Ignores           = StringSliceKey("dl.ignores")
-	DurationMS        = DurationKey("dl.duration_ms")
-	CloneToProject    = Int64Key("dl.clone_to_project")
-	CachePath         = StringKey("dl.cache_path")
-	VolumeID          = StringKey("dl.volume_id")
-	TargetPath        = StringKey("dl.target_path")
 )
 
 var ObjectContent = ShortenedStringKey{"dl.object.content", 10}
@@ -158,7 +159,7 @@ func (isk Int64SliceKey) Attribute(value []int64) attribute.KeyValue {
 type DurationKey string
 
 func (dk DurationKey) Field(value time.Duration) zap.Field {
-	return zap.Duration(string(dk), value)
+	return zap.Float64(string(dk), float64(value.Milliseconds()))
 }
 
 func (dk DurationKey) Attribute(value time.Duration) attribute.KeyValue {
