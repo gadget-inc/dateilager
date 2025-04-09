@@ -186,11 +186,7 @@ func loadChunkSizeLimited(ctx context.Context, tx pgx.Tx, lookup *ContentLookup,
 
 type ObjectStream func() (*pb.Object, error)
 
-func GetObjects(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManager *PackManager, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery) (ObjectStream, error) {
-	return GetObjectsSizeLimited(ctx, tx, lookup, packManager, project, vrange, objectQuery, -1)
-}
-
-func GetObjectsSizeLimited(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManager *PackManager, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery, sizeLimit int64) (ObjectStream, error) {
+func GetObjects(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManager *PackManager, project int64, vrange VersionRange, objectQuery *pb.ObjectQuery, sizeLimit int64) (ObjectStream, error) {
 	packParent := packManager.IsPathPacked(objectQuery.Path)
 	originalPath := objectQuery.Path
 	if packParent != nil {

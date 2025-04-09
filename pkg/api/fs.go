@@ -307,7 +307,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 			key.QueryIgnores.Field(query.Ignores),
 		)
 
-		objects, err := db.GetObjects(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query)
+		objects, err := db.GetObjects(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query, -1)
 		if err != nil {
 			return status.Errorf(codes.Internal, "FS get objects: %v", err)
 		}
@@ -484,7 +484,7 @@ func (f *Fs) GetUnary(ctx context.Context, req *pb.GetUnaryRequest) (*pb.GetUnar
 			key.QueryIgnores.Field(query.Ignores),
 		)
 
-		objects, err := db.GetObjectsSizeLimited(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query, maxContentSize)
+		objects, err := db.GetObjects(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query, maxContentSize)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "FS get objects: %v", err)
 		}
@@ -740,7 +740,7 @@ func (f *Fs) Inspect(ctx context.Context, req *pb.InspectRequest) (*pb.InspectRe
 		Path:     "",
 		IsPrefix: true,
 	}
-	objects, err := db.GetObjects(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query)
+	objects, err := db.GetObjects(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query, -1)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "FS get objects: %v", err)
 	}
