@@ -143,11 +143,7 @@ func executeQuery(ctx context.Context, tx pgx.Tx, queryBuilder *queryBuilder) ([
 	return dbObjects, nil
 }
 
-func loadChunk(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, dbObjects []DbObject, startIdx int, chunkSize int) ([]DecodedContent, error) {
-	return loadChunkSizeLimited(ctx, tx, lookup, dbObjects, startIdx, chunkSize, -1)
-}
-
-func loadChunkSizeLimited(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, dbObjects []DbObject, startIdx int, chunkSize int, sizeLimit int64) ([]DecodedContent, error) {
+func loadChunk(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, dbObjects []DbObject, startIdx int, chunkSize int, sizeLimit int64) ([]DecodedContent, error) {
 	hashes := make(map[Hash]LookupParams, chunkSize)
 
 	for idx := 0; idx < chunkSize && idx+startIdx < len(dbObjects); idx++ {
@@ -201,7 +197,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManag
 
 	idx := 0
 	chunkIdx := 0
-	chunk, err := loadChunkSizeLimited(ctx, tx, lookup, dbObjects, idx, chunkSize, sizeLimit)
+	chunk, err := loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize, sizeLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load chunk: %w", err)
 	}
@@ -222,7 +218,7 @@ func GetObjects(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, packManag
 
 		if chunkIdx >= len(chunk) {
 			chunkIdx = 0
-			chunk, err = loadChunkSizeLimited(ctx, tx, lookup, dbObjects, idx, chunkSize, sizeLimit)
+			chunk, err = loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize, sizeLimit)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load chunk: %w", err)
 			}
@@ -271,7 +267,7 @@ func GetTars(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, project int6
 
 	idx := 0
 	chunkIdx := 0
-	chunk, err := loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize)
+	chunk, err := loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize, -1)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load chunk: %w", err)
 	}
@@ -294,7 +290,7 @@ func GetTars(ctx context.Context, tx pgx.Tx, lookup *ContentLookup, project int6
 
 		if chunkIdx >= len(chunk) {
 			chunkIdx = 0
-			chunk, err = loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize)
+			chunk, err = loadChunk(ctx, tx, lookup, dbObjects, idx, chunkSize, -1)
 			if err != nil {
 				tarWriter.Close()
 				return nil, nil, fmt.Errorf("failed to load chunk: %w", err)
