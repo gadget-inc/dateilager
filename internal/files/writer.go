@@ -397,6 +397,14 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 // HasReflinkSupport checks if the given directory supports reflinks.
 // It attempts to create a reflink in the directory and returns true if successful.
 func HasReflinkSupport(dir string) bool {
+	forceReflinks := os.Getenv("FORCE_REFLINKS")
+	if forceReflinks == "never" {
+		return false
+	}
+	if forceReflinks != "" {
+		return true
+	}
+
 	srcFile := filepath.Join(dir, "reflink_test_src")
 	dstFile := filepath.Join(dir, "reflink_test_dst")
 	os.Remove(srcFile)
