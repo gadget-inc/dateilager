@@ -80,7 +80,7 @@ func retryFileErrors[R any](path string, fn retryableFileOperation[R]) (R, error
 	return result, err
 }
 
-func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, header *tar.Header, existingDirs map[string]bool) (bool, error) {
+func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, header *tar.Header, existingDirs map[string]bool, hasReflinkSupport bool) (bool, error) {
 	path := filepath.Join(rootDir, header.Name)
 
 	switch header.Typeflag {
@@ -90,7 +90,11 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 			return false, err
 		}
 		hashHex := hex.EncodeToString(content)
-		return true, HardlinkDir(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
+		if hasReflinkSupport {
+			return true, ReflinkDir(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
+		} else {
+			return true, HardlinkDir(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
+		}
 
 	case tar.TypeReg:
 		dir := filepath.Dir(path)
@@ -248,7 +252,89 @@ func HardlinkDir(olddir, newdir string) error {
 	})
 }
 
-func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, packPath *string, matcher *FileMatcher) (uint32, uint32, bool, error) {
+func ReflinkDir(olddir, newdir string) error {
+	if fileExists(newdir) {
+		err := os.RemoveAll(newdir)
+		if err != nil {
+			return fmt.Errorf("cannot remove existing cached path %v: %w", newdir, err)
+		}
+	}
+
+	rootInfo, err := os.Lstat(olddir)
+	if err != nil {
+		return fmt.Errorf("cannot stat olddir %v: %w", olddir, err)
+	}
+
+	err = os.MkdirAll(newdir, rootInfo.Mode())
+	if err != nil {
+		return fmt.Errorf("cannot create new root dir %v: %w", olddir, err)
+	}
+
+	fastwalkConf := fastwalk.DefaultConfig.Copy()
+	fastwalkConf.Sort = fastwalk.SortDirsFirst
+
+	return fastwalk.Walk(fastwalkConf, olddir, func(oldpath string, d os.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("failed to walk dir: %v, %w", oldpath, err)
+		}
+
+		newpath := filepath.Join(newdir, strings.TrimPrefix(oldpath, olddir))
+
+		// The new "root" already exists so don't recreate it
+		if newpath == newdir {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return fmt.Errorf("unable to get info for %v: %w", oldpath, err)
+		}
+
+		if d.IsDir() {
+			err = os.Mkdir(newpath, info.Mode())
+			if err != nil {
+				return fmt.Errorf("cannot create dir %v: %w", newpath, err)
+			}
+			return nil
+		}
+
+		// For regular files, use reflink
+		if info.Mode().IsRegular() {
+			err = reflinkFile(oldpath, newpath, info.Mode())
+			if err != nil {
+				return fmt.Errorf("reflink %v to %v: %w", oldpath, newpath, err)
+			}
+		} else {
+			// For symlinks and other types, just copy the file
+			err = copyFile(oldpath, newpath, info.Mode())
+			if err != nil {
+				return fmt.Errorf("copy %v to %v: %w", oldpath, newpath, err)
+			}
+		}
+
+		return nil
+	})
+}
+
+// copyFile copies a file from src to dst, preserving metadata
+func copyFile(src, dst string, perm fs.FileMode) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	return err
+}
+
+func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, packPath *string, matcher *FileMatcher, hasReflinkSupport bool) (uint32, uint32, bool, error) {
 	var count uint32
 	var cachedCount uint32
 	dir := finalDir
@@ -279,7 +365,7 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 			fileMatch = false
 		}
 
-		cached, err := writeObject(dir, cacheObjectsDir, reader, header, existingDirs)
+		cached, err := writeObject(dir, cacheObjectsDir, reader, header, existingDirs, hasReflinkSupport)
 		if err != nil {
 			return count, cachedCount, false, err
 		}
@@ -306,4 +392,33 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 	}
 
 	return count, cachedCount, fileMatch, nil
+}
+
+// HasReflinkSupport checks if the given directory supports reflinks.
+// It attempts to create a reflink in the directory and returns true if successful.
+func HasReflinkSupport(dir string) bool {
+	forceReflinks := os.Getenv("FORCE_REFLINKS")
+	if forceReflinks == "never" {
+		return false
+	}
+	if forceReflinks != "" {
+		return true
+	}
+
+	srcFile := filepath.Join(dir, "reflink_test_src")
+	dstFile := filepath.Join(dir, "reflink_test_dst")
+	os.Remove(srcFile)
+	os.Remove(dstFile)
+
+	// Create a test file
+	err := os.WriteFile(srcFile, []byte("test"), 0644)
+	if err != nil {
+		return false
+	}
+	defer os.Remove(srcFile)
+	defer os.Remove(dstFile)
+
+	// Try to create a reflink
+	err = reflinkFile(srcFile, dstFile, 0644)
+	return err == nil
 }
