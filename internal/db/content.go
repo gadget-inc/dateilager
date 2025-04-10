@@ -26,6 +26,11 @@ type Hash struct {
 	H2 [16]byte
 }
 
+type LookupParams struct {
+	IsEncoded  bool
+	IsOversize bool
+}
+
 func HashContent(data []byte) Hash {
 	sha := sha256.Sum256(data)
 	return Hash{
@@ -176,7 +181,7 @@ func NewContentLookup() (*ContentLookup, error) {
 	}, nil
 }
 
-func (cl *ContentLookup) Lookup(ctx context.Context, tx pgx.Tx, hashesToLookup map[Hash]bool) (map[Hash]DecodedContent, error) {
+func (cl *ContentLookup) Lookup(ctx context.Context, tx pgx.Tx, hashesToLookup map[Hash]LookupParams) (map[Hash]DecodedContent, error) {
 	var notFound []Hash
 	contents := make(map[Hash]DecodedContent, len(hashesToLookup))
 
@@ -186,10 +191,13 @@ func (cl *ContentLookup) Lookup(ctx context.Context, tx pgx.Tx, hashesToLookup m
 	}
 	defer decoder.Release()
 
-	for hash, isEncoded := range hashesToLookup {
+	for hash, params := range hashesToLookup {
+		if params.IsOversize {
+			continue
+		}
 		value, found := cl.cache.Get(hash.Hex())
 		if found {
-			if isEncoded {
+			if params.IsEncoded {
 				decoded, err := decoder.Value().Decode(value.(EncodedContent))
 				if err != nil {
 					return nil, fmt.Errorf("cannot decode value from cache %v: %w", hash.Hex(), err)
@@ -225,7 +233,7 @@ func (cl *ContentLookup) Lookup(ctx context.Context, tx pgx.Tx, hashesToLookup m
 			// This is a content addressable cache, any cached value will never be updated
 			cl.cache.Set(hash.Hex(), value, int64(len(value)))
 
-			if hashesToLookup[hash] {
+			if hashesToLookup[hash].IsEncoded {
 				decoded, err := decoder.Value().Decode(value)
 				if err != nil {
 					return nil, fmt.Errorf("cannot decode value from content table %v: %w", hash.Hex(), err)

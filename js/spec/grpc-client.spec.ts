@@ -1,6 +1,5 @@
-import crypto from "crypto";
 import { decodeContent, encodeContent } from "../src";
-import { grpcClient } from "./util";
+import { buildTestFiles, grpcClient } from "./util";
 
 describe("grpc client operations", () => {
   afterEach(async () => {
@@ -28,23 +27,52 @@ describe("grpc client operations", () => {
     const projectId = 1337n;
     await grpcClient.newProject(projectId, []);
 
-    const objects = [];
-    for (let i = 0; i < 20; i++) {
-      const content = crypto.randomBytes(64).toString("hex");
-      objects.push({
-        path: `file-${i}.txt`,
-        mode: 0o755n,
-        content: content,
-        size: BigInt(content.length),
-        deleted: false,
-      });
-    }
-
-    const stream = grpcClient.updateObjects(projectId);
-    await Promise.all(objects.map((object) => stream.send({ ...object, content: encodeContent(object.content) })));
-    await stream.complete();
+    const objects = await buildTestFiles(64, 20, projectId);
 
     const response = await grpcClient.getObjects(projectId, "");
+    const receivedObjects = response.objects
+      .map((object) => ({ ...object, content: decodeContent(object.content) }))
+      .sort((a, b) => {
+        const aNum = parseInt(a.path.split("-")[1]!.slice(0, -4));
+        const bNum = parseInt(b.path.split("-")[1]!.slice(0, -4));
+        return aNum - bNum;
+      });
+
+    expect(receivedObjects).toEqual(objects);
+  });
+
+  it("can create and read multiple objects with content size limit set", async () => {
+    const projectId = 1337n;
+    await grpcClient.newProject(projectId, []);
+
+    const objects = await buildTestFiles(64, 10, projectId);
+
+    const response = await grpcClient.getObjects(projectId, "", undefined, undefined, undefined, 256n);
+    const receivedObjects = response.objects
+      .map((object) => ({ ...object, content: decodeContent(object.content) }))
+      .sort((a, b) => {
+        const aNum = parseInt(a.path.split("-")[1]!.slice(0, -4));
+        const bNum = parseInt(b.path.split("-")[1]!.slice(0, -4));
+        return aNum - bNum;
+      });
+
+    expect(receivedObjects).toEqual(objects);
+  });
+
+  it("doesn't return content for objects over limit with size limit set", async () => {
+    const projectId = 1337n;
+    await grpcClient.newProject(projectId, []);
+
+    const smallObjects = await buildTestFiles(32, 10, projectId);
+    const largeObjects = await buildTestFiles(64, 10, projectId, 10);
+
+    largeObjects.forEach((o) => {
+      o.content = "";
+    });
+
+    const objects = smallObjects.concat(largeObjects);
+
+    const response = await grpcClient.getObjects(projectId, "", undefined, undefined, undefined, 100n);
     const receivedObjects = response.objects
       .map((object) => ({ ...object, content: decodeContent(object.content) }))
       .sort((a, b) => {

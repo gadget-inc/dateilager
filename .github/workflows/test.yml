@@ -52,13 +52,17 @@ jobs:
         run: make setup-local
 
       - name: Start DateiLager server
-        run: make server &
+        run: make server & > server.out
 
       - name: Wait for DateiLager server
-        run: sleep 5
+        run: timeout 20 sh -c 'until nc -z $0 $1; do sleep 1; done' localhost 5051
 
       - name: Run fuzz tests
         run: make test-fuzz
+
+      - name: Get server output
+        if: always()
+        run: cat server.out
 
   test-js:
     runs-on: ubuntu-latest
@@ -82,7 +86,7 @@ jobs:
         run: make server &
 
       - name: Wait for DateiLager server
-        run: sleep 5
+        run: timeout 20 sh -c 'until nc -z $0 $1; do sleep 1; done' localhost 5051
 
       - name: Run JS tests
         run: make test-js

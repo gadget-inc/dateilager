@@ -227,6 +227,7 @@ export class DateiLagerGrpcClient {
    * @param ignores The paths under {@link path} to ignore.
    * @param from    The project version to start from.
    * @param to      The project version to end at.
+   * @param maxSize The maximum file size at which the content of the file is sent for.
    * @returns       All the objects under {@link path}.
    * @example
    * const response = await client.getObjects(1n, "");
@@ -235,7 +236,14 @@ export class DateiLagerGrpcClient {
    *   console.log("[getObjects] content:\n" + object.content);
    * }
    */
-  public async getObjects(project: bigint, path: string, ignores: string[] = [], from?: bigint, to?: bigint): Promise<GetUnaryResponse> {
+  public async getObjects(
+    project: bigint,
+    path: string,
+    ignores: string[] = [],
+    from?: bigint,
+    to?: bigint,
+    maxSize?: bigint
+  ): Promise<GetUnaryResponse> {
     return await trace(
       "dateilager-grpc-client.get-unary",
       {
@@ -245,11 +253,18 @@ export class DateiLagerGrpcClient {
           "dl.ignores": ignores,
           "dl.from_version": String(from),
           "dl.to_version": String(to),
+          "dl.max_content_send_size": String(maxSize),
         },
       },
       async () => {
         const call = this._client.getUnary(
-          { project, fromVersion: from, toVersion: to, queries: [{ path, ignores, isPrefix: true, subpaths: [] }] },
+          {
+            project,
+            fromVersion: from,
+            toVersion: to,
+            queries: [{ path, ignores, isPrefix: true, subpaths: [] }],
+            maxContentSendSize: maxSize,
+          },
           this._rpcOptions()
         );
         return await call.response;
