@@ -285,16 +285,26 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 
 	targetPath := req.GetTargetPath()
 	volumePath := path.Join(targetPath, "..")
+	upperDir := path.Join(volumePath, UPPER_DIR)
+	workDir := path.Join(volumePath, WORK_DIR)
+
+	// Check if we have anything to clean up
+	_, err := os.Stat(upperDir)
+	if err != nil && os.IsNotExist(err) {
+		return &csi.NodeUnpublishVolumeResponse{}, nil
+	}
+	_, err = os.Stat(workDir)
+	if err != nil && os.IsNotExist(err) {
+		return &csi.NodeUnpublishVolumeResponse{}, nil
+	}
 
 	// Unmount the overlay
-	err := execCommand("umount", targetPath)
+	err = execCommand("umount", targetPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmount overlay at %s: %v", targetPath, err)
 	}
 
 	// Clean up upper and work directories from the overlay
-	upperDir := path.Join(volumePath, UPPER_DIR)
-	workDir := path.Join(volumePath, WORK_DIR)
 	if os.Getenv("RUN_WITH_SUDO") != "" {
 		err = execCommand("rm", "-rf", upperDir)
 		if err != nil {

@@ -118,6 +118,13 @@ func TestCachedCSIDriverMountsCache(t *testing.T) {
 		TargetPath: targetDir,
 	})
 	require.NoError(t, err)
+
+	// Make sure calling a second time doesn't error
+	_, err = cached.NodeUnpublishVolume(tc.Context(), &csi.NodeUnpublishVolumeRequest{
+		VolumeId:   "foobar",
+		TargetPath: targetDir,
+	})
+	require.NoError(t, err)
 }
 
 func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
