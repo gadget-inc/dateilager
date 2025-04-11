@@ -195,7 +195,7 @@ docker buildx install
 Then build and push the image:
 
 ```bash
-make upload-container-image version=0.0.x
+make upload-container-image version=v0.0.x
 ```
 
 ### Getting PASETO tokens locally

@@ -245,6 +245,8 @@ upload-container-image:
 ifndef version
 	$(error version variable must be set)
 else
+	# Ensure version starts with 'v' character so images are retained in GCP registry
+	$(if $(filter v%,$(version)),,$(error version $(version) must start with 'v'))
 	docker build --platform linux/arm64,linux/amd64 --push -t us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:$(version) -t us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:latest .
 endif
 
