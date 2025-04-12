@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	Cached_PopulateDiskCache_FullMethodName = "/pb.Cached/PopulateDiskCache"
+	Cached_SpecializePod_FullMethodName     = "/pb.Cached/SpecializePod"
 )
 
 // CachedClient is the client API for Cached service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CachedClient interface {
 	PopulateDiskCache(ctx context.Context, in *PopulateDiskCacheRequest, opts ...grpc.CallOption) (*PopulateDiskCacheResponse, error)
+	SpecializePod(ctx context.Context, in *SpecializePodRequest, opts ...grpc.CallOption) (*SpecializePodResponse, error)
 }
 
 type cachedClient struct {
@@ -47,11 +49,22 @@ func (c *cachedClient) PopulateDiskCache(ctx context.Context, in *PopulateDiskCa
 	return out, nil
 }
 
+func (c *cachedClient) SpecializePod(ctx context.Context, in *SpecializePodRequest, opts ...grpc.CallOption) (*SpecializePodResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SpecializePodResponse)
+	err := c.cc.Invoke(ctx, Cached_SpecializePod_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CachedServer is the server API for Cached service.
 // All implementations must embed UnimplementedCachedServer
 // for forward compatibility.
 type CachedServer interface {
 	PopulateDiskCache(context.Context, *PopulateDiskCacheRequest) (*PopulateDiskCacheResponse, error)
+	SpecializePod(context.Context, *SpecializePodRequest) (*SpecializePodResponse, error)
 	mustEmbedUnimplementedCachedServer()
 }
 
@@ -64,6 +77,9 @@ type UnimplementedCachedServer struct{}
 
 func (UnimplementedCachedServer) PopulateDiskCache(context.Context, *PopulateDiskCacheRequest) (*PopulateDiskCacheResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PopulateDiskCache not implemented")
+}
+func (UnimplementedCachedServer) SpecializePod(context.Context, *SpecializePodRequest) (*SpecializePodResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SpecializePod not implemented")
 }
 func (UnimplementedCachedServer) mustEmbedUnimplementedCachedServer() {}
 func (UnimplementedCachedServer) testEmbeddedByValue()                {}
@@ -104,6 +120,24 @@ func _Cached_PopulateDiskCache_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Cached_SpecializePod_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SpecializePodRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CachedServer).SpecializePod(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Cached_SpecializePod_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CachedServer).SpecializePod(ctx, req.(*SpecializePodRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Cached_ServiceDesc is the grpc.ServiceDesc for Cached service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -114,6 +148,10 @@ var Cached_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PopulateDiskCache",
 			Handler:    _Cached_PopulateDiskCache_Handler,
+		},
+		{
+			MethodName: "SpecializePod",
+			Handler:    _Cached_SpecializePod_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
