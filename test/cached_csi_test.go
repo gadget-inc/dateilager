@@ -13,6 +13,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/cached"
@@ -338,6 +339,67 @@ func TestCachedCSIDriverAppUserSet(t *testing.T) {
 	sysstat := appUser.Sys().(*syscall.Stat_t)
 	require.Equal(t, 1000, int(sysstat.Uid))
 	require.Equal(t, 1000, int(sysstat.Gid))
+}
+
+func TestCachedCSIDriverAssignPod(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 4)
+	writeObject(tc, 1, 1, nil, "a", "a v1")
+	writeObject(tc, 1, 2, i(3), "b", "b v2")
+	writeObject(tc, 1, 3, i(4), "b/c", "b/c v3")
+	writeObject(tc, 1, 3, nil, "b/d", "b/d v3")
+	writeObject(tc, 1, 4, nil, "b/e", "b/e v4")
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	cached, _, close := createTestCachedServer(tc, tmpDir)
+	defer close()
+
+	err := cached.Prepare(tc.Context(), -1)
+	require.NoError(t, err, "cached.Prepare must succeed")
+
+	targetDir := path.Join(tmpDir, "vol-target")
+	podPrebuildDir := path.Join(tmpDir, "pod-prebuild")
+
+	stagingDir := path.Join(tmpDir, "vol-staging-target")
+	_, err = cached.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
+		VolumeId:          "foobar",
+		StagingTargetPath: stagingDir,
+		TargetPath:        targetDir,
+		VolumeCapability:  &csi.VolumeCapability{},
+		VolumeContext: map[string]string{
+			"appUser":  "1000",
+			"appGroup": "1000",
+		},
+	})
+	require.NoError(t, err)
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	dlCacheDir := path.Join(targetDir, "dl_cache")
+
+	// Do the rebuild into the pod prebuild dir to simulate a ready made cache
+	rebuild(tc, c, 1, nil, podPrebuildDir, &dlCacheDir, expectedResponse{
+		version: 4,
+		count:   1,
+	}, nil)
+
+	assignPodRequest := &pb.AssignPodRequest{
+		PodUuid:            "123",
+		ApplicationId:      1,
+		EnvironmentId:      1,
+		EnvironmentVersion: 1,
+		PodVolumePath:      &targetDir,
+		CachePath:          podPrebuildDir,
+	}
+
+	_, err = cached.AssignPod(tc.Context(), assignPodRequest)
+	require.NoError(t, err)
+
 }
 
 func formatFileMode(mode os.FileMode) string {
