@@ -20,7 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	Cached_PopulateDiskCache_FullMethodName = "/pb.Cached/PopulateDiskCache"
-	Cached_SpecializePod_FullMethodName     = "/pb.Cached/SpecializePod"
+	Cached_AssignPod_FullMethodName         = "/pb.Cached/AssignPod"
 )
 
 // CachedClient is the client API for Cached service.
@@ -28,7 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CachedClient interface {
 	PopulateDiskCache(ctx context.Context, in *PopulateDiskCacheRequest, opts ...grpc.CallOption) (*PopulateDiskCacheResponse, error)
-	SpecializePod(ctx context.Context, in *SpecializePodRequest, opts ...grpc.CallOption) (*SpecializePodResponse, error)
+	AssignPod(ctx context.Context, in *AssignPodRequest, opts ...grpc.CallOption) (*AssignPodResponse, error)
 }
 
 type cachedClient struct {
@@ -49,10 +49,10 @@ func (c *cachedClient) PopulateDiskCache(ctx context.Context, in *PopulateDiskCa
 	return out, nil
 }
 
-func (c *cachedClient) SpecializePod(ctx context.Context, in *SpecializePodRequest, opts ...grpc.CallOption) (*SpecializePodResponse, error) {
+func (c *cachedClient) AssignPod(ctx context.Context, in *AssignPodRequest, opts ...grpc.CallOption) (*AssignPodResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SpecializePodResponse)
-	err := c.cc.Invoke(ctx, Cached_SpecializePod_FullMethodName, in, out, cOpts...)
+	out := new(AssignPodResponse)
+	err := c.cc.Invoke(ctx, Cached_AssignPod_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (c *cachedClient) SpecializePod(ctx context.Context, in *SpecializePodReque
 // for forward compatibility.
 type CachedServer interface {
 	PopulateDiskCache(context.Context, *PopulateDiskCacheRequest) (*PopulateDiskCacheResponse, error)
-	SpecializePod(context.Context, *SpecializePodRequest) (*SpecializePodResponse, error)
+	AssignPod(context.Context, *AssignPodRequest) (*AssignPodResponse, error)
 	mustEmbedUnimplementedCachedServer()
 }
 
@@ -78,8 +78,8 @@ type UnimplementedCachedServer struct{}
 func (UnimplementedCachedServer) PopulateDiskCache(context.Context, *PopulateDiskCacheRequest) (*PopulateDiskCacheResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PopulateDiskCache not implemented")
 }
-func (UnimplementedCachedServer) SpecializePod(context.Context, *SpecializePodRequest) (*SpecializePodResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SpecializePod not implemented")
+func (UnimplementedCachedServer) AssignPod(context.Context, *AssignPodRequest) (*AssignPodResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AssignPod not implemented")
 }
 func (UnimplementedCachedServer) mustEmbedUnimplementedCachedServer() {}
 func (UnimplementedCachedServer) testEmbeddedByValue()                {}
@@ -120,20 +120,20 @@ func _Cached_PopulateDiskCache_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Cached_SpecializePod_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SpecializePodRequest)
+func _Cached_AssignPod_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AssignPodRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(CachedServer).SpecializePod(ctx, in)
+		return srv.(CachedServer).AssignPod(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Cached_SpecializePod_FullMethodName,
+		FullMethod: Cached_AssignPod_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CachedServer).SpecializePod(ctx, req.(*SpecializePodRequest))
+		return srv.(CachedServer).AssignPod(ctx, req.(*AssignPodRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -150,8 +150,8 @@ var Cached_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Cached_PopulateDiskCache_Handler,
 		},
 		{
-			MethodName: "SpecializePod",
-			Handler:    _Cached_SpecializePod_Handler,
+			MethodName: "AssignPod",
+			Handler:    _Cached_AssignPod_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -28,11 +28,13 @@ import (
 )
 
 const (
-	DriverName        = "com.gadget.dateilager.cached"
-	CACHE_PATH_SUFFIX = "dl_cache"
-	UPPER_DIR         = "upper"
-	WORK_DIR          = "work"
-	NO_CHANGE_USER    = -1
+	DriverName          = "com.gadget.dateilager.cached"
+	CACHE_PATH_SUFFIX   = "dl_cache"
+	UPPER_DIR           = "upper"
+	WORK_DIR            = "work"
+	NO_CHANGE_USER      = -1
+	POD_LOCAL_DIR       = "/var/lib/kubelet/pods"
+	DEFAULT_VOLUME_NAME = "a"
 )
 
 type Cached struct {
@@ -62,6 +64,56 @@ func (c *Cached) PopulateDiskCache(ctx context.Context, req *pb.PopulateDiskCach
 	}
 
 	return &pb.PopulateDiskCacheResponse{Version: version}, nil
+}
+
+func (c *Cached) AssignPod(ctx context.Context, req *pb.AssignPodRequest) (*pb.AssignPodResponse, error) {
+	podId := req.PodUuid
+	var volumeName string
+	var podVolumePath string
+
+	if req.VolumeName != nil {
+		volumeName = *req.VolumeName
+	} else {
+		volumeName = DEFAULT_VOLUME_NAME
+	}
+
+	if req.PodVolumePath != nil {
+		podVolumePath = *req.PodVolumePath
+	} else {
+		podVolumePath = path.Join(POD_LOCAL_DIR, podId, "volumes", "kubernetes.io~csi", volumeName)
+	}
+	_, err := os.Stat(podVolumePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat pod storage path %s: %v", podVolumePath, err)
+	}
+
+	appDir := path.Join(podVolumePath, "app")
+	nodeModulesDir := path.Join(appDir, "node_modules")
+
+	err = os.MkdirAll(nodeModulesDir, 0o777)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create node_modules directory %s: %v", nodeModulesDir, err)
+	}
+
+	workDir := path.Join(podVolumePath, "work")
+	err = os.MkdirAll(workDir, 0o777)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create work directory %s: %v", workDir, err)
+	}
+
+	upperDir := path.Join(podVolumePath, "upper")
+	err = os.MkdirAll(upperDir, 0o777)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create upper directory %s: %v", upperDir, err)
+	}
+
+	cachePath := req.CachePath
+	err = c.createOverlayDirs(upperDir, workDir, cachePath, podVolumePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create overlay directories: %v", err)
+	}
+
+	return &pb.AssignPodResponse{}, nil
 }
 
 func (c *Cached) GetCachePath() string {
@@ -216,19 +268,9 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, fmt.Errorf("failed to create target path directory %s: %v", targetPath, err)
 	}
 
-	mountArgs := []string{
-		"-t",
-		"overlay",
-		"overlay",
-		"-n",
-		"--options",
-		fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", c.StagingPath, upperdir, workdir),
-		targetPath,
-	}
-
-	err = execCommand("mount", mountArgs...)
+	err = c.createOverlayDirs(upperdir, workdir, c.StagingPath, targetPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to mount overlay: %s", err)
+		return nil, fmt.Errorf("failed to create overlay directories: %v", err)
 	}
 
 	cachePath := path.Join(targetPath, CACHE_PATH_SUFFIX)
@@ -272,6 +314,24 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	logger.Info(ctx, "mounted overlay", key.TargetPath.Field(targetPath), key.Version.Field(version))
 
 	return &csi.NodePublishVolumeResponse{}, nil
+}
+
+func (c *Cached) createOverlayDirs(upperdir, workdir, lowerdir, targetPath string) error {
+	mountArgs := []string{
+		"-t",
+		"overlay",
+		"overlay",
+		"-n",
+		"--options",
+		fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", lowerdir, upperdir, workdir),
+		targetPath,
+	}
+
+	err := execCommand("mount", mountArgs...)
+	if err != nil {
+		return fmt.Errorf("failed to mount overlay: %s", err)
+	}
+	return nil
 }
 
 func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {

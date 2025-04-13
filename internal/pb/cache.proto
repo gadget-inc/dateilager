@@ -6,18 +6,21 @@ option go_package = "github.com/gadget-inc/dateilager/pkg/pb";
 
 service Cached {
   rpc PopulateDiskCache(PopulateDiskCacheRequest) returns (PopulateDiskCacheResponse);
-  rpc SpecializePod(SpecializePodRequest) returns (SpecializePodResponse);
+  rpc AssignPod(AssignPodRequest) returns (AssignPodResponse);
 }
 
 message PopulateDiskCacheRequest { string path = 1; }
 
 message PopulateDiskCacheResponse { int64 version = 1; };
 
-message SpecializePodRequest { 
+message AssignPodRequest { 
   int64 applicationId = 1; 
   int64 environmentId = 2;
   int64 environmentVersion = 3;
   string podUuid = 4;
+  optional string volumeName = 5;
+  optional string podVolumePath = 6; // If provided, we will use this as the volume path for the pod
+  string cachePath = 7; // If provided, we will use this as the cache path for the pod
 }
 
-message SpecializePodResponse { };
+message AssignPodResponse { };

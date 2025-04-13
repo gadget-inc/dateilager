@@ -24,6 +24,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/telemetry"
 	fsdiff_pb "github.com/gadget-inc/fsdiff/pkg/pb"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
@@ -1067,6 +1068,31 @@ func (c *CachedClient) PopulateDiskCache(ctx context.Context, destination string
 	}
 
 	return response.Version, nil
+}
+
+func (c *CachedClient) AssignPod(ctx context.Context, applicationId int64, environmentId int64, environmentVersion int64, podUuid string, volumeName *string) error {
+	ctx, span := telemetry.Start(ctx, "client.assign-pod", trace.WithAttributes(
+		attribute.Int64("application_id", applicationId),
+		attribute.Int64("environment_id", environmentId),
+		attribute.Int64("environment_version", environmentVersion),
+		attribute.String("pod_uuid", podUuid),
+	))
+	defer span.End()
+
+	request := &pb.AssignPodRequest{
+		ApplicationId:      applicationId,
+		EnvironmentId:      environmentId,
+		EnvironmentVersion: environmentVersion,
+		PodUuid:            podUuid,
+		VolumeName:         volumeName,
+	}
+
+	_, err := c.cached.AssignPod(ctx, request)
+	if err != nil {
+		return fmt.Errorf("failed to assign pod %s for app %d and env %d: %w", podUuid, applicationId, environmentId, err)
+	}
+
+	return nil
 }
 
 func (c *CachedClient) Probe(ctx context.Context) (bool, error) {
