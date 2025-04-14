@@ -90,7 +90,7 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 			return false, err
 		}
 		hashHex := hex.EncodeToString(content)
-		return true, HardlinkDir(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
+		return true, Hardlink(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
 
 	case tar.TypeReg:
 		dir := filepath.Dir(path)
@@ -193,59 +193,80 @@ func makeSymlink(oldname, newname string) error {
 	return nil
 }
 
-func HardlinkDir(olddir, newdir string) error {
-	if fileExists(newdir) {
-		err := os.RemoveAll(newdir)
+func Hardlink(oldpath, newpath string) error {
+	if fileExists(newpath) {
+		err := os.RemoveAll(newpath)
 		if err != nil {
-			return fmt.Errorf("cannot remove existing cached path %v: %w", newdir, err)
+			return fmt.Errorf("cannot remove existing path %v: %w", newpath, err)
 		}
 	}
 
-	rootInfo, err := os.Lstat(olddir)
+	info, err := os.Lstat(oldpath)
 	if err != nil {
-		return fmt.Errorf("cannot stat olddir %v: %w", olddir, err)
+		return fmt.Errorf("cannot stat oldpath %v: %w", oldpath, err)
 	}
 
-	err = os.MkdirAll(newdir, rootInfo.Mode())
+	if !info.IsDir() {
+		return hardlink(info, oldpath, newpath)
+	}
+
+	err = os.MkdirAll(newpath, info.Mode())
 	if err != nil {
-		return fmt.Errorf("cannot create new root dir %v: %w", olddir, err)
+		return fmt.Errorf("cannot create root newpath %v: %w", newpath, err)
 	}
 
 	fastwalkConf := fastwalk.DefaultConfig.Copy()
 	fastwalkConf.Sort = fastwalk.SortDirsFirst
 
-	return fastwalk.Walk(fastwalkConf, olddir, func(oldpath string, d os.DirEntry, err error) error {
+	return fastwalk.Walk(fastwalkConf, oldpath, func(oldsubpath string, d os.DirEntry, err error) error {
 		if err != nil {
-			return fmt.Errorf("failed to walk dir: %v, %w", oldpath, err)
+			return fmt.Errorf("failed to walk dir %v: %w", oldsubpath, err)
 		}
 
-		newpath := filepath.Join(newdir, strings.TrimPrefix(oldpath, olddir))
+		newsubpath := filepath.Join(newpath, strings.TrimPrefix(oldsubpath, oldpath))
 
 		// The new "root" already exists so don't recreate it
-		if newpath == newdir {
+		if newsubpath == newpath {
 			return nil
 		}
 
-		if d.IsDir() {
-			info, err := d.Info()
-			if err != nil {
-				return fmt.Errorf("unable to get directory info %v: %w", oldpath, err)
-			}
-
-			err = os.Mkdir(newpath, info.Mode())
-			if err != nil {
-				return fmt.Errorf("cannot create dir %v: %w", newpath, err)
-			}
-			return nil
+		info, err := d.Info()
+		if err != nil {
+			return fmt.Errorf("unable to get info %v: %w", oldsubpath, err)
 		}
 
-		err = os.Link(oldpath, newpath)
+		return hardlink(info, oldsubpath, newsubpath)
+	})
+}
+
+func hardlink(info os.FileInfo, oldpath, newpath string) error {
+	switch {
+	case info.IsDir():
+		// Can't hardlink directories, so just create it
+		err := os.Mkdir(newpath, info.Mode())
+		if err != nil {
+			return fmt.Errorf("mkdir %v: %w", newpath, err)
+		}
+		return nil
+	case info.Mode()&fs.ModeSymlink != 0:
+		// Can't hardlink symlinks that point to non-existent files, so recreate the symlink pointing to the same target
+		target, err := os.Readlink(oldpath)
+		if err != nil {
+			return fmt.Errorf("readlink %v: %w", oldpath, err)
+		}
+		err = os.Symlink(target, newpath)
+		if err != nil {
+			return fmt.Errorf("ln -s %v %v: %w", oldpath, newpath, err)
+		}
+		return nil
+	default:
+		// Hardlink the file
+		err := os.Link(oldpath, newpath)
 		if err != nil {
 			return fmt.Errorf("ln %v %v: %w", oldpath, newpath, err)
 		}
-
 		return nil
-	})
+	}
 }
 
 func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, packPath *string, matcher *FileMatcher) (uint32, uint32, bool, error) {
