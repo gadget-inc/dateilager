@@ -198,6 +198,35 @@ Then build and push the image:
 make upload-container-image version=v0.0.x
 ```
 
+### Pre-release
+
+When you want to test your changes before they've been released - even before they've been merged into `main` - you can create a pre-release.
+
+First, ensure you working directory is clean and the current commit has been pushed.
+
+```bash
+git status
+git push origin HEAD
+```
+
+Then, create a pre-release:
+
+```bash
+make prerelease
+```
+
+This will create a pre-release version named `0.0.0-pre.<git-sha>` and:
+
+1. Build and push the docker image to Gadget's container registry
+2. Tag the current commit with the pre-release version and push the tag to GitHub
+3. Publish the pre-release js package to GitHub
+
+You can then test the pre-release in Gadget's repo using the `update-dateilager.ts` script.
+
+```bash
+development/update-dateilager.ts v0.0.0-pre.<git-sha>
+```
+
 ### Getting PASETO tokens locally
 
 You can sign PASETO tokens locally with this handy online tool: https://token.dev/paseto/. Ensure you use the V2 algorithm in the public mode, and copy the PASTEO public and private key from the `development` folder.
