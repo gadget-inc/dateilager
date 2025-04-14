@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -36,8 +37,8 @@ type Type int
 
 const (
 	bufSize       = 1024 * 1024
-	symlinkMode   = 0755 | int64(fs.ModeSymlink)
-	directoryMode = 0755 | int64(fs.ModeDir)
+	symlinkMode   = 0o755 | int64(fs.ModeSymlink)
+	directoryMode = 0o755 | int64(fs.ModeDir)
 )
 
 const (
@@ -59,6 +60,8 @@ type expectedObject struct {
 type expectedFile struct {
 	content  string
 	fileType Type
+	uid      int
+	gid      int
 }
 
 type expectedResponse struct {
@@ -66,9 +69,7 @@ type expectedResponse struct {
 	count   uint32
 }
 
-var (
-	emptyVersionRange = client.VersionRange{From: nil, To: nil}
-)
+var emptyVersionRange = client.VersionRange{From: nil, To: nil}
 
 func toVersion(to int64) client.VersionRange {
 	return client.VersionRange{From: nil, To: &to}
@@ -162,7 +163,7 @@ func writeObject(tc util.TestCtx, project int64, start int64, stop *int64, path 
 		content = contents[0]
 	}
 
-	writeObjectFull(tc, project, start, stop, path, content, 0755)
+	writeObjectFull(tc, project, start, stop, path, content, 0o755)
 }
 
 func deleteObject(tc util.TestCtx, project int64, start int64, path string) {
@@ -179,14 +180,14 @@ func deleteObject(tc util.TestCtx, project int64, start int64, path string) {
 }
 
 func writeEmptyDir(tc util.TestCtx, project int64, start int64, stop *int64, path string) {
-	mode := fs.FileMode(0755)
+	mode := fs.FileMode(0o755)
 	mode |= fs.ModeDir
 
 	writeObjectFull(tc, project, start, stop, path, "", mode)
 }
 
 func writeSymlink(tc util.TestCtx, project int64, start int64, stop *int64, path, target string) {
-	mode := fs.FileMode(0755)
+	mode := fs.FileMode(0o755)
 	mode |= fs.ModeSymlink
 
 	writeObjectFull(tc, project, start, stop, path, target, mode)
@@ -201,7 +202,7 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 	_, err := conn.Exec(tc.Context(), `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
-	`, project, start, stop, path, hash.H1, hash.H2, 0755, len(contentsTar), true)
+	`, project, start, stop, path, hash.H1, hash.H2, 0o755, len(contentsTar), true)
 	require.NoError(tc.T(), err, "insert object")
 
 	_, err = conn.Exec(tc.Context(), `
@@ -239,7 +240,7 @@ func packObjects(tc util.TestCtx, objects map[string]expectedObject) []byte {
 		info := objects[key]
 		mode := info.mode
 		if mode == 0 {
-			mode = 0755
+			mode = 0o755
 		}
 
 		object := db.NewUncachedTarObject(key, mode, int64(len(info.content)), info.deleted, []byte(info.content))
@@ -268,15 +269,14 @@ func verifyObjects(t *testing.T, objects []*pb.Object, expected map[string]strin
 
 func writeFile(t *testing.T, dir string, path string, content string) {
 	fullPath := filepath.Join(dir, path)
-	err := os.MkdirAll(filepath.Dir(fullPath), 0755)
+	err := os.MkdirAll(filepath.Dir(fullPath), 0o755)
 	require.NoError(t, err, "mkdir %v", filepath.Dir(fullPath))
-	err = os.WriteFile(fullPath, []byte(content), 0755)
+	err = os.WriteFile(fullPath, []byte(content), 0o755)
 	require.NoError(t, err, "write file %v", path)
 }
 
 func emptyTmpDir(t testing.TB) string {
 	dir, err := os.MkdirTemp("", "dateilager_tests_")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,6 +378,14 @@ func verifyDir(t *testing.T, dir string, version int64, files map[string]expecte
 			require.NoError(t, err, "read file %v", path)
 
 			assert.Equal(t, file.content, string(bytes), "content mismatch in %v", name)
+		}
+
+		if file.uid != 0 {
+			assert.Equal(t, file.uid, int(info.Sys().(*syscall.Stat_t).Uid), "uid mismatch in %v", name)
+		}
+
+		if file.gid != 0 {
+			assert.Equal(t, file.gid, int(info.Sys().(*syscall.Stat_t).Gid), "gid mismatch in %v", name)
 		}
 	}
 }
@@ -532,7 +540,7 @@ func newMockUpdateServer(ctx context.Context, project int64, updates map[string]
 	for path, object := range updates {
 		mode := object.mode
 		if mode == 0 {
-			mode = 0755
+			mode = 0o755
 		}
 
 		objects = append(objects, &pb.Object{
