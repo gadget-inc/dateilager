@@ -256,6 +256,9 @@ func TestRebuildWithCache(t *testing.T) {
 	writeProject(tc, 1, 1)
 	ha := writePackedFiles(tc, 1, 1, nil, "pack/a")
 	hb := writePackedFiles(tc, 1, 1, nil, "pack/b")
+	hc := writePackedFiles(tc, 1, 1, nil, "pack/", map[string]expectedObject{ // add packed files without a subdir and a symlink
+		"1link": {content: "./1", mode: symlinkMode},
+	})
 
 	_, err := db.CreateCache(tc.Context(), tc.Connect(), "pack/", 100)
 	require.NoError(t, err)
@@ -274,17 +277,21 @@ func TestRebuildWithCache(t *testing.T) {
 
 	rebuild(tc, c, 1, nil, tmpDir, &cacheDir, expectedResponse{
 		version: 1,
-		count:   2,
+		count:   3,
 	}, nil)
 
 	aCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), ha, "pack/a")
 	bCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), hb, "pack/b")
+	hcCachePath := filepath.Join(client.CacheObjectsDir(cacheDir), hc, "pack")
 
 	verifyDir(t, tmpDir, 1, map[string]expectedFile{
-		"pack/a/1": {content: "pack/a/1 v1"},
-		"pack/a/2": {content: "pack/a/2 v1"},
-		"pack/b/1": {content: "pack/b/1 v1"},
-		"pack/b/2": {content: "pack/b/2 v1"},
+		"pack/a/1":   {content: "pack/a/1 v1"},
+		"pack/a/2":   {content: "pack/a/2 v1"},
+		"pack/b/1":   {content: "pack/b/1 v1"},
+		"pack/b/2":   {content: "pack/b/2 v1"},
+		"pack/1":     {content: "pack/1 v1"},
+		"pack/2":     {content: "pack/2 v1"},
+		"pack/1link": {content: "./1", fileType: typeSymlink},
 	})
 
 	assertFileContent := func(path string, expectedContent string) {
@@ -293,10 +300,18 @@ func TestRebuildWithCache(t *testing.T) {
 		assert.Equal(t, expectedContent, string(content))
 	}
 
+	assertSymlinkTarget := func(path string, expectedTarget string) {
+		target, err := os.Readlink(path)
+		require.NoError(t, err, "error reading symlink %v: %w", path, err)
+		assert.Equal(t, expectedTarget, target)
+	}
+
 	assertFileContent(filepath.Join(aCachePath, "1"), "pack/a/1 v1")
 	assertFileContent(filepath.Join(aCachePath, "2"), "pack/a/2 v1")
 	assertFileContent(filepath.Join(bCachePath, "1"), "pack/b/1 v1")
 	assertFileContent(filepath.Join(bCachePath, "2"), "pack/b/2 v1")
+	assertFileContent(filepath.Join(hcCachePath, "1"), "pack/1 v1")
+	assertSymlinkTarget(filepath.Join(hcCachePath, "1link"), "./1")
 }
 
 func TestRebuildWithInexistantCacheDir(t *testing.T) {

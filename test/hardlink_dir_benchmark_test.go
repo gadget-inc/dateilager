@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHardlinkDir(t *testing.T) {
+func TestHardlink(t *testing.T) {
 	wd, err := os.Getwd()
 	require.NoError(t, err, "os.Getwd() failed")
 
@@ -19,15 +19,15 @@ func TestHardlinkDir(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	copyDir := path.Join(tmpDir, "node_modules")
-	err = files.HardlinkDir(bigDir, copyDir)
-	require.NoError(t, err, "HardlinkDir failed")
+	err = files.Hardlink(bigDir, copyDir)
+	require.NoError(t, err, "Hardlink failed")
 
 	err = CompareDirectories(bigDir, copyDir)
 	require.NoError(t, err, "compareDirectories %s vs %s failed", bigDir, tmpDir)
 }
 
 //go:bench
-func BenchmarkHardlinkDir(b *testing.B) {
+func BenchmarkHardlink(b *testing.B) {
 	wd, err := os.Getwd()
 	if err != nil {
 		b.Error(err)
@@ -42,7 +42,7 @@ func BenchmarkHardlinkDir(b *testing.B) {
 	b.Run("hardlink", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			copyDir := path.Join(tmpDir, "node_modules", fmt.Sprintf("%d", n))
-			err := files.HardlinkDir(bigDir, copyDir)
+			err := files.Hardlink(bigDir, copyDir)
 			b.StopTimer()
 			if err != nil {
 				b.Error(err)

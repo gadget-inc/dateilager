@@ -285,7 +285,7 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 			return nil, fmt.Errorf("failed to unmount overlay at %s: %v", targetPath, err)
 		}
 		// Create a marker file to indicate the target path has been unmounted
-		if err := os.WriteFile(markerFile, []byte{}, 0644); err != nil {
+		if err := os.WriteFile(markerFile, []byte{}, 0o644); err != nil {
 			return nil, fmt.Errorf("failed to create unmount marker file %s: %v", markerFile, err)
 		}
 	}
@@ -389,9 +389,9 @@ func (c *Cached) writeCache(destination string) (int64, error) {
 	}
 
 	if c.reflinkSupport {
-		err = files.ReflinkDir(c.GetCachePath(), destination)
+		err = files.Reflink(c.GetCachePath(), destination)
 	} else {
-		err = files.HardlinkDir(c.GetCachePath(), destination)
+		err = files.Hardlink(c.GetCachePath(), destination)
 	}
 
 	if err != nil {

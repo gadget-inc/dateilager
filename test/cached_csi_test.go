@@ -245,6 +245,13 @@ func TestCachedCSIDriverMountCanDoAFullRebuild(t *testing.T) {
 	writeObject(tc, 1, 3, i(4), "b/c", "b/c v3")
 	writeObject(tc, 1, 3, nil, "b/d", "b/d v3")
 	writeObject(tc, 1, 4, nil, "b/e", "b/e v4")
+	writePackedFiles(tc, 1, 4, nil, "pack/a")
+	writePackedFiles(tc, 1, 4, nil, "pack/b")
+	writePackedFiles(tc, 1, 4, nil, "pack/", map[string]expectedObject{ // add packed files without a subdir and a symlink
+		"1link": {content: "./1", mode: symlinkMode},
+	})
+	_, err := db.CreateCache(tc.Context(), tc.Connect(), "", 100)
+	require.NoError(t, err)
 
 	tmpDir := emptyTmpDir(t)
 	defer os.RemoveAll(tmpDir)
@@ -252,7 +259,7 @@ func TestCachedCSIDriverMountCanDoAFullRebuild(t *testing.T) {
 	cached, _, close := createTestCachedServer(tc, tmpDir)
 	defer close()
 
-	err := cached.Prepare(tc.Context(), -1)
+	err = cached.Prepare(tc.Context(), -1)
 	require.NoError(t, err, "cached.Prepare must succeed")
 
 	targetDir := path.Join(tmpDir, "vol-target")
@@ -281,13 +288,20 @@ func TestCachedCSIDriverMountCanDoAFullRebuild(t *testing.T) {
 
 	rebuild(tc, c, 1, nil, appDir, &dlCacheDir, expectedResponse{
 		version: 4,
-		count:   2,
+		count:   5,
 	}, nil)
 
 	verifyDir(t, appDir, 4, map[string]expectedFile{
-		"a":   {content: "a v1"},
-		"b/d": {content: "b/d v3"},
-		"b/e": {content: "b/e v4"},
+		"a":          {content: "a v1"},
+		"b/d":        {content: "b/d v3"},
+		"b/e":        {content: "b/e v4"},
+		"pack/a/1":   {content: "pack/a/1 v4"},
+		"pack/a/2":   {content: "pack/a/2 v4"},
+		"pack/b/1":   {content: "pack/b/1 v4"},
+		"pack/b/2":   {content: "pack/b/2 v4"},
+		"pack/1":     {content: "pack/1 v4"},
+		"pack/2":     {content: "pack/2 v4"},
+		"pack/1link": {content: "./1", fileType: typeSymlink},
 	})
 }
 
