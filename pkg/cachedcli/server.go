@@ -46,6 +46,8 @@ func NewCacheDaemonCommand() *cobra.Command {
 		stagingPath  string
 		csiSocket    string
 		cacheVersion int64
+		cacheUid     int
+		cacheGid     int
 	)
 
 	cmd := &cobra.Command{
@@ -103,6 +105,8 @@ func NewCacheDaemonCommand() *cobra.Command {
 				Env:         env,
 				Client:      cl,
 				StagingPath: stagingPath,
+				CacheUid:    cacheUid,
+				CacheGid:    cacheGid,
 			}
 
 			logger.Info(ctx, "register Cached")
@@ -180,6 +184,8 @@ func NewCacheDaemonCommand() *cobra.Command {
 	flags.StringVar(&csiSocket, "csi-socket", "", "path for running the Kubernetes CSI Driver interface")
 	flags.StringVar(&stagingPath, "staging-path", "", "path for staging downloaded caches")
 	flags.Int64Var(&cacheVersion, "cache-version", -1, "cache version to use")
+	flags.IntVar(&cacheUid, "cache-uid", -1, "uid for cache files")
+	flags.IntVar(&cacheGid, "cache-gid", -1, "gid for cache files")
 
 	_ = cmd.MarkPersistentFlagRequired("csi-socket")
 	_ = cmd.MarkPersistentFlagRequired("staging-path")
