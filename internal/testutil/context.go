@@ -96,10 +96,25 @@ func (tc *TestCtx) FsApi() *api.Fs {
 	}
 }
 
-func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string) *api.Cached {
-	return &api.Cached{
+func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string, opts ...func(*api.Cached)) *api.Cached {
+	cached := &api.Cached{
 		Env:         environment.Test,
 		Client:      cl,
 		StagingPath: stagingPath,
+		CacheUid:    -1,
+		CacheGid:    -1,
+	}
+
+	for _, opt := range opts {
+		opt(cached)
+	}
+
+	return cached
+}
+
+func WithUidGid(uid, gid int) func(*api.Cached) {
+	return func(c *api.Cached) {
+		c.CacheUid = uid
+		c.CacheGid = gid
 	}
 }
