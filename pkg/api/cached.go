@@ -33,6 +33,7 @@ const (
 	UPPER_DIR         = "upper"
 	WORK_DIR          = "work"
 	NO_CHANGE_USER    = -1
+	UNMOUNT_SENTINEL  = ".target-path-unmounted"
 )
 
 type Cached struct {
@@ -285,31 +286,62 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 
 	targetPath := req.GetTargetPath()
 	volumePath := path.Join(targetPath, "..")
-
-	// Unmount the overlay
-	err := execCommand("umount", targetPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmount overlay at %s: %v", targetPath, err)
-	}
-
-	// Clean up upper and work directories from the overlay
 	upperDir := path.Join(volumePath, UPPER_DIR)
 	workDir := path.Join(volumePath, WORK_DIR)
-	if os.Getenv("RUN_WITH_SUDO") != "" {
-		err = execCommand("rm", "-rf", upperDir)
+
+	// Check if the volume path exists
+	_, err := os.Stat(volumePath)
+	if err != nil && os.IsNotExist(err) {
+		if os.IsNotExist(err) {
+			return &csi.NodeUnpublishVolumeResponse{}, nil // Nothing for us to do
+		}
+		return nil, fmt.Errorf("failed to check volume path %s: %v", volumePath, err)
+	}
+
+	// Check for the unmount sentinel file
+	markerFile := path.Join(targetPath, UNMOUNT_SENTINEL)
+	_, err = os.Stat(markerFile)
+	if err != nil && os.IsNotExist(err) {
+		// Marker file doesn't exist, need to unmount
+		// Unmount the overlay
+		err = execCommand("umount", targetPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to remove directory %s: %s", upperDir, err)
+			return nil, fmt.Errorf("failed to unmount overlay at %s: %v", targetPath, err)
 		}
-		err = execCommand("rm", "-rf", workDir)
-		if err != nil {
-			return nil, fmt.Errorf("failed to remove directory %s: %s", workDir, err)
+		// Create a marker file to indicate the target path has been unmounted
+		if err := os.WriteFile(markerFile, []byte{}, 0644); err != nil {
+			return nil, fmt.Errorf("failed to create unmount marker file %s: %v", markerFile, err)
 		}
-	} else {
-		if err := os.RemoveAll(upperDir); err != nil {
-			return nil, fmt.Errorf("failed to remove directory %s: %s", upperDir, err)
+	}
+
+	// Check if we have anything to clean up
+	_, err = os.Stat(upperDir)
+	if err != nil && !os.IsNotExist(err) { // If we're not sure about the error then let's still try to clean up
+		// Clean up upper directory from the overlay
+		if os.Getenv("RUN_WITH_SUDO") != "" {
+			err = execCommand("rm", "-rf", upperDir)
+			if err != nil {
+				return nil, fmt.Errorf("failed to remove directory %s: %s", upperDir, err)
+			}
+		} else {
+			if err := os.RemoveAll(upperDir); err != nil {
+				return nil, fmt.Errorf("failed to remove directory %s: %s", upperDir, err)
+			}
 		}
-		if err := os.RemoveAll(workDir); err != nil {
-			return nil, fmt.Errorf("failed to remove directory %s: %s", workDir, err)
+	}
+
+	_, err = os.Stat(workDir)
+	if err != nil && !os.IsNotExist(err) {
+		// Clean up work directory from the overlay
+		if os.Getenv("RUN_WITH_SUDO") != "" {
+			err = execCommand("rm", "-rf", workDir)
+			if err != nil {
+				return nil, fmt.Errorf("failed to remove directory %s: %s", workDir, err)
+			}
+		} else {
+			if err := os.RemoveAll(workDir); err != nil {
+				return nil, fmt.Errorf("failed to remove directory %s: %s", workDir, err)
+			}
 		}
 	}
 
