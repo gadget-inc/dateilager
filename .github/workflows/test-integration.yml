@@ -9,9 +9,23 @@ defaults:
     shell: bash -l {0}
 
 jobs:
-  test:
+  test-integration:
+    strategy:
+      matrix:
+        filesystem: [ext4, xfs]
     runs-on: ubuntu-latest
     steps:
+      - name: Setup XFS filesystem
+        if: matrix.filesystem == 'xfs'
+        run: |
+          cd /
+          sudo mkdir -p /mnt/xfs
+          sudo dd if=/dev/zero of=/mnt/xfs.img bs=2G count=10
+          sudo mkfs.xfs /mnt/xfs.img
+          sudo mount -o loop /mnt/xfs.img $GITHUB_WORKSPACE
+          sudo chown $USER:$USER $GITHUB_WORKSPACE
+          findmnt
+
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -26,6 +40,13 @@ jobs:
 
       - name: Build Go binaries
         run: make build
+
+      - name: Use XFS for tmpdirs
+        if: matrix.filesystem == 'xfs'
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/tmp
+          export TMPDIR=$GITHUB_WORKSPACE/tmp
+          echo "TMPDIR=$GITHUB_WORKSPACE/tmp" >> $GITHUB_ENV
 
       - name: Run Go tests
         run: make test-integration

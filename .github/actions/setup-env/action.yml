@@ -18,26 +18,28 @@ runs:
         echo "go_mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
         echo "go_build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
         echo "npm=$(npm config get cache)" >> $GITHUB_OUTPUT
+        echo "go_sum_hash=${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}" >> $GITHUB_OUTPUT
+        echo "npm_lock_hash=${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}" >> $GITHUB_OUTPUT
       shell: bash -l {0}
 
     - name: Cache Go mods
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ${{ steps.cache-paths.outputs.go_mod }}
           ${{ steps.cache-paths.outputs.go_build }}
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        key: ${{ steps.cache-paths.outputs.go_sum_hash }}
         restore-keys: |
-          ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          ${{ steps.cache-paths.outputs.go_sum_hash }}
           ${{ runner.os }}-go-
 
     - name: Cache npm packages
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ${{ steps.cache-paths.outputs.npm }}
-        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        key: ${{ steps.cache-paths.outputs.npm_lock_hash }}
         restore-keys: |
-          ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          ${{ steps.cache-paths.outputs.npm_lock_hash }}
           ${{ runner.os }}-node-
 
     - name: Download Go modules
