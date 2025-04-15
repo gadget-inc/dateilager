@@ -224,7 +224,7 @@ This will create a pre-release version named `0.0.0-pre.<git-sha>` and:
 You can then test the pre-release in Gadget's repo using the `update-dateilager.ts` script.
 
 ```bash
-development/update-dateilager.ts v0.0.0-pre.<git-sha>
+bin/update-dateilager.ts v0.0.0-pre.<git-sha>
 ```
 
 ### Getting PASETO tokens locally
