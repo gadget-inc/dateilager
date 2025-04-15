@@ -189,6 +189,11 @@ func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, formatFileMode(os.FileMode(0o755)), formatFileMode(cacheFileInfo.Mode()&os.ModePerm))
 
+	// the versions file should *not* be writable -- it's managed by the CSI -- it *should* be world readable though so other users know which versions are available
+	versionFileInfo, err := os.Stat(path.Join(targetDir, "dl_cache", "versions"))
+	require.NoError(t, err)
+	require.Equal(t, formatFileMode(os.FileMode(0o644)), formatFileMode(versionFileInfo.Mode()&os.ModePerm))
+
 	// files inside cache dir should *not* be writable -- it's managed by the CSI and must remain pristine
 	cacheFileInfo, err = os.Stat(path.Join(targetDir, fmt.Sprintf("dl_cache/objects/%v/pack/a/1", aHash)))
 	require.NoError(t, err)
