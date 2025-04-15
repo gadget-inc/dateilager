@@ -88,10 +88,13 @@ func Init(ctx context.Context, t Type) func() {
 	)
 
 	return func() {
-		ctx, cancel := context.WithTimeout(ctx, time.Second)
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 		defer cancel()
 
-		_ = traceProvider.Shutdown(ctx)
+		err := traceProvider.Shutdown(ctx)
+		if err != nil {
+			logger.Error(ctx, "failed to shutdown telemetry", zap.Error(err))
+		}
 	}
 }
 
