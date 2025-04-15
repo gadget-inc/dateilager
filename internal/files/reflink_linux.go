@@ -26,7 +26,7 @@ func reflinkFile(source, target string, perm fs.FileMode) error {
 	}
 	defer s.Close()
 
-	d, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY, perm)
+	d, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 	if err != nil {
 		return err
 	}

@@ -91,9 +91,9 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 		}
 		hashHex := hex.EncodeToString(content)
 		if hasReflinkSupport {
-			return true, ReflinkDir(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
+			return true, Reflink(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
 		} else {
-			return true, HardlinkDir(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
+			return true, Hardlink(filepath.Join(cacheObjectsDir, hashHex, header.Name), path)
 		}
 
 	case tar.TypeReg:
@@ -197,141 +197,183 @@ func makeSymlink(oldname, newname string) error {
 	return nil
 }
 
-func HardlinkDir(olddir, newdir string) error {
-	if fileExists(newdir) {
-		err := os.RemoveAll(newdir)
+func Hardlink(oldpath, newpath string) error {
+	if fileExists(newpath) {
+		err := os.RemoveAll(newpath)
 		if err != nil {
-			return fmt.Errorf("cannot remove existing cached path %v: %w", newdir, err)
+			return fmt.Errorf("cannot remove existing path %v: %w", newpath, err)
 		}
 	}
 
-	rootInfo, err := os.Lstat(olddir)
+	info, err := os.Lstat(oldpath)
 	if err != nil {
-		return fmt.Errorf("cannot stat olddir %v: %w", olddir, err)
+		return fmt.Errorf("cannot stat oldpath %v: %w", oldpath, err)
 	}
 
-	err = os.MkdirAll(newdir, rootInfo.Mode())
+	if !info.IsDir() {
+		return hardlink(info, oldpath, newpath)
+	}
+
+	err = os.MkdirAll(newpath, info.Mode())
 	if err != nil {
-		return fmt.Errorf("cannot create new root dir %v: %w", olddir, err)
+		return fmt.Errorf("cannot create root newpath %v: %w", newpath, err)
 	}
 
 	fastwalkConf := fastwalk.DefaultConfig.Copy()
 	fastwalkConf.Sort = fastwalk.SortDirsFirst
 
-	return fastwalk.Walk(fastwalkConf, olddir, func(oldpath string, d os.DirEntry, err error) error {
+	return fastwalk.Walk(fastwalkConf, oldpath, func(oldsubpath string, d os.DirEntry, err error) error {
 		if err != nil {
-			return fmt.Errorf("failed to walk dir: %v, %w", oldpath, err)
+			return fmt.Errorf("failed to walk dir %v: %w", oldsubpath, err)
 		}
 
-		newpath := filepath.Join(newdir, strings.TrimPrefix(oldpath, olddir))
+		newsubpath := filepath.Join(newpath, strings.TrimPrefix(oldsubpath, oldpath))
 
 		// The new "root" already exists so don't recreate it
-		if newpath == newdir {
-			return nil
-		}
-
-		if d.IsDir() {
-			info, err := d.Info()
-			if err != nil {
-				return fmt.Errorf("unable to get directory info %v: %w", oldpath, err)
-			}
-
-			err = os.Mkdir(newpath, info.Mode())
-			if err != nil {
-				return fmt.Errorf("cannot create dir %v: %w", newpath, err)
-			}
-			return nil
-		}
-
-		err = os.Link(oldpath, newpath)
-		if err != nil {
-			return fmt.Errorf("ln %v %v: %w", oldpath, newpath, err)
-		}
-
-		return nil
-	})
-}
-
-func ReflinkDir(olddir, newdir string) error {
-	if fileExists(newdir) {
-		err := os.RemoveAll(newdir)
-		if err != nil {
-			return fmt.Errorf("cannot remove existing cached path %v: %w", newdir, err)
-		}
-	}
-
-	rootInfo, err := os.Lstat(olddir)
-	if err != nil {
-		return fmt.Errorf("cannot stat olddir %v: %w", olddir, err)
-	}
-
-	err = os.MkdirAll(newdir, rootInfo.Mode())
-	if err != nil {
-		return fmt.Errorf("cannot create new root dir %v: %w", olddir, err)
-	}
-
-	fastwalkConf := fastwalk.DefaultConfig.Copy()
-	fastwalkConf.Sort = fastwalk.SortDirsFirst
-
-	return fastwalk.Walk(fastwalkConf, olddir, func(oldpath string, d os.DirEntry, err error) error {
-		if err != nil {
-			return fmt.Errorf("failed to walk dir: %v, %w", oldpath, err)
-		}
-
-		newpath := filepath.Join(newdir, strings.TrimPrefix(oldpath, olddir))
-
-		// The new "root" already exists so don't recreate it
-		if newpath == newdir {
+		if newsubpath == newpath {
 			return nil
 		}
 
 		info, err := d.Info()
 		if err != nil {
-			return fmt.Errorf("unable to get info for %v: %w", oldpath, err)
+			return fmt.Errorf("unable to get info %v: %w", oldsubpath, err)
 		}
 
-		if d.IsDir() {
-			err = os.Mkdir(newpath, info.Mode())
-			if err != nil {
-				return fmt.Errorf("cannot create dir %v: %w", newpath, err)
-			}
+		return hardlink(info, oldsubpath, newsubpath)
+	})
+}
+
+func hardlink(info os.FileInfo, oldpath, newpath string) error {
+	switch {
+	case info.IsDir():
+		// Can't hardlink directories, so recreate it
+		err := os.Mkdir(newpath, info.Mode())
+		if err != nil {
+			return fmt.Errorf("mkdir %v: %w", newpath, err)
+		}
+		return nil
+	case info.Mode()&os.ModeSymlink != 0:
+		// Can't hardlink symlinks, so recreate it
+		target, err := os.Readlink(oldpath)
+		if err != nil {
+			return fmt.Errorf("readlink %v: %w", oldpath, err)
+		}
+		err = os.Symlink(target, newpath)
+		if err != nil {
+			return fmt.Errorf("symlink %v %v: %w", target, newpath, err)
+		}
+		return nil
+	case info.Mode().IsRegular():
+		// Hardlink the file
+		err := os.Link(oldpath, newpath)
+		if err != nil {
+			return fmt.Errorf("ln %v %v: %w", oldpath, newpath, err)
+		}
+		return nil
+	default:
+		// Not a directory, symlink, or regular file, so just copy it
+		return copyFile(oldpath, newpath, info.Mode())
+	}
+}
+
+func Reflink(oldpath, newpath string) error {
+	if fileExists(newpath) {
+		err := os.RemoveAll(newpath)
+		if err != nil {
+			return fmt.Errorf("cannot remove existing path %v: %w", newpath, err)
+		}
+	}
+
+	info, err := os.Lstat(oldpath)
+	if err != nil {
+		return fmt.Errorf("cannot stat oldpath %v: %w", oldpath, err)
+	}
+
+	if !info.IsDir() {
+		return reflink(info, oldpath, newpath)
+	}
+
+	err = os.MkdirAll(newpath, info.Mode())
+	if err != nil {
+		return fmt.Errorf("cannot create root newpath %v: %w", newpath, err)
+	}
+
+	fastwalkConf := fastwalk.DefaultConfig.Copy()
+	fastwalkConf.Sort = fastwalk.SortDirsFirst
+
+	return fastwalk.Walk(fastwalkConf, oldpath, func(oldsubpath string, d os.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("failed to walk dir %v: %w", oldsubpath, err)
+		}
+
+		newsubpath := filepath.Join(newpath, strings.TrimPrefix(oldsubpath, oldpath))
+
+		// The new "root" already exists so don't recreate it
+		if newsubpath == newpath {
 			return nil
 		}
 
-		// For regular files, use reflink
-		if info.Mode().IsRegular() {
-			err = reflinkFile(oldpath, newpath, info.Mode())
-			if err != nil {
-				return fmt.Errorf("reflink %v to %v: %w", oldpath, newpath, err)
-			}
-		} else {
-			// For symlinks and other types, just copy the file
-			err = copyFile(oldpath, newpath, info.Mode())
-			if err != nil {
-				return fmt.Errorf("copy %v to %v: %w", oldpath, newpath, err)
-			}
+		info, err := d.Info()
+		if err != nil {
+			return fmt.Errorf("unable to get info %v: %w", oldsubpath, err)
 		}
 
-		return nil
+		return reflink(info, oldsubpath, newsubpath)
 	})
+}
+
+func reflink(info os.FileInfo, oldpath, newpath string) error {
+	switch {
+	case info.IsDir():
+		// Can't reflink directories, so recreate it
+		err := os.Mkdir(newpath, info.Mode())
+		if err != nil {
+			return fmt.Errorf("mkdir %v: %w", newpath, err)
+		}
+		return nil
+	case info.Mode()&os.ModeSymlink != 0:
+		// Can't reflink symlinks, so recreate it
+		target, err := os.Readlink(oldpath)
+		if err != nil {
+			return fmt.Errorf("readlink %v: %w", oldpath, err)
+		}
+		err = os.Symlink(target, newpath)
+		if err != nil {
+			return fmt.Errorf("symlink %v %v: %w", target, newpath, err)
+		}
+		return nil
+	case info.Mode().IsRegular():
+		// Reflink the file
+		err := reflinkFile(oldpath, newpath, info.Mode())
+		if err != nil {
+			return fmt.Errorf("reflink %v %v: %w", oldpath, newpath, err)
+		}
+		return nil
+	default:
+		// Not a directory, symlink, or regular file, so just copy it
+		return copyFile(oldpath, newpath, info.Mode())
+	}
 }
 
 // copyFile copies a file from src to dst, preserving metadata
 func copyFile(src, dst string, perm fs.FileMode) error {
 	sourceFile, err := os.Open(src)
 	if err != nil {
-		return err
+		return fmt.Errorf("open source file %v: %w", src, err)
 	}
 	defer sourceFile.Close()
 
 	destFile, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, perm)
 	if err != nil {
-		return err
+		return fmt.Errorf("open destination file %v: %w", dst, err)
 	}
 	defer destFile.Close()
 
 	_, err = io.Copy(destFile, sourceFile)
-	return err
+	if err != nil {
+		return fmt.Errorf("copy %v to %v: %w", src, dst, err)
+	}
+	return nil
 }
 
 func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, packPath *string, matcher *FileMatcher, hasReflinkSupport bool) (uint32, uint32, bool, error) {
@@ -411,7 +453,7 @@ func HasReflinkSupport(dir string) bool {
 	os.Remove(dstFile)
 
 	// Create a test file
-	err := os.WriteFile(srcFile, []byte("test"), 0644)
+	err := os.WriteFile(srcFile, []byte("test"), 0o644)
 	if err != nil {
 		return false
 	}
@@ -419,6 +461,6 @@ func HasReflinkSupport(dir string) bool {
 	defer os.Remove(dstFile)
 
 	// Try to create a reflink
-	err = reflinkFile(srcFile, dstFile, 0644)
+	err = reflinkFile(srcFile, dstFile, 0o644)
 	return err == nil
 }

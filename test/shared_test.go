@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -36,8 +37,8 @@ type Type int
 
 const (
 	bufSize       = 1024 * 1024
-	symlinkMode   = 0755 | int64(fs.ModeSymlink)
-	directoryMode = 0755 | int64(fs.ModeDir)
+	symlinkMode   = 0o755 | int64(fs.ModeSymlink)
+	directoryMode = 0o755 | int64(fs.ModeDir)
 )
 
 const (
@@ -59,6 +60,8 @@ type expectedObject struct {
 type expectedFile struct {
 	content  string
 	fileType Type
+	uid      int
+	gid      int
 }
 
 type expectedResponse struct {
@@ -66,9 +69,7 @@ type expectedResponse struct {
 	count   uint32
 }
 
-var (
-	emptyVersionRange = client.VersionRange{From: nil, To: nil}
-)
+var emptyVersionRange = client.VersionRange{From: nil, To: nil}
 
 func toVersion(to int64) client.VersionRange {
 	return client.VersionRange{From: nil, To: &to}
@@ -162,7 +163,7 @@ func writeObject(tc util.TestCtx, project int64, start int64, stop *int64, path 
 		content = contents[0]
 	}
 
-	writeObjectFull(tc, project, start, stop, path, content, 0755)
+	writeObjectFull(tc, project, start, stop, path, content, 0o755)
 }
 
 func deleteObject(tc util.TestCtx, project int64, start int64, path string) {
@@ -179,14 +180,14 @@ func deleteObject(tc util.TestCtx, project int64, start int64, path string) {
 }
 
 func writeEmptyDir(tc util.TestCtx, project int64, start int64, stop *int64, path string) {
-	mode := fs.FileMode(0755)
+	mode := fs.FileMode(0o755)
 	mode |= fs.ModeDir
 
 	writeObjectFull(tc, project, start, stop, path, "", mode)
 }
 
 func writeSymlink(tc util.TestCtx, project int64, start int64, stop *int64, path, target string) {
-	mode := fs.FileMode(0755)
+	mode := fs.FileMode(0o755)
 	mode |= fs.ModeSymlink
 
 	writeObjectFull(tc, project, start, stop, path, target, mode)
@@ -201,7 +202,7 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 	_, err := conn.Exec(tc.Context(), `
 		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
 		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
-	`, project, start, stop, path, hash.H1, hash.H2, 0755, len(contentsTar), true)
+	`, project, start, stop, path, hash.H1, hash.H2, 0, len(contentsTar), true)
 	require.NoError(tc.T(), err, "insert object")
 
 	_, err = conn.Exec(tc.Context(), `
@@ -215,11 +216,19 @@ func writePackedObjects(tc util.TestCtx, project int64, start int64, stop *int64
 	return hash
 }
 
-func writePackedFiles(tc util.TestCtx, project int64, start int64, stop *int64, path string) string {
-	hash := writePackedObjects(tc, project, start, stop, path, map[string]expectedObject{
+func writePackedFiles(tc util.TestCtx, project int64, start int64, stop *int64, path string, extraFiles ...map[string]expectedObject) string {
+	objects := map[string]expectedObject{
 		filepath.Join(path, "1"): {content: fmt.Sprintf("%s v%d", filepath.Join(path, "1"), start)},
 		filepath.Join(path, "2"): {content: fmt.Sprintf("%s v%d", filepath.Join(path, "2"), start)},
-	})
+	}
+
+	for _, extraFiles := range extraFiles {
+		for k, v := range extraFiles {
+			objects[filepath.Join(path, k)] = v
+		}
+	}
+
+	hash := writePackedObjects(tc, project, start, stop, path, objects)
 	return hash.Hex()
 }
 
@@ -239,7 +248,7 @@ func packObjects(tc util.TestCtx, objects map[string]expectedObject) []byte {
 		info := objects[key]
 		mode := info.mode
 		if mode == 0 {
-			mode = 0755
+			mode = 0o755
 		}
 
 		object := db.NewUncachedTarObject(key, mode, int64(len(info.content)), info.deleted, []byte(info.content))
@@ -268,15 +277,14 @@ func verifyObjects(t *testing.T, objects []*pb.Object, expected map[string]strin
 
 func writeFile(t *testing.T, dir string, path string, content string) {
 	fullPath := filepath.Join(dir, path)
-	err := os.MkdirAll(filepath.Dir(fullPath), 0755)
+	err := os.MkdirAll(filepath.Dir(fullPath), 0o755)
 	require.NoError(t, err, "mkdir %v", filepath.Dir(fullPath))
-	err = os.WriteFile(fullPath, []byte(content), 0755)
+	err = os.WriteFile(fullPath, []byte(content), 0o755)
 	require.NoError(t, err, "write file %v", path)
 }
 
 func emptyTmpDir(t testing.TB) string {
 	dir, err := os.MkdirTemp("", "dateilager_tests_")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,6 +386,14 @@ func verifyDir(t *testing.T, dir string, version int64, files map[string]expecte
 			require.NoError(t, err, "read file %v", path)
 
 			assert.Equal(t, file.content, string(bytes), "content mismatch in %v", name)
+		}
+
+		if file.uid != 0 {
+			assert.Equal(t, file.uid, int(info.Sys().(*syscall.Stat_t).Uid), "uid mismatch in %v", name)
+		}
+
+		if file.gid != 0 {
+			assert.Equal(t, file.gid, int(info.Sys().(*syscall.Stat_t).Gid), "gid mismatch in %v", name)
 		}
 	}
 }
@@ -532,7 +548,7 @@ func newMockUpdateServer(ctx context.Context, project int64, updates map[string]
 	for path, object := range updates {
 		mode := object.mode
 		if mode == 0 {
-			mode = 0755
+			mode = 0o755
 		}
 
 		objects = append(objects, &pb.Object{
@@ -792,7 +808,7 @@ func CompareDirectories(dir1, dir2 string) error {
 			if !compareFileInfo(origInfo, info) {
 				return fmt.Errorf("file permissions differ for %s: %o vs %o", relPath, origInfo.Mode()&os.ModePerm, info.Mode()&os.ModePerm)
 			}
-			if equal, err := compareFileContents(filepath.Join(dir1, relPath), filepath.Join(dir2, relPath)); err != nil {
+			if equal, err := compareFileContents(info, filepath.Join(dir1, relPath), filepath.Join(dir2, relPath)); err != nil {
 				return fmt.Errorf("error comparing contents of %s: %v", relPath, err)
 			} else if !equal {
 				return fmt.Errorf("contents differ for %s", relPath)
@@ -818,7 +834,19 @@ func compareFileInfo(info1, info2 os.FileInfo) bool {
 }
 
 // compareFileContents compares the contents of two files.
-func compareFileContents(file1, file2 string) (bool, error) {
+func compareFileContents(info os.FileInfo, file1, file2 string) (bool, error) {
+	if info.Mode()&os.ModeSymlink != 0 {
+		f1Target, err := os.Readlink(file1)
+		if err != nil {
+			return false, err
+		}
+		f2Target, err := os.Readlink(file2)
+		if err != nil {
+			return false, err
+		}
+		return f1Target == f2Target, nil
+	}
+
 	f1, err := os.Open(file1)
 	if err != nil {
 		return false, err
@@ -829,13 +857,6 @@ func compareFileContents(file1, file2 string) (bool, error) {
 		return false, err
 	}
 	defer f2.Close()
-
-	if info1, _ := f1.Stat(); info1.IsDir() {
-		return true, nil // Skip directories in content comparison
-	}
-	if info2, _ := f2.Stat(); info2.IsDir() {
-		return true, nil // Skip directories in content comparison
-	}
 
 	hash1, hash2 := sha256.New(), sha256.New()
 	if _, err := io.Copy(hash1, f1); err != nil {
