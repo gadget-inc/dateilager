@@ -509,7 +509,7 @@ func (f *Fs) GetUnary(ctx context.Context, req *pb.GetUnaryRequest) (*pb.GetUnar
 	return &response, nil
 }
 
-// nolint:gocyclo // we should try to break this one up, but ignoring for now
+//nolint:gocyclo // we should try to break this one up, but ignoring for now
 func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	ctx := stream.Context()
 
