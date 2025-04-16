@@ -509,6 +509,7 @@ func (f *Fs) GetUnary(ctx context.Context, req *pb.GetUnaryRequest) (*pb.GetUnar
 	return &response, nil
 }
 
+//nolint:gocyclo // we should try to break this one up, but ignoring for now
 func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 	ctx := stream.Context()
 
@@ -522,9 +523,6 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return status.Errorf(codes.Unavailable, "FS db connection unavailable: %v", err)
 	}
 	defer close(ctx)
-
-	contentEncoder := db.NewContentEncoder()
-	defer contentEncoder.Close()
 
 	var packManager *db.PackManager
 
@@ -583,6 +581,9 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		return stream.SendAndClose(&pb.UpdateResponse{Version: -1})
 	}
 
+	contentEncoder := db.NewContentEncoder()
+	defer contentEncoder.Close()
+
 	latestVersion := int64(-1)
 	nextVersion := int64(-1)
 	shouldUpdateVersion := false
@@ -599,27 +600,42 @@ func (f *Fs) Update(stream pb.Fs_UpdateServer) error {
 		nextVersion = latestVersion + 1
 		logger.Info(ctx, "FS.Update[Init]", key.Project.Field(project), key.Version.Field(nextVersion))
 
+		var deletedPaths []string
+		var objectsToUpdate []*pb.Object
 		for _, object := range objectBuffer {
-			logger.Debug(ctx, "FS.Update[Object]",
-				key.Project.Field(project),
-				key.Version.Field(nextVersion),
-				key.ObjectPath.Field(object.Path),
-			)
-
 			if object.Deleted {
-				err = db.DeleteObject(ctx, tx, project, nextVersion, object.Path)
-				shouldUpdateVersion = true
+				logger.Debug(ctx, "FS.Delete[Object]",
+					key.Project.Field(project),
+					key.Version.Field(nextVersion),
+					key.ObjectPath.Field(object.Path),
+				)
+				deletedPaths = append(deletedPaths, object.Path)
 			} else {
-				var contentChanged bool
-				contentChanged, err = db.UpdateObject(ctx, tx, f.DbConn, contentEncoder, project, nextVersion, object)
-
-				if contentChanged {
-					shouldUpdateVersion = true
-				}
+				logger.Debug(ctx, "FS.Update[Object]",
+					key.Project.Field(project),
+					key.Version.Field(nextVersion),
+					key.ObjectPath.Field(object.Path),
+				)
+				objectsToUpdate = append(objectsToUpdate, object)
 			}
+		}
 
+		if len(deletedPaths) > 0 {
+			err = db.DeleteObjects(ctx, tx, project, nextVersion, deletedPaths)
 			if err != nil {
 				return status.Errorf(codes.Internal, "FS update: %v", err)
+			}
+			shouldUpdateVersion = true
+		}
+
+		if len(objectsToUpdate) > 0 {
+			contentChanged, err := db.UpdateObjects(ctx, tx, f.DbConn, contentEncoder, project, nextVersion, objectsToUpdate)
+			if err != nil {
+				return status.Errorf(codes.Internal, "FS update: %v", err)
+			}
+
+			if contentChanged {
+				shouldUpdateVersion = true
 			}
 		}
 

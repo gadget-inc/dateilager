@@ -62,6 +62,14 @@ func (d *DbTestConnector) Exec(ctx context.Context, sql string, args ...interfac
 	}
 }
 
+func (d *DbTestConnector) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+	if d.innerTx != nil {
+		return d.innerTx.CopyFrom(ctx, tableName, columnNames, rowSrc)
+	} else {
+		return d.tx.CopyFrom(ctx, tableName, columnNames, rowSrc)
+	}
+}
+
 func (d *DbTestConnector) close(ctx context.Context) {
 	_ = d.tx.Rollback(ctx)
 	d.conn.Close(ctx)
