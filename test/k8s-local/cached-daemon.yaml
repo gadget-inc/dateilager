@@ -61,7 +61,7 @@ spec:
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1
           args:
             - "--csi-address=/csi/csi.sock"
-            - "--kubelet-registration-path=/var/lib/kubelet/plugins/com.gadget.dateilager.cached/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/dev.gadget.dateilager.cached/csi.sock"
             - "--health-port=9809"
           volumeMounts:
             - name: plugin-dir
@@ -81,10 +81,9 @@ spec:
         # a working directory for the two containers to share when registering the CSI
         - name: plugin-dir
           hostPath:
-            path: /var/lib/kubelet/plugins/com.gadget.dateilager.cached
+            path: /var/lib/kubelet/plugins/dev.gadget.dateilager.cached
             type: DirectoryOrCreate
         # the directory for the driver-registrar sidecar container to register our driver with the kubelet
-        #
         - name: registration-dir
           hostPath:
             path: /var/lib/kubelet/plugins_registry/

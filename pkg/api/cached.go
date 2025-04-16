@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	DriverName        = "com.gadget.dateilager.cached"
+	DRIVER_NAME       = "dev.gadget.dateilager.cached"
 	CACHE_PATH_SUFFIX = "dl_cache"
 	UPPER_DIR         = "upper"
 	WORK_DIR          = "work"
@@ -43,10 +43,11 @@ type Cached struct {
 
 	Env environment.Env
 
-	Client      *client.Client
-	StagingPath string
-	CacheUid    int
-	CacheGid    int
+	Client           *client.Client
+	DriverNameSuffix string
+	StagingPath      string
+	CacheUid         int
+	CacheGid         int
 
 	// the current version of the cache on disk
 	currentVersion int64
@@ -111,7 +112,7 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 // GetPluginInfo returns metadata of the plugin
 func (c *Cached) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
 	resp := &csi.GetPluginInfoResponse{
-		Name:          DriverName,
+		Name:          DRIVER_NAME + c.DriverNameSuffix,
 		VendorVersion: version.Version,
 	}
 

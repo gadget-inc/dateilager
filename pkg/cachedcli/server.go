@@ -34,20 +34,21 @@ func NewCacheDaemonCommand() *cobra.Command {
 	)
 
 	var (
-		level        *zapcore.Level
-		encoding     string
-		tracing      bool
-		profilePath  string
-		upstreamHost string
-		upstreamPort uint16
-		healthzPort  uint16
-		timeout      uint
-		headlessHost string
-		stagingPath  string
-		csiSocket    string
-		cacheVersion int64
-		cacheUid     int
-		cacheGid     int
+		level            *zapcore.Level
+		encoding         string
+		tracing          bool
+		profilePath      string
+		upstreamHost     string
+		upstreamPort     uint16
+		healthzPort      uint16
+		timeout          uint
+		headlessHost     string
+		driverNameSuffix string
+		stagingPath      string
+		csiSocket        string
+		cacheVersion     int64
+		cacheUid         int
+		cacheGid         int
 	)
 
 	cmd := &cobra.Command{
@@ -102,11 +103,12 @@ func NewCacheDaemonCommand() *cobra.Command {
 			s := cached.NewServer(ctx)
 
 			cached := &api.Cached{
-				Env:         env,
-				Client:      cl,
-				StagingPath: stagingPath,
-				CacheUid:    cacheUid,
-				CacheGid:    cacheGid,
+				Env:              env,
+				Client:           cl,
+				DriverNameSuffix: driverNameSuffix,
+				StagingPath:      stagingPath,
+				CacheUid:         cacheUid,
+				CacheGid:         cacheGid,
 			}
 
 			logger.Info(ctx, "register Cached")
@@ -182,6 +184,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 	flags.UintVar(&timeout, "timeout", 0, "GRPC client timeout (ms)")
 
 	flags.StringVar(&csiSocket, "csi-socket", "", "path for running the Kubernetes CSI Driver interface")
+	flags.StringVar(&driverNameSuffix, "driver-name-suffix", "", "suffix for the driver name")
 	flags.StringVar(&stagingPath, "staging-path", "", "path for staging downloaded caches")
 	flags.Int64Var(&cacheVersion, "cache-version", -1, "cache version to use")
 	flags.IntVar(&cacheUid, "cache-uid", -1, "uid for cache files")
