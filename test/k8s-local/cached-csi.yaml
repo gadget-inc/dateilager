@@ -2,7 +2,7 @@
 apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
-  name: com.gadget.dateilager.cached
+  name: dev.gadget.dateilager.cached
   labels:
     origin: krane
 spec:

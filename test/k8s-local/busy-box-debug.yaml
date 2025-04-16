@@ -17,7 +17,7 @@ spec:
   volumes:
   - name: gadget
     csi:
-      driver: com.gadget.dateilager.cached
+      driver: dev.gadget.dateilager.cached
       volumeAttributes:
         placeCacheAtPath: "dl_cache"
         mountCache: "true"
