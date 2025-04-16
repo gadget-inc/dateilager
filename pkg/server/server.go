@@ -127,6 +127,10 @@ func (d *DbPoolConnector) Exec(ctx context.Context, sql string, args ...interfac
 	return d.pool.Exec(ctx, sql, args...)
 }
 
+func (d *DbPoolConnector) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rows pgx.CopyFromSource) (int64, error) {
+	return d.pool.CopyFrom(ctx, tableName, columnNames, rows)
+}
+
 type Server struct {
 	Grpc   *grpc.Server
 	Health *health.Server
