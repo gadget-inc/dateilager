@@ -33,7 +33,6 @@ const (
 	UPPER_DIR         = "upper"
 	WORK_DIR          = "work"
 	NO_CHANGE_USER    = -1
-	UNMOUNT_SENTINEL  = ".target-path-unmounted"
 )
 
 type Cached struct {
@@ -175,48 +174,23 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
 	}
 
-	targetPath := req.GetTargetPath()         // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount/
-	volumePath := path.Join(targetPath, "..") // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/
+	targetPath := req.GetTargetPath()                    // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount
+	volumePath := path.Join(targetPath, "..")            // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a
+	upperDir := path.Join(volumePath, UPPER_DIR)         // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/upper
+	workDir := path.Join(volumePath, WORK_DIR)           // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/work
+	cacheDir := path.Join(targetPath, CACHE_PATH_SUFFIX) // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount/dl_cache
 
-	upperdir := path.Join(volumePath, UPPER_DIR)
-	err := os.MkdirAll(upperdir, 0o777)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create overlay upper directory %s: %v", upperdir, err)
+	if err := mkdirAll(upperDir, 0o777); err != nil {
+		return nil, fmt.Errorf("failed to create overlay upper directory %s: %w", upperDir, err)
 	}
 
-	upperInfo, err := os.Stat(upperdir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat overlay upper directory %s: %v", upperdir, err)
-	}
-
-	if upperInfo.Mode()&os.ModePerm != 0o777 {
-		err = os.Chmod(upperdir, 0o777)
-		if err != nil {
-			return nil, fmt.Errorf("failed to change permissions of overlay upper directory %s: %v", upperdir, err)
-		}
-	}
-
-	workdir := path.Join(volumePath, WORK_DIR)
-	err = os.MkdirAll(workdir, 0o777)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create overlay work directory %s: %v", workdir, err)
-	}
-
-	workInfo, err := os.Stat(workdir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat overlay work directory %s: %v", workdir, err)
-	}
-	if workInfo.Mode()&os.ModePerm != 0o777 {
-		err = os.Chmod(workdir, 0o777)
-		if err != nil {
-			return nil, fmt.Errorf("failed to change permissions of overlay work directory %s: %v", workdir, err)
-		}
+	if err := mkdirAll(workDir, 0o777); err != nil {
+		return nil, fmt.Errorf("failed to create overlay work directory %s: %w", workDir, err)
 	}
 
 	// Create the cache directory and make it writable by the pod
-	err = os.MkdirAll(targetPath, 0o777)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create target path directory %s: %v", targetPath, err)
+	if err := os.MkdirAll(targetPath, 0o777); err != nil {
+		return nil, fmt.Errorf("failed to create target path directory %s: %w", targetPath, err)
 	}
 
 	mountArgs := []string{
@@ -225,30 +199,19 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		"overlay",
 		"-n",
 		"--options",
-		fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", c.StagingPath, upperdir, workdir),
+		fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", c.StagingPath, upperDir, workDir),
 		targetPath,
 	}
 
-	err = execCommand("mount", mountArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to mount overlay: %s", err)
+	if err := execCommand("mount", mountArgs...); err != nil {
+		return nil, fmt.Errorf("failed to mount overlay at %s: %w", targetPath, err)
 	}
 
-	cachePath := path.Join(targetPath, CACHE_PATH_SUFFIX) // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount/dl_cache
-	info, err := os.Stat(cachePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat cache path %s, this path should exist in the overlay mount at %s: %v", cachePath, targetPath, err)
-	}
-
-	if info.Mode()&os.ModePerm != 0o755 {
-		err = os.Chmod(cachePath, 0o755)
-		if err != nil {
-			return nil, fmt.Errorf("failed to change permissions of cache path %s: %v", cachePath, err)
-		}
+	if err := mkdirAll(cacheDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create cache path %s: %w", cacheDir, err)
 	}
 
 	logger.Info(ctx, "mounted overlay", key.TargetPath.Field(targetPath), key.Version.Field(c.currentVersion))
-
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
@@ -261,65 +224,41 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Target Path must be provided")
 	}
 
-	targetPath := req.GetTargetPath()
-	volumePath := path.Join(targetPath, "..")
-	upperDir := path.Join(volumePath, UPPER_DIR)
-	workDir := path.Join(volumePath, WORK_DIR)
+	targetPath := req.GetTargetPath()            // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount
+	volumePath := path.Join(targetPath, "..")    // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a
+	upperDir := path.Join(volumePath, UPPER_DIR) // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/upper
+	workDir := path.Join(volumePath, WORK_DIR)   // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/work
 
 	// Check if the volume path exists
 	_, err := os.Stat(volumePath)
-	if err != nil && os.IsNotExist(err) {
+	if err != nil {
 		if os.IsNotExist(err) {
 			return &csi.NodeUnpublishVolumeResponse{}, nil // Nothing for us to do
 		}
-		return nil, fmt.Errorf("failed to check volume path %s: %v", volumePath, err)
+		return nil, fmt.Errorf("failed to stat volume path %s: %w", volumePath, err)
 	}
 
-	// Check for the unmount sentinel file
-	markerFile := path.Join(targetPath, UNMOUNT_SENTINEL)
-	_, err = os.Stat(markerFile)
-	if err != nil && os.IsNotExist(err) {
-		// Marker file doesn't exist, need to unmount
-		// Unmount the overlay
-		err = execCommand("umount", targetPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmount overlay at %s: %v", targetPath, err)
+	// Check if the overlay is mounted
+	err = execCommand("mountpoint", "-q", targetPath)
+	if err == nil {
+		// The overlay is mounted, so we need to unmount it
+		if err := execCommand("umount", targetPath); err != nil {
+			return nil, fmt.Errorf("failed to unmount overlay at %s: %w", targetPath, err)
 		}
-		// Create a marker file to indicate the target path has been unmounted
-		if err := os.WriteFile(markerFile, []byte{}, 0o644); err != nil {
-			return nil, fmt.Errorf("failed to create unmount marker file %s: %v", markerFile, err)
-		}
+	} else if err.Error() != "exit status 32" {
+		// exit status 32 means not mounted, so if it's not 32, then it's an unexpected error
+		// See: https://man7.org/linux/man-pages/man1/mountpoint.1.html
+		return nil, fmt.Errorf("failed to check if overlay at %s is mounted: %w", targetPath, err)
 	}
 
-	// Check if we have anything to clean up
-	_, err = os.Stat(upperDir)
-	if err != nil && !os.IsNotExist(err) { // If we're not sure about the error then let's still try to clean up
-		// Clean up upper directory from the overlay
-		if os.Getenv("RUN_WITH_SUDO") != "" {
-			err = execCommand("rm", "-rf", upperDir)
-			if err != nil {
-				return nil, fmt.Errorf("failed to remove directory %s: %s", upperDir, err)
-			}
-		} else {
-			if err := os.RemoveAll(upperDir); err != nil {
-				return nil, fmt.Errorf("failed to remove directory %s: %s", upperDir, err)
-			}
-		}
+	// Clean up upper directory from the overlay
+	if err := removeAll(upperDir); err != nil {
+		return nil, fmt.Errorf("failed to remove upper directory %s: %w", upperDir, err)
 	}
 
-	_, err = os.Stat(workDir)
-	if err != nil && !os.IsNotExist(err) {
-		// Clean up work directory from the overlay
-		if os.Getenv("RUN_WITH_SUDO") != "" {
-			err = execCommand("rm", "-rf", workDir)
-			if err != nil {
-				return nil, fmt.Errorf("failed to remove directory %s: %s", workDir, err)
-			}
-		} else {
-			if err := os.RemoveAll(workDir); err != nil {
-				return nil, fmt.Errorf("failed to remove directory %s: %s", workDir, err)
-			}
-		}
+	// Clean up work directory from the overlay
+	if err := removeAll(workDir); err != nil {
+		return nil, fmt.Errorf("failed to remove work directory %s: %w", workDir, err)
 	}
 
 	logger.Info(ctx, "volume unpublished and data removed", key.TargetPath.Field(targetPath))
@@ -430,4 +369,30 @@ func execCommand(cmdName string, args ...string) error {
 
 	cmd := exec.Command(cmdName, args...)
 	return cmd.Run()
+}
+
+func mkdirAll(path string, mode os.FileMode) error {
+	if err := os.MkdirAll(path, mode); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", path, err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("failed to stat directory %s: %w", path, err)
+	}
+
+	if info.Mode()&os.ModePerm != mode {
+		if err := os.Chmod(path, mode); err != nil {
+			return fmt.Errorf("failed to change permissions of directory %s: %w", path, err)
+		}
+	}
+
+	return nil
+}
+
+func removeAll(path string) error {
+	if os.Getenv("RUN_WITH_SUDO") != "" {
+		return execCommand("sudo", "rm", "-rf", path)
+	}
+	return os.RemoveAll(path)
 }
