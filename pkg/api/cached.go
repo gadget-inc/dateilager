@@ -239,11 +239,16 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	}
 
 	// Check if the overlay is mounted
-	if err := execCommand("mountpoint", "-q", targetPath); err == nil {
+	err = execCommand("mountpoint", "-q", targetPath)
+	if err == nil {
 		// The overlay is mounted, so we need to unmount it
 		if err := execCommand("umount", targetPath); err != nil {
 			return nil, fmt.Errorf("failed to unmount overlay at %s: %w", targetPath, err)
 		}
+	} else if err.Error() != "exit status 32" {
+		// exit status 32 means not mounted, so if it's not 32, then it's an unexpected error
+		// See: https://man7.org/linux/man-pages/man1/mountpoint.1.html
+		return nil, fmt.Errorf("failed to check if overlay at %s is mounted: %w", targetPath, err)
 	}
 
 	// Clean up upper directory from the overlay
