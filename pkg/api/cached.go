@@ -163,7 +163,7 @@ func (c *Cached) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 // Usually, a CSI driver would return some interesting stuff about the node here for the controller to use to place volumes, but because we're only supporting node local volumes, we return something very basic
 func (c *Cached) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	return &csi.NodeGetInfoResponse{
-		NodeId:            first(os.Getenv("NODE_NAME"), "dev"),
+		NodeId:            first(os.Getenv("NODE_ID"), os.Getenv("NODE_NAME"), os.Getenv("K8S_NODE_NAME"), "dev"),
 		MaxVolumesPerNode: 110,
 	}, nil
 }
@@ -362,11 +362,13 @@ func (c *Cached) writeCache(destination string) (int64, error) {
 	return c.currentVersion, nil
 }
 
-func first(one, two string) string {
-	if one == "" {
-		return two
+func first(ss ...string) string {
+	for _, s := range ss {
+		if s != "" {
+			return s
+		}
 	}
-	return one
+	return ""
 }
 
 func getFolderSize(path string) (int64, error) {
