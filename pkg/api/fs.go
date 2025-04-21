@@ -433,6 +433,10 @@ func (f *Fs) GetUnary(ctx context.Context, req *pb.GetUnaryRequest) (*pb.GetUnar
 		maxContentSize = -1
 	}
 
+	trace.SpanFromContext(ctx).SetAttributes(
+		key.MaxContentSendSize.Attribute(maxContentSize),
+	)
+
 	project, err := requireProjectAuth(ctx)
 	if err != nil {
 		return nil, err

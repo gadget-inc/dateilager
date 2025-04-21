@@ -99,9 +99,13 @@ export interface RebuildResult {
    */
   version: bigint;
   /**
-   * Files updated by the rebuild operation.
+   * Number of files updated by the rebuild operation.
    */
   count: number;
+  /**
+   * Number of packed files copied from the cache during the rebuild operation.
+   */
+  cachedCount: number;
   /**
    * Whether or not the file match was detected.
    */
@@ -230,7 +234,7 @@ export class DateiLagerBinaryClient {
       async () => {
         await fs.mkdir(directory, { recursive: true });
 
-        const args = ["--dir", directory];
+        const args = ["--project", String(project), "--dir", directory];
         if (to) {
           args.push("--to", String(to));
         }
@@ -259,10 +263,9 @@ export class DateiLagerBinaryClient {
           args.push(`--subpaths=${options.subpaths.join(",")}`);
         }
 
-        args.push("--project", String(project), "--dir", directory);
         const result = await this._call("rebuild", args, directory, options);
-        const parsed = JSON.parse(result.stdout) as { version: number; count: number; fileMatch: boolean };
-        return { version: BigInt(parsed.version), count: parsed.count, fileMatch: parsed.fileMatch };
+        const parsed = JSON.parse(result.stdout) as { version: number; count: number; cachedCount: number; fileMatch: boolean };
+        return { version: BigInt(parsed.version), count: parsed.count, cachedCount: parsed.cachedCount, fileMatch: parsed.fileMatch };
       }
     );
   }
@@ -277,10 +280,9 @@ export class DateiLagerBinaryClient {
    */
   public async gcRandomProjects(sample: number, keep: number, from?: number, options?: { timeout?: number }): Promise<GCResult> {
     return await trace(
-      "dateilager-binary-client.gc",
+      "dateilager-binary-client.gc-random-projects",
       {
         attributes: {
-          "db.mode": "random-projects",
           "dl.keep": String(keep),
           "dl.from": String(from),
           "dl.sample": String(sample),
@@ -309,10 +311,9 @@ export class DateiLagerBinaryClient {
    */
   public async gcProject(project: number, keep: number, from?: number, options?: { timeout?: number }): Promise<GCResult> {
     return await trace(
-      "dateilager-binary-client.gc",
+      "dateilager-binary-client.gc-project",
       {
         attributes: {
-          "db.mode": "project",
           "dl.keep": String(keep),
           "dl.from": String(from),
         },
@@ -338,10 +339,9 @@ export class DateiLagerBinaryClient {
    */
   public async gcContents(sample: number, options?: { timeout?: number }): Promise<GCResult> {
     return await trace(
-      "dateilager-binary-client.gc",
+      "dateilager-binary-client.gc-contents",
       {
         attributes: {
-          "db.mode": "contents",
           "dl.sample": String(sample),
         },
       },
