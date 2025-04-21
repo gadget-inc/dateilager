@@ -19,8 +19,10 @@ import (
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/version"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -74,12 +76,17 @@ func (c *Cached) GetCachePath() string {
 
 // Fetch the cache into the staging dir
 func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
+	ctx, span := telemetry.Start(ctx, "cached.prepare", trace.WithAttributes(key.CacheVersion.Attribute(cacheVersion)))
+	defer span.End()
+
 	start := time.Now()
 
 	version, count, err := c.Client.GetCache(ctx, c.GetCachePath(), cacheVersion)
 	if err != nil {
 		return err
 	}
+
+	span.SetAttributes(key.Count.Attribute(int64(count)))
 
 	if c.CacheUid != NO_CHANGE_USER || c.CacheGid != NO_CHANGE_USER {
 		// make the cache owned by the provided uid and gid
@@ -180,6 +187,14 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	workDir := path.Join(volumePath, WORK_DIR)           // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/work
 	cacheDir := path.Join(targetPath, CACHE_PATH_SUFFIX) // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount/dl_cache
 
+	trace.SpanFromContext(ctx).SetAttributes(
+		key.TargetPath.Attribute(targetPath),
+		key.VolumePath.Attribute(volumePath),
+		key.UpperDir.Attribute(upperDir),
+		key.WorkDir.Attribute(workDir),
+		key.CacheDir.Attribute(cacheDir),
+	)
+
 	if err := mkdirAll(upperDir, 0o777); err != nil {
 		return nil, fmt.Errorf("failed to create overlay upper directory %s: %w", upperDir, err)
 	}
@@ -228,6 +243,13 @@ func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	volumePath := path.Join(targetPath, "..")    // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a
 	upperDir := path.Join(volumePath, UPPER_DIR) // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/upper
 	workDir := path.Join(volumePath, WORK_DIR)   // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/work
+
+	trace.SpanFromContext(ctx).SetAttributes(
+		key.TargetPath.Attribute(targetPath),
+		key.VolumePath.Attribute(volumePath),
+		key.UpperDir.Attribute(upperDir),
+		key.WorkDir.Attribute(workDir),
+	)
 
 	// Check if the volume path exists
 	_, err := os.Stat(volumePath)

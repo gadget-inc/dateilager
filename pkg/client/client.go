@@ -194,7 +194,7 @@ func (c *Client) Close() {
 }
 
 func (c *Client) ListProjects(ctx context.Context) ([]*pb.Project, error) {
-	ctx, span := telemetry.Start(ctx, "client.list-projects", trace.WithAttributes())
+	ctx, span := telemetry.Start(ctx, "client.list-projects")
 	defer span.End()
 
 	resp, err := c.fs.ListProjects(ctx, &pb.ListProjectsRequest{})
@@ -370,6 +370,10 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		key.Prefix.Attribute(prefix),
 		key.ToVersion.Attribute(toVersion),
 		key.Directory.Attribute(dir),
+		key.Ignores.Attribute(ignores),
+		key.Subpaths.Attribute(subpaths),
+		key.CacheDir.Attribute(cacheDir),
+		key.Summarize.Attribute(summarize),
 	))
 	defer span.End()
 
@@ -457,6 +461,8 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 	span.SetAttributes(key.WorkerCount.Attribute(workerCount))
 	hasReflinkSupport := files.HasReflinkSupport(cacheDir)
 
+	span.SetAttributes(key.HasReflinkSupport.Attribute(hasReflinkSupport))
+
 	for i := 0; i < workerCount; i++ {
 		// create the attribute here when `i` is different
 		attr := key.Worker.Attribute(i)
@@ -497,6 +503,11 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 
 	result := tracker.result()
 
+	span.SetAttributes(key.Version.Attribute(result.Version))
+	span.SetAttributes(key.Count.Attribute(int64(result.Count)))
+	span.SetAttributes(key.CachedCount.Attribute(result.CachedCount))
+	span.SetAttributes(key.FileMatch.Attribute(result.FileMatch))
+
 	err = WriteVersionFile(dir, result.Version)
 	if err != nil {
 		return emptyResult(fromVersion), err
@@ -516,6 +527,7 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string, subp
 	rootCtx, span := telemetry.Start(rootCtx, "client.update", trace.WithAttributes(
 		key.Project.Attribute(project),
 		key.Directory.Attribute(dir),
+		key.Subpaths.Attribute(subpaths),
 	))
 	defer span.End()
 
@@ -670,6 +682,9 @@ func (c *Client) Update(rootCtx context.Context, project int64, dir string, subp
 
 		toVersion = result.Version
 	}
+
+	span.SetAttributes(key.ToVersion.Attribute(&toVersion))
+	span.SetAttributes(key.Count.Attribute(int64(updateCount)))
 
 	return toVersion, updateCount, nil
 }
