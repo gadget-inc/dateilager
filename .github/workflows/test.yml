@@ -21,7 +21,7 @@ jobs:
           cd /
           sudo mkdir -p /mnt/xfs
           sudo dd if=/dev/zero of=/mnt/xfs.img bs=2G count=10
-          sudo mkfs.xfs /mnt/xfs.img
+          sudo mkfs.xfs -m reflink=1 /mnt/xfs.img
           sudo mount -o loop /mnt/xfs.img $GITHUB_WORKSPACE
           sudo chown $USER:$USER $GITHUB_WORKSPACE
           findmnt
@@ -32,12 +32,8 @@ jobs:
       - name: Setup development environment
         uses: ./.github/actions/setup-env
 
-
       - name: Start background services
         run: dev &
-      
-      - name: Install js modules for HardLink tests
-        run: make install-js
 
       - name: Build Go binaries
         run: make build
@@ -48,9 +44,15 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/tmp
           export TMPDIR=$GITHUB_WORKSPACE/tmp
           echo "TMPDIR=$GITHUB_WORKSPACE/tmp" >> $GITHUB_ENV
+          echo "FORCE_REFLINKS=always" >> $GITHUB_ENV
 
       - name: Run Go tests
         run: make test
+
+      - name: Run Go benchmarks
+        run: make bench
+        env:
+          DL_OVERLAY_BENCH: true
 
   test-fuzz:
     runs-on: ubuntu-latest
@@ -63,7 +65,7 @@ jobs:
 
       - name: Start background services
         run: dev &
-      
+
       - name: Install js modules for HardLink tests
         run: make install-js
 

@@ -1,7 +1,9 @@
 package test
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"testing"
 
@@ -18,10 +20,10 @@ func TestDirOperations(t *testing.T) {
 
 	// Only add Reflink to operations if reflinks are supported
 	tmpDir := emptyTmpDir(t)
-	defer os.RemoveAll(tmpDir)
 	if files.HasReflinkSupport(tmpDir) {
 		operations["Reflink"] = files.Reflink
 	}
+	os.RemoveAll(tmpDir)
 
 	for name, op := range operations {
 		t.Run(name, func(t *testing.T) {
@@ -123,37 +125,134 @@ func TestDirOperations(t *testing.T) {
 				err = CompareDirectories(srcDir, dstDir)
 				require.NoError(t, err, "compareDirectories failed")
 			})
+
+			t.Run("WithSymlink", func(t *testing.T) {
+				tmpDir := emptyTmpDir(t)
+				defer os.RemoveAll(tmpDir)
+
+				// Create source directory with a symlink
+				srcDir := path.Join(tmpDir, "src")
+				err := os.MkdirAll(srcDir, 0o755)
+				require.NoError(t, err, "failed to create source directory")
+
+				err = os.WriteFile(path.Join(srcDir, "test.txt"), []byte("test content"), 0o644)
+				require.NoError(t, err, "failed to create test file")
+
+				err = os.Symlink(path.Join(srcDir, "test.txt"), path.Join(srcDir, "link.txt"))
+				require.NoError(t, err, "failed to create symlink")
+
+				err = os.Symlink(path.Join(srcDir, "link.txt"), path.Join(srcDir, "link2.txt"))
+				require.NoError(t, err, "failed to create symlink")
+
+				err = os.Symlink(path.Join(srcDir, "does_not_exist.txt"), path.Join(srcDir, "link3.txt"))
+				require.NoError(t, err, "failed to create symlink")
+
+				// Create destination directory
+				dstDir := path.Join(tmpDir, "dst")
+				err = op(srcDir, dstDir)
+				require.NoError(t, err, "%s failed", name)
+
+				// Verify the directories match
+				err = CompareDirectories(srcDir, dstDir)
+				require.NoError(t, err, "compareDirectories failed")
+			})
+
+			t.Run("NodeModules", func(t *testing.T) {
+				stagingDir := cachedStagingDir(t)                                   // tmp/dateilager_cached
+				cachedNodeModules := path.Join(stagingDir, "dl_cache/node_modules") // tmp/dateilager_cached/dl_cache/node_modules
+				tmpDir := emptyTmpDir(t)                                            // tmp/test/dateilager_test_<random>
+				targetNodeModules := path.Join(tmpDir, "node_modules")              // tmp/test/dateilager_test_<random>/node_modules
+				defer os.RemoveAll(tmpDir)
+
+				err := op(cachedNodeModules, targetNodeModules)
+				require.NoError(t, err, "%s failed", name)
+
+				err = CompareDirectories(cachedNodeModules, targetNodeModules)
+				require.NoError(t, err, "compareDirectories %s vs %s failed", cachedNodeModules, tmpDir)
+			})
 		})
+	}
+}
 
-		t.Run("WithSymlink", func(t *testing.T) {
-			tmpDir := emptyTmpDir(t)
-			defer os.RemoveAll(tmpDir)
+func BenchmarkDirOperations(b *testing.B) {
+	operations := map[string]dirOperation{
+		"Hardlink": files.Hardlink,
+	}
 
-			// Create source directory with a symlink
-			srcDir := path.Join(tmpDir, "src")
-			err := os.MkdirAll(srcDir, 0o755)
-			require.NoError(t, err, "failed to create source directory")
+	// Only add Reflink to operations if reflinks are supported
+	tmpDir := emptyTmpDir(b)
+	if files.HasReflinkSupport(tmpDir) {
+		operations["Reflink"] = files.Reflink
+	}
+	os.RemoveAll(tmpDir)
 
-			err = os.WriteFile(path.Join(srcDir, "test.txt"), []byte("test content"), 0o644)
-			require.NoError(t, err, "failed to create test file")
+	stagingDir := cachedStagingDir(b)                                   // tmp/dateilager_cached
+	cachedNodeModules := path.Join(stagingDir, "dl_cache/node_modules") // tmp/dateilager_cached/dl_cache/node_modules
 
-			err = os.Symlink(path.Join(srcDir, "test.txt"), path.Join(srcDir, "link.txt"))
-			require.NoError(t, err, "failed to create symlink")
+	for name, op := range operations {
+		b.Run(name, func(b *testing.B) {
+			b.Run("Normal", func(b *testing.B) {
+				tmpDir := emptyBenchDir(b) // tmp/bench/dateilager_bench_<random>
+				defer os.RemoveAll(tmpDir)
 
-			err = os.Symlink(path.Join(srcDir, "link.txt"), path.Join(srcDir, "link2.txt"))
-			require.NoError(t, err, "failed to create symlink")
+				b.ResetTimer()
+				for n := 0; n < b.N; n++ {
+					targetNodeModules := path.Join(tmpDir, fmt.Sprintf("app/%d/node_modules", n)) // tmp/bench/dateilager_bench_<random>/app/<n>/node_modules
+					err := op(cachedNodeModules, targetNodeModules)
+					b.StopTimer()
+					require.NoError(b, err, "%s failed", name)
 
-			err = os.Symlink(path.Join(srcDir, "does_not_exist.txt"), path.Join(srcDir, "link3.txt"))
-			require.NoError(t, err, "failed to create symlink")
+					err = CompareDirectories(cachedNodeModules, targetNodeModules)
+					require.NoError(b, err, "compareDirectories %s vs %s failed", cachedNodeModules, tmpDir)
+					b.StartTimer()
+				}
+			})
 
-			// Create destination directory
-			dstDir := path.Join(tmpDir, "dst")
-			err = op(srcDir, dstDir)
-			require.NoError(t, err, "%s failed", name)
+			b.Run("Overlay", func(b *testing.B) {
+				if os.Getenv("DL_OVERLAY_BENCH") != "true" {
+					b.Skip("DL_OVERLAY_BENCH is not set")
+				}
 
-			// Verify the directories match
-			err = CompareDirectories(srcDir, dstDir)
-			require.NoError(t, err, "compareDirectories failed")
+				tmpDir := emptyBenchDir(b)                               // tmp/bench/dateilager_bench_<random>
+				upperDir := path.Join(tmpDir, "upper")                   // tmp/bench/dateilager_bench_<random>/upper
+				workDir := path.Join(tmpDir, "work")                     // tmp/bench/dateilager_bench_<random>/work
+				targetPath := path.Join(tmpDir, "gadget")                // tmp/bench/dateilager_bench_<random>/gadget
+				cacheDir := path.Join(targetPath, "dl_cache")            // tmp/bench/dateilager_bench_<random>/gadget/dl_cache
+				cachedNodeModules := path.Join(cacheDir, "node_modules") // tmp/bench/dateilager_bench_<random>/gadget/dl_cache/node_modules
+				defer os.RemoveAll(tmpDir)
+
+				mkdirAll(b, upperDir, 0o777)
+				defer os.RemoveAll(upperDir)
+
+				mkdirAll(b, workDir, 0o777)
+				defer os.RemoveAll(workDir)
+
+				err := os.MkdirAll(targetPath, 0o777)
+				require.NoError(b, err, "failed to create target path")
+				defer os.RemoveAll(targetPath)
+
+				err = exec.Command("sudo", "mount", "-t", "overlay", "overlay", "-n", "--options", fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", stagingDir, upperDir, workDir), targetPath).Run()
+				require.NoError(b, err, "mount failed")
+
+				defer func() {
+					err := exec.Command("sudo", "umount", targetPath).Run()
+					require.NoError(b, err, "umount failed")
+				}()
+
+				mkdirAll(b, cacheDir, 0o755)
+
+				b.ResetTimer()
+				for n := 0; n < b.N; n++ {
+					targetNodeModules := path.Join(targetPath, fmt.Sprintf("app/%d/node_modules", n)) // tmp/bench/dateilager_bench_<random>/gadget/app/<n>/node_modules
+					err := op(cachedNodeModules, targetNodeModules)
+					b.StopTimer()
+					require.NoError(b, err, "%s failed", name)
+
+					err = CompareDirectories(cachedNodeModules, targetNodeModules)
+					require.NoError(b, err, "compareDirectories %s vs %s failed", cachedNodeModules, tmpDir)
+					b.StartTimer()
+				}
+			})
 		})
 	}
 }

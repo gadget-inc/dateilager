@@ -10,9 +10,12 @@ import (
 	"io/fs"
 	"net"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -283,24 +286,153 @@ func writeFile(t *testing.T, dir string, path string, content string) {
 	require.NoError(t, err, "write file %v", path)
 }
 
-func emptyTmpDir(t testing.TB) string {
-	dir, err := os.MkdirTemp("", "dateilager_tests_")
-	if err != nil {
-		t.Fatal(err)
+func mkdirAll(t testing.TB, path string, mode os.FileMode) {
+	if err := os.MkdirAll(path, mode); err != nil {
+		t.Fatalf("failed to create directory %s: %v", path, err)
 	}
 
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("failed to stat directory %s: %v", path, err)
+	}
+
+	if info.Mode()&os.ModePerm != mode {
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatalf("failed to change permissions of directory %s: %v", path, err)
+		}
+	}
+}
+
+var (
+	cachedWorkspaceDir     string
+	cachedWorkspaceDirOnce sync.Once
+)
+
+// workspaceDir returns the root directory of the git repository.
+func workspaceDir(t testing.TB) string {
+	cachedWorkspaceDirOnce.Do(func() {
+		s, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+		require.NoError(t, err, "git rev-parse --show-toplevel failed")
+		cachedWorkspaceDir = strings.TrimSpace(string(s))
+	})
+	return cachedWorkspaceDir
+}
+
+// emptyTmpDir returns a temporary directory for testing. (e.g. tmp/test/dateilager_test_<random>)
+func emptyTmpDir(t testing.TB) string {
+	wd := workspaceDir(t)
+	mkdirAll(t, path.Join(wd, "tmp/test"), 0o755)
+	dir, err := os.MkdirTemp(path.Join(wd, "tmp/test"), "dateilager_test_")
+	require.NoError(t, err, "failed to create tmp dir")
 	return dir
 }
 
+// emptyBenchDir returns a temporary directory for benchmarking. (e.g. tmp/bench/dateilager_bench_<random>)
+func emptyBenchDir(b *testing.B) string {
+	wd := workspaceDir(b)
+	mkdirAll(b, path.Join(wd, "tmp/bench"), 0o755)
+	dir, err := os.MkdirTemp(path.Join(wd, "tmp/bench"), "dateilager_bench_")
+	require.NoError(b, err, "failed to create tmp dir")
+	return dir
+}
+
+// cachedStagingDir returns a directory similar to the staging directory used by the cached csi driver.
+//
+// The directory contains a dl_cache directory with a large node_modules directory inside it.
+// The layout is as follows:
+//
+//	tmp/dateilager_cached/
+//	├── dl_cache/
+//	│   ├── package.json
+//	│   └── package-lock.json
+//	│   └── node_modules/
+//	│       ├── react/
+//	│       ├── react-dom/
+//	│       └── ... (many more)
+func cachedStagingDir(t testing.TB) string {
+	wd := workspaceDir(t)
+	stagingDir := path.Join(wd, "tmp/dateilager_cached")
+	mkdirAll(t, path.Join(stagingDir, "dl_cache"), 0o755)
+
+	err := os.WriteFile(path.Join(stagingDir, "dl_cache/package.json"), []byte(`{
+  "name": "bigdir",
+  "version": "1.0.0",
+  "description": "A big directory",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@swc/cli": "*",
+    "@swc/core": "*",
+    "@swc/wasm": "*",
+    "@swc/jest": "*",
+    "@swc/helpers": "*",
+    "@gadgetinc/react": "*",
+    "@mdxeditor/editor": "*",
+    "@radix-ui/react-accordion": "*",
+    "@radix-ui/react-avatar": "*",
+    "@radix-ui/react-checkbox": "*",
+    "@radix-ui/react-dialog": "*",
+    "@radix-ui/react-dropdown-menu": "*",
+    "@radix-ui/react-label": "*",
+    "@radix-ui/react-popover": "*",
+    "@radix-ui/react-progress": "*",
+    "@radix-ui/react-radio-group": "*",
+    "@radix-ui/react-scroll-area": "*",
+    "@radix-ui/react-select": "*",
+    "@radix-ui/react-separator": "*",
+    "@radix-ui/react-slot": "*",
+    "@radix-ui/react-tabs": "*",
+    "@radix-ui/react-tooltip": "*",
+    "@react-router/dev": "*",
+    "@react-router/fs-routes": "*",
+    "@react-router/node": "*",
+    "@react-router/serve": "*",
+    "@types/node": "*",
+    "@types/react": "*",
+    "@types/react-dom": "*",
+    "autoprefixer": "*",
+    "class-variance-authority": "*",
+    "clsx": "*",
+    "cmdk": "*",
+    "date-fns": "*",
+    "ggt": "*",
+    "isbot": "*",
+    "lucide-react": "*",
+    "postcss": "*",
+    "prettier": "*",
+    "prettier-plugin-organize-imports": "*",
+    "prettier-plugin-packagejson": "*",
+    "react": "*",
+    "react-day-picker": "*",
+    "react-dom": "*",
+    "react-router": "*",
+    "sonner": "*",
+    "tailwind-merge": "*",
+    "tailwindcss": "*",
+    "tailwindcss-animate": "*",
+    "typescript": "*",
+    "vite": "*"
+  }
+}`), 0o644)
+	require.NoError(t, err, "failed to write package.json")
+
+	cmd := exec.Command("npm", "install")
+	cmd.Dir = path.Join(stagingDir, "dl_cache")
+	require.NoError(t, cmd.Run(), "npm install failed")
+
+	return stagingDir
+}
+
 func writeTmpFiles(t *testing.T, version int64, files map[string]string) string {
-	dir, err := os.MkdirTemp("", "dateilager_tests_")
-	require.NoError(t, err, "create temp dir")
+	dir := emptyTmpDir(t)
 
 	for name, content := range files {
 		writeFile(t, dir, name, content)
 	}
 
-	err = client.WriteVersionFile(dir, version)
+	err := client.WriteVersionFile(dir, version)
 	require.NoError(t, err, "write version file")
 
 	_, err = client.DiffAndSummarize(context.Background(), dir)
