@@ -34,7 +34,7 @@ jobs:
 
       - name: Start background services
         run: dev &
-      
+
       - name: Install js modules for HardLink tests
         run: make install-js
 
@@ -47,6 +47,7 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/tmp
           export TMPDIR=$GITHUB_WORKSPACE/tmp
           echo "TMPDIR=$GITHUB_WORKSPACE/tmp" >> $GITHUB_ENV
+          echo "FORCE_REFLINKS=always" >> $GITHUB_ENV
 
       - name: Run Go tests
         run: make test-integration

@@ -449,18 +449,15 @@ func HasReflinkSupport(dir string) bool {
 
 	srcFile := filepath.Join(dir, "reflink_test_src")
 	dstFile := filepath.Join(dir, "reflink_test_dst")
-	os.Remove(srcFile)
-	os.Remove(dstFile)
+	defer os.Remove(srcFile)
+	defer os.Remove(dstFile)
 
 	// Create a test file
 	err := os.WriteFile(srcFile, []byte("test"), 0o644)
 	if err != nil {
 		return false
 	}
-	defer os.Remove(srcFile)
-	defer os.Remove(dstFile)
 
 	// Try to create a reflink
-	err = reflinkFile(srcFile, dstFile, 0o644)
-	return err == nil
+	return reflinkFile(srcFile, dstFile, 0o644) == nil
 }
