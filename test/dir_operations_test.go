@@ -253,6 +253,79 @@ func BenchmarkDirOperations(b *testing.B) {
 					b.StartTimer()
 				}
 			})
+
+			b.Run("LVM", func(b *testing.B) {
+				if os.Getenv("DL_LVM_BENCH") != "true" {
+					b.Skip("DL_LVM_BENCH is not set")
+				}
+
+				device := os.Getenv("DL_LVM_DEVICE")
+				if device == "" {
+					b.Skip("DL_LVM_DEVICE is not set")
+				}
+
+				size := os.Getenv("DL_LVM_SIZE")
+				if size == "" {
+					b.Skip("DL_LVM_SIZE is not set")
+				}
+
+				snapshotSize := os.Getenv("DL_LVM_SNAPSHOT_SIZE")
+				if snapshotSize == "" {
+					b.Skip("DL_LVM_SNAPSHOT_SIZE is not set")
+				}
+
+				format := os.Getenv("DL_LVM_FORMAT")
+				if format == "" {
+					format = "ext4"
+				}
+
+				execCommand(b, "sudo", "pvcreate", device)
+				defer execCommand(b, "sudo", "pvremove", device)
+
+				execCommand(b, "sudo", "vgcreate", "vg_dateilager_cached", device)
+				defer execCommand(b, "sudo", "vgremove", "-y", "vg_dateilager_cached")
+
+				execCommand(b, "sudo", "lvcreate", "--name", "thinpool", "--size", size, "--type", "thin-pool", "vg_dateilager_cached")
+				execCommand(b, "sudo", "lvcreate", "--name", "base", "--virtualsize", size, "--thinpool", "vg_dateilager_cached/thinpool")
+				execCommand(b, "sudo", "mkfs."+format, "/dev/vg_dateilager_cached/base")
+
+				func() {
+					execCommand(b, "sudo", "mkdir", "-p", "/mnt/dateilager_cached_base")
+					defer execCommand(b, "sudo", "rmdir", "/mnt/dateilager_cached_base")
+
+					execCommand(b, "sudo", "mount", "/dev/vg_dateilager_cached/base", "/mnt/dateilager_cached_base")
+					defer execCommand(b, "sudo", "umount", "/mnt/dateilager_cached_base")
+
+					execCommand(b, "sudo", "cp", "-a", stagingDir+"/.", "/mnt/dateilager_cached_base")
+				}()
+
+				execCommand(b, "sudo", "lvcreate", "--snapshot", "--name", "pod-0", "--size", snapshotSize, "vg_dateilager_cached/base")
+
+				tmpDir := emptyBenchDir(b)                               // tmp/bench/dateilager_bench_<random>
+				targetDir := path.Join(tmpDir, "gadget")                 // tmp/bench/dateilager_bench_<random>/gadget
+				cacheDir := path.Join(targetDir, "dl_cache")             // tmp/bench/dateilager_bench_<random>/gadget/dl_cache
+				cachedNodeModules := path.Join(cacheDir, "node_modules") // tmp/bench/dateilager_bench_<random>/gadget/dl_cache/node_modules
+				defer os.RemoveAll(tmpDir)
+
+				err := os.MkdirAll(targetDir, 0o777)
+				require.NoError(b, err, "failed to create target path")
+				defer os.RemoveAll(targetDir)
+
+				execCommand(b, "sudo", "mount", "/dev/vg_dateilager_cached/pod-0", targetDir)
+				defer execCommand(b, "sudo", "umount", targetDir)
+
+				b.ResetTimer()
+				for n := 0; n < b.N; n++ {
+					targetNodeModules := path.Join(targetDir, fmt.Sprintf("app/%d/node_modules", n)) // tmp/bench/dateilager_bench_<random>/gadget/app/<n>/node_modules
+					err := op(cachedNodeModules, targetNodeModules)
+					b.StopTimer()
+					require.NoError(b, err, "%s failed", name)
+
+					err = CompareDirectories(cachedNodeModules, targetNodeModules)
+					require.NoError(b, err, "compareDirectories %s vs %s failed", cachedNodeModules, targetDir)
+					b.StartTimer()
+				}
+			})
 		})
 	}
 }

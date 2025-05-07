@@ -129,7 +129,7 @@ test-integration: migrate
 
 bench: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 bench: migrate
-	cd test && go test -v -bench . -run=^# $(BENCH_PROFILE)
+	cd test && go test -v -bench=. -benchtime=10x -run=^# $(BENCH_PROFILE)
 
 bench/cpu: export BENCH_PROFILE = -cpuprofile cpu.pprof
 bench/cpu: bench
