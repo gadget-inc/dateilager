@@ -10,7 +10,7 @@ defaults:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-l
     strategy:
       matrix:
         filesystem: [ext4, xfs]
@@ -25,6 +25,15 @@ jobs:
           sudo mount -o loop /mnt/xfs.img $GITHUB_WORKSPACE
           sudo chown $USER:$USER $GITHUB_WORKSPACE
           findmnt
+
+      - name: Setup LVM device
+        run: |
+          sudo dd if=/dev/zero of=/var/tmp/lvm.img bs=1G count=50
+          device=$(sudo losetup --find --show /var/tmp/lvm.img)
+          echo "DL_LVM_DEVICE=$device" >> $GITHUB_ENV
+          echo "DL_LVM_SIZE=40G" >> $GITHUB_ENV
+          echo "DL_LVM_SNAPSHOT_SIZE=5G" >> $GITHUB_ENV
+          echo "DL_LVM_FORMAT=${{ matrix.filesystem }}" >> $GITHUB_ENV
 
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -53,6 +62,7 @@ jobs:
         run: make bench
         env:
           DL_OVERLAY_BENCH: true
+          DL_LVM_BENCH: true
 
   test-fuzz:
     runs-on: ubuntu-latest
