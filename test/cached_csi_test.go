@@ -315,8 +315,6 @@ func formatFileMode(mode os.FileMode) string {
 }
 
 func createTestCachedServer(tc util.TestCtx, tmpDir string, opts ...func(*api.Cached)) (*api.Cached, string, func()) {
-	setupLVMDevice(tc.T())
-
 	cl, _, closeClient := createTestClient(tc)
 	_, grpcServer, _ := createTestGRPCServer(tc)
 
@@ -337,25 +335,4 @@ func createTestCachedServer(tc util.TestCtx, tmpDir string, opts ...func(*api.Ca
 	}()
 
 	return cached, endpoint, func() { closeClient(); s.Grpc.Stop() }
-}
-
-func setupLVMDevice(t testing.TB) {
-	wd := workspaceDir(t)
-	lvmImage := path.Join(wd, "tmp/lvm.img")
-	execCommand(t, "sudo", "dd", "if=/dev/zero", "of="+lvmImage, "bs=1G", "count=20")
-	device := execCommand(t, "sudo", "losetup", "--find", "--show", lvmImage)
-
-	os.Setenv("DL_LVM_DEVICE", device)
-	os.Setenv("DL_LVM_FORMAT", "ext4")
-	os.Setenv("DL_LVM_SIZE", "2G")
-	os.Setenv("DL_LVM_SNAPSHOT_SIZE", "1G")
-
-	t.Cleanup(func() {
-		os.Unsetenv("DL_LVM_DEVICE")
-		os.Unsetenv("DL_LVM_FORMAT")
-		os.Unsetenv("DL_LVM_SIZE")
-		os.Unsetenv("DL_LVM_SNAPSHOT_SIZE")
-		execCommand(t, "sudo", "losetup", "-d", device)
-		os.Remove(lvmImage)
-	})
 }
