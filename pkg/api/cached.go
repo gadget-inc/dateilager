@@ -7,8 +7,8 @@ import (
 	"math"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -50,9 +50,15 @@ type Cached struct {
 	CacheUid         int
 	CacheGid         int
 
+	LVMDevice       string
+	LVMFormat       string
+	LVMSize         string
+	LVMSnapshotSize string
+
 	// the current version of the cache on disk
 	currentVersion int64
 	reflinkSupport bool
+	lvmVolumeGroup string
 }
 
 func (c *Cached) PopulateDiskCache(ctx context.Context, req *pb.PopulateDiskCacheRequest) (*pb.PopulateDiskCacheResponse, error) {
@@ -81,7 +87,53 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 
 	start := time.Now()
 
-	version, count, err := c.Client.GetCache(ctx, c.GetCachePath(), cacheVersion)
+	c.lvmVolumeGroup = "vg_dateilager_cached" + strings.ReplaceAll(c.DriverNameSuffix, "-", "_")
+
+	err := execCommand("pvcreate", c.LVMDevice)
+	if err != nil {
+		return fmt.Errorf("failed to create lvm physical volume %s: %w", c.LVMDevice, err)
+	}
+
+	err = execCommand("vgcreate", c.lvmVolumeGroup, c.LVMDevice)
+	if err != nil {
+		return fmt.Errorf("failed to create lvm volume group %s: %w", c.LVMDevice, err)
+	}
+
+	err = execCommand("lvcreate", "--name", "thinpool", "--size", c.LVMSize, "--type", "thin-pool", c.lvmVolumeGroup)
+	if err != nil {
+		return fmt.Errorf("failed to create lvm thin pool %s with size %s: %w", c.lvmVolumeGroup+"/thinpool", c.LVMSize, err)
+	}
+
+	err = execCommand("lvcreate", "--name", "base", "--virtualsize", c.LVMSize, "--thinpool", c.lvmVolumeGroup+"/thinpool")
+	if err != nil {
+		return fmt.Errorf("failed to create base volume %s with size %s: %w", c.lvmVolumeGroup+"/base", c.LVMSize, err)
+	}
+
+	lvmBaseDir := "/dev/" + c.lvmVolumeGroup + "/base"
+	err = execCommand("mkfs."+c.LVMFormat, lvmBaseDir)
+	if err != nil {
+		return fmt.Errorf("failed to format lvm thin volume %s: %w", lvmBaseDir, err)
+	}
+
+	cacheDir := c.GetCachePath()
+	err = mkdirAll(cacheDir, 0o755)
+	if err != nil {
+		return fmt.Errorf("failed to create cache directory %s: %w", cacheDir, err)
+	}
+
+	err = execCommand("mount", lvmBaseDir, cacheDir)
+	if err != nil {
+		return fmt.Errorf("failed to mount lvm thin volume %s to %s: %w", lvmBaseDir, cacheDir, err)
+	}
+
+	defer func() {
+		unmountErr := execCommand("umount", cacheDir)
+		if unmountErr != nil {
+			err = errors.Join(err, fmt.Errorf("failed to unmount cache directory %s: %w", cacheDir, unmountErr))
+		}
+	}()
+
+	version, count, err := c.Client.GetCache(ctx, cacheDir, cacheVersion)
 	if err != nil {
 		return err
 	}
@@ -90,7 +142,7 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 
 	if c.CacheUid != NO_CHANGE_USER || c.CacheGid != NO_CHANGE_USER {
 		// make the cache owned by the provided uid and gid
-		err = fastwalk.Walk(nil, c.GetCachePath(), func(path string, de os.DirEntry, err error) error {
+		err = fastwalk.Walk(nil, cacheDir, func(path string, de os.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -104,15 +156,15 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 			}
 		})
 		if err != nil {
-			return fmt.Errorf("failed to chown cache path %s: %v", c.GetCachePath(), err)
+			return fmt.Errorf("failed to chown cache directory %s: %v", cacheDir, err)
 		}
 	}
 
 	c.currentVersion = version
-	c.reflinkSupport = files.HasReflinkSupport(c.GetCachePath())
+	c.reflinkSupport = files.HasReflinkSupport(cacheDir)
 
 	logger.Info(ctx, "downloaded golden copy", key.DurationMS.Field(time.Since(start)), key.Version.Field(version), key.Count.Field(int64(count)))
-	return nil
+	return err
 }
 
 // GetPluginInfo returns metadata of the plugin
@@ -169,118 +221,86 @@ func (c *Cached) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 }
 
 func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
-	if req.VolumeId == "" {
+	volumeID := req.GetVolumeId()
+	if volumeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume ID must be provided")
 	}
 
-	if req.TargetPath == "" {
+	targetPath := req.GetTargetPath() // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount
+	if targetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Target Path must be provided")
 	}
 
-	if req.VolumeCapability == nil {
-		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
-	}
-
-	targetPath := req.GetTargetPath()                    // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount
-	volumePath := path.Join(targetPath, "..")            // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a
-	upperDir := path.Join(volumePath, UPPER_DIR)         // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/upper
-	workDir := path.Join(volumePath, WORK_DIR)           // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/work
-	cacheDir := path.Join(targetPath, CACHE_PATH_SUFFIX) // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount/dl_cache
-
 	trace.SpanFromContext(ctx).SetAttributes(
+		key.VolumeID.Attribute(volumeID),
 		key.TargetPath.Attribute(targetPath),
-		key.VolumePath.Attribute(volumePath),
-		key.UpperDir.Attribute(upperDir),
-		key.WorkDir.Attribute(workDir),
-		key.CacheDir.Attribute(cacheDir),
 	)
 
-	if err := mkdirAll(upperDir, 0o777); err != nil {
-		return nil, fmt.Errorf("failed to create overlay upper directory %s: %w", upperDir, err)
+	if err := execCommand("lvcreate", "--snapshot", "--name", volumeID, "--size", c.LVMSnapshotSize, c.lvmVolumeGroup+"/base"); err != nil {
+		return nil, fmt.Errorf("failed to create snapshot of base volume %s: %w", c.lvmVolumeGroup+"/base", err)
 	}
 
-	if err := mkdirAll(workDir, 0o777); err != nil {
-		return nil, fmt.Errorf("failed to create overlay work directory %s: %w", workDir, err)
+	if err := mkdirAll(targetPath, 0o777); err != nil {
+		return nil, fmt.Errorf("failed to create target path %s: %w", targetPath, err)
 	}
 
-	// Create the cache directory and make it writable by the pod
-	if err := os.MkdirAll(targetPath, 0o777); err != nil {
-		return nil, fmt.Errorf("failed to create target path directory %s: %w", targetPath, err)
+	snapshotPath := "/dev/" + c.lvmVolumeGroup + "/" + volumeID
+	if err := execCommand("mount", snapshotPath, targetPath); err != nil {
+		return nil, fmt.Errorf("failed to mount snapshot %s to %s: %w", snapshotPath, targetPath, err)
 	}
 
-	mountArgs := []string{
-		"-t",
-		"overlay",
-		"overlay",
-		"-n",
-		"--options",
-		fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", c.StagingPath, upperDir, workDir),
-		targetPath,
-	}
-
-	if err := execCommand("mount", mountArgs...); err != nil {
-		return nil, fmt.Errorf("failed to mount overlay at %s: %w", targetPath, err)
-	}
-
-	if err := mkdirAll(cacheDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create cache path %s: %w", cacheDir, err)
-	}
-
-	logger.Info(ctx, "mounted overlay", key.TargetPath.Field(targetPath), key.Version.Field(c.currentVersion))
+	logger.Info(ctx, "mounted snapshot", key.TargetPath.Field(targetPath), key.Version.Field(c.currentVersion))
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
-func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
-	if req.VolumeId == "" {
+func (c *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
+	if volumeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Volume ID must be provided")
 	}
 
-	if req.TargetPath == "" {
+	targetPath := req.GetTargetPath() // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount
+	if targetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Target Path must be provided")
 	}
 
-	targetPath := req.GetTargetPath()            // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount
-	volumePath := path.Join(targetPath, "..")    // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a
-	upperDir := path.Join(volumePath, UPPER_DIR) // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/upper
-	workDir := path.Join(volumePath, WORK_DIR)   // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/work
-
 	trace.SpanFromContext(ctx).SetAttributes(
+		key.VolumeID.Attribute(volumeID),
 		key.TargetPath.Attribute(targetPath),
-		key.VolumePath.Attribute(volumePath),
-		key.UpperDir.Attribute(upperDir),
-		key.WorkDir.Attribute(workDir),
 	)
 
-	// Check if the volume path exists
-	_, err := os.Stat(volumePath)
+	// Check if the target path exists
+	_, err := os.Stat(targetPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &csi.NodeUnpublishVolumeResponse{}, nil // Nothing for us to do
 		}
-		return nil, fmt.Errorf("failed to stat volume path %s: %w", volumePath, err)
+		return nil, fmt.Errorf("failed to stat target path %s: %w", targetPath, err)
 	}
 
-	// Check if the overlay is mounted
+	// Check if the snapshot is mounted
 	err = execCommand("mountpoint", "-q", targetPath)
 	if err == nil {
-		// The overlay is mounted, so we need to unmount it
+		// The snapshot is mounted, so we need to unmount it
 		if err := execCommand("umount", targetPath); err != nil {
-			return nil, fmt.Errorf("failed to unmount overlay at %s: %w", targetPath, err)
+			return nil, fmt.Errorf("failed to unmount snapshot at %s: %w", targetPath, err)
 		}
 	} else if err.Error() != "exit status 32" {
 		// exit status 32 means not mounted, so if it's not 32, then it's an unexpected error
 		// See: https://man7.org/linux/man-pages/man1/mountpoint.1.html
-		return nil, fmt.Errorf("failed to check if overlay at %s is mounted: %w", targetPath, err)
+		return nil, fmt.Errorf("failed to check if snapshot at %s is mounted: %w", targetPath, err)
 	}
 
-	// Clean up upper directory from the overlay
-	if err := removeAll(upperDir); err != nil {
-		return nil, fmt.Errorf("failed to remove upper directory %s: %w", upperDir, err)
-	}
-
-	// Clean up work directory from the overlay
-	if err := removeAll(workDir); err != nil {
-		return nil, fmt.Errorf("failed to remove work directory %s: %w", workDir, err)
+	// Check if the snapshot exists
+	snapshotPath := "/dev/" + c.lvmVolumeGroup + "/" + volumeID
+	err = execCommand("lvdisplay", "-q", snapshotPath)
+	if err == nil {
+		// The snapshot exists, so we need to remove it
+		if err := execCommand("lvremove", snapshotPath); err != nil {
+			return nil, fmt.Errorf("failed to remove snapshot %s: %w", snapshotPath, err)
+		}
+	} else /* if err.Error() != "exit status " */ { // TODO: figure out which status code is returned when the snapshot doesn't exist
+		return nil, fmt.Errorf("failed to check if snapshot %s exists: %w", snapshotPath, err)
 	}
 
 	logger.Info(ctx, "volume unpublished and data removed", key.TargetPath.Field(targetPath))
@@ -385,14 +405,20 @@ func getFolderSize(path string) (int64, error) {
 	return totalSize, err
 }
 
-func execCommand(cmdName string, args ...string) error {
+func execCommand(command string, args ...string) error {
+	var cmd *exec.Cmd
 	if os.Getenv("RUN_WITH_SUDO") != "" {
-		cmd := exec.Command("sudo", append([]string{cmdName}, args...)...)
-		return cmd.Run()
+		cmd = exec.Command("sudo", append([]string{command}, args...)...)
+	} else {
+		cmd = exec.Command(command, args...)
 	}
 
-	cmd := exec.Command(cmdName, args...)
-	return cmd.Run()
+	bs, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to execute command %s: %s", cmd.String(), string(bs))
+	}
+
+	return nil
 }
 
 func mkdirAll(path string, mode os.FileMode) error {

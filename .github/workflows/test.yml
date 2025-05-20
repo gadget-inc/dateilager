@@ -56,7 +56,7 @@ jobs:
           echo "FORCE_REFLINKS=always" >> $GITHUB_ENV
 
       - name: Run Go tests
-        run: make test
+        run: make test-integration
 
       - name: Run Go benchmarks
         run: make bench

@@ -98,11 +98,15 @@ func (tc *TestCtx) FsApi() *api.Fs {
 
 func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string, opts ...func(*api.Cached)) *api.Cached {
 	cached := &api.Cached{
-		Env:         environment.Test,
-		Client:      cl,
-		StagingPath: stagingPath,
-		CacheUid:    -1,
-		CacheGid:    -1,
+		Env:             environment.Test,
+		Client:          cl,
+		StagingPath:     stagingPath,
+		CacheUid:        -1,
+		CacheGid:        -1,
+		LVMDevice:       os.Getenv("DL_LVM_DEVICE"),
+		LVMFormat:       os.Getenv("DL_LVM_FORMAT"),
+		LVMSize:         os.Getenv("DL_LVM_SIZE"),
+		LVMSnapshotSize: os.Getenv("DL_LVM_SNAPSHOT_SIZE"),
 	}
 
 	for _, opt := range opts {
