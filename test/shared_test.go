@@ -976,3 +976,9 @@ func compareFileContents(info os.FileInfo, file1, file2 string) (bool, error) {
 
 	return bytes.Equal(hash1.Sum(nil), hash2.Sum(nil)), nil
 }
+
+func execCommand(t testing.TB, command string, args ...string) {
+	cmd := exec.Command(command, args...)
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "failed to execute command %s: %s", cmd.String(), string(output))
+}
