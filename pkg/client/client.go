@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
@@ -28,9 +26,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/keepalive"
 )
@@ -54,24 +50,8 @@ type Client struct {
 	fs   pb.FsClient
 }
 
-type CachedClient struct {
-	conn     *grpc.ClientConn
-	cached   pb.CachedClient
-	identity csi.IdentityClient
-	node     csi.NodeClient
-}
-
 func NewClientConn(conn *grpc.ClientConn) *Client {
 	return &Client{conn: conn, fs: pb.NewFsClient(conn)}
-}
-
-func NewCachedClientConn(conn *grpc.ClientConn) *CachedClient {
-	return &CachedClient{
-		conn:     conn,
-		cached:   pb.NewCachedClient(conn),
-		identity: csi.NewIdentityClient(conn),
-		node:     csi.NewNodeClient(conn),
-	}
 }
 
 type options struct {
@@ -1017,100 +997,6 @@ func (c *Client) CloneToProject(ctx context.Context, source int64, target int64,
 	}
 
 	return &response.LatestVersion, nil
-}
-
-func NewCachedClient(ctx context.Context, host string, port uint16, opts ...func(*options)) (*CachedClient, error) {
-	ctx, span := telemetry.Start(ctx, "cached-client.new", trace.WithAttributes(
-		key.Server.Attribute(host),
-	))
-	defer span.End()
-
-	conn, err := grpcClientConn(ctx, host, port, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewCachedClientConn(conn), nil
-}
-
-func NewCachedUnixClient(ctx context.Context, socket string) (*CachedClient, error) {
-	ctx, span := telemetry.Start(ctx, "cached-unix-client.new", trace.WithAttributes(
-		key.Server.Attribute(socket),
-	))
-	defer span.End()
-
-	bc := backoff.DefaultConfig
-	bc.MaxDelay = time.Second
-	//nolint:staticcheck, nolintlint // Using WithBlock for now
-	dialOptions := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithConnectParams(grpc.ConnectParams{Backoff: bc}),
-		grpc.WithBlock(),
-		grpc.WithIdleTimeout(time.Duration(0)),
-		grpc.WithContextDialer(func(ctx context.Context, path string) (net.Conn, error) {
-			var timeout time.Duration
-			deadline, ok := ctx.Deadline()
-			if ok {
-				timeout = time.Until(deadline)
-			}
-			return net.DialTimeout("unix", path[len("unix://"):], timeout)
-		}),
-	}
-
-	//nolint:staticcheck, nolintlint // Using DialContext until we're ready to migrate to NewClient
-	conn, err := grpc.DialContext(ctx, socket, dialOptions...)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewCachedClientConn(conn), nil
-}
-
-func (c *CachedClient) Close() {
-	// Give a chance for the upstream socket to finish writing it's response
-	// https://github.com/grpc/grpc-go/issues/2869#issuecomment-503310136
-	time.Sleep(1 * time.Millisecond)
-	c.conn.Close()
-}
-
-func (c *CachedClient) PopulateDiskCache(ctx context.Context, destination string) (int64, error) {
-	ctx, span := telemetry.Start(ctx, "client.populate-disk-cache", trace.WithAttributes(
-		key.CachePath.Attribute(destination),
-	))
-	defer span.End()
-
-	request := &pb.PopulateDiskCacheRequest{
-		Path: destination,
-	}
-
-	response, err := c.cached.PopulateDiskCache(ctx, request)
-	if err != nil {
-		return 0, fmt.Errorf("populate disk cache for %s: %w", destination, err)
-	}
-
-	return response.Version, nil
-}
-
-func (c *CachedClient) Probe(ctx context.Context) (bool, error) {
-	request := &csi.ProbeRequest{}
-
-	response, err := c.identity.Probe(ctx, request)
-	if err != nil {
-		return false, fmt.Errorf("failed to probe server: %w", err)
-	}
-
-	return response.Ready.Value, nil
-}
-
-func (c *CachedClient) NodeGetVolumeStats(ctx context.Context) ([]*csi.VolumeUsage, error) {
-	request := &csi.NodeGetVolumeStatsRequest{}
-
-	response, err := c.node.NodeGetVolumeStats(ctx, request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to probe server: %w", err)
-	}
-
-	return response.Usage, nil
 }
 
 func parallelWorkerCount() int {
