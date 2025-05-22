@@ -6,7 +6,7 @@ require (
 	github.com/charlievieth/fastwalk v1.0.9
 	github.com/container-storage-interface/spec v1.9.0
 	github.com/dgraph-io/ristretto v0.1.1
-	github.com/gadget-inc/fsdiff v0.4.4
+	github.com/gadget-inc/fsdiff v0.4.5
 	github.com/gobwas/glob v0.2.3
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/jackc/pgx/v5 v5.5.0
