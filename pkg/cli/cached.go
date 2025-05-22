@@ -1,4 +1,4 @@
-package cachedcli
+package cli
 
 import (
 	"context"
@@ -17,7 +17,6 @@ import (
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
-	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/gadget-inc/dateilager/pkg/cached"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/version"
@@ -102,7 +101,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 
 			s := cached.NewServer(ctx)
 
-			cached := &api.Cached{
+			cached := &cached.Cached{
 				Env:              env,
 				Client:           cl,
 				DriverNameSuffix: driverNameSuffix,
@@ -111,10 +110,6 @@ func NewCacheDaemonCommand() *cobra.Command {
 				CacheGid:         cacheGid,
 			}
 
-			logger.Info(ctx, "register Cached")
-			s.RegisterCached(cached)
-
-			logger.Info(ctx, "register CSI")
 			s.RegisterCSI(cached)
 
 			mux := http.NewServeMux()
