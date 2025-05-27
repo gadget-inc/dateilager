@@ -33,7 +33,7 @@ FROM buildpack-deps:bullseye AS build-release-stage
 ARG TARGETARCH
 
 RUN apt-get update && \
-    apt-get install -y curl findutils gzip less lvm2 net-tools postgresql procps tar time && \
+    apt-get install -y curl findutils gzip kmod less lvm2 net-tools postgresql procps tar time && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
 RUN GRPC_HEALTH_PROBE_VERSION=v0.4.23 \
