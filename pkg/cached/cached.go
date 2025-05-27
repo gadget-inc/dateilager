@@ -101,7 +101,7 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 	case err == nil:
 		// the thin pool already exists, so we can skip lvcreate
 	case strings.Contains(err.Error(), "Failed to find logical volume"):
-		if err = execCommand("lvcreate", "--name", "thinpool", "--size", c.LVMSize, "--type", "thin-pool", c.lvmVolumeGroup); err != nil {
+		if err = execCommand("lvcreate", c.lvmVolumeGroup, "--name=thinpool", "--type=thin-pool", "--extents=90%VG"); err != nil {
 			return fmt.Errorf("failed to create lvm thin pool %s with size %s: %w", c.lvmVolumeGroup+"/thinpool", c.LVMSize, err)
 		}
 	default:
@@ -115,7 +115,7 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 		// the base volume already exists, so we can skip lvcreate
 	case strings.Contains(err.Error(), "Failed to find logical volume"):
 		// the base volume does not exist, so we need to create it
-		if err = execCommand("lvcreate", "--name", "base", "--virtualsize", c.LVMSize, "--thinpool", c.lvmVolumeGroup+"/thinpool"); err != nil {
+		if err = execCommand("lvcreate", "--thinpool="+c.lvmVolumeGroup+"/thinpool", "--name=base", "--virtualsize="+c.LVMSnapshotSize); err != nil {
 			return fmt.Errorf("failed to create base volume %s with size %s: %w", c.lvmVolumeGroup+"/base", c.LVMSize, err)
 		}
 	default:
@@ -287,7 +287,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		// the snapshot already exists, so we can skip lvcreate
 	case strings.Contains(err.Error(), "Failed to find logical volume"):
 		// the snapshot does not exist, so we need to create it
-		if err := execCommand("lvcreate", "--snapshot", "--name", volumeID, "--size", c.LVMSnapshotSize, c.lvmVolumeGroup+"/base"); err != nil {
+		if err := execCommand("lvcreate", c.lvmVolumeGroup+"/base", "--name="+volumeID, "--type=snapshot", "--size="+c.LVMSnapshotSize); err != nil {
 			return nil, fmt.Errorf("failed to create snapshot of base volume %s: %w", c.lvmVolumeGroup+"/base", err)
 		}
 	default:
