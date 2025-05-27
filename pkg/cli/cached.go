@@ -48,6 +48,9 @@ func NewCacheDaemonCommand() *cobra.Command {
 		cacheVersion     int64
 		cacheUid         int
 		cacheGid         int
+		lvmDevice        string
+		lvmFormat        string
+		lvmVirtualSize   string
 	)
 
 	cmd := &cobra.Command{
@@ -108,6 +111,9 @@ func NewCacheDaemonCommand() *cobra.Command {
 				StagingPath:      stagingPath,
 				CacheUid:         cacheUid,
 				CacheGid:         cacheGid,
+				LVMDevice:        lvmDevice,
+				LVMFormat:        lvmFormat,
+				LVMVirtualSize:   lvmVirtualSize,
 			}
 
 			s.RegisterCSI(cached)
@@ -184,9 +190,15 @@ func NewCacheDaemonCommand() *cobra.Command {
 	flags.Int64Var(&cacheVersion, "cache-version", -1, "cache version to use")
 	flags.IntVar(&cacheUid, "cache-uid", -1, "uid for cache files")
 	flags.IntVar(&cacheGid, "cache-gid", -1, "gid for cache files")
+	flags.StringVar(&lvmDevice, "lvm-device", "", "lvm device to use")
+	flags.StringVar(&lvmFormat, "lvm-format", "", "lvm format to use")
+	flags.StringVar(&lvmVirtualSize, "lvm-virtual-size", "", "lvm virtual size to use")
 
 	_ = cmd.MarkPersistentFlagRequired("csi-socket")
 	_ = cmd.MarkPersistentFlagRequired("staging-path")
+	_ = cmd.MarkPersistentFlagRequired("lvm-device")
+	_ = cmd.MarkPersistentFlagRequired("lvm-format")
+	_ = cmd.MarkPersistentFlagRequired("lvm-snapshot-size")
 
 	return cmd
 }

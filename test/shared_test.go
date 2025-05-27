@@ -320,7 +320,7 @@ func workspaceDir(t testing.TB) string {
 // emptyTmpDir returns a temporary directory for testing. (e.g. tmp/test/dateilager_test_<random>)
 func emptyTmpDir(t testing.TB) string {
 	wd := workspaceDir(t)
-	mkdirAll(t, path.Join(wd, "tmp/test"), 0o755)
+	mkdirAll(t, path.Join(wd, "tmp/test"), 0o777)
 	dir, err := os.MkdirTemp(path.Join(wd, "tmp/test"), "dateilager_test_")
 	require.NoError(t, err, "failed to create tmp dir")
 	return dir
@@ -977,8 +977,10 @@ func compareFileContents(info os.FileInfo, file1, file2 string) (bool, error) {
 	return bytes.Equal(hash1.Sum(nil), hash2.Sum(nil)), nil
 }
 
-func execCommand(t testing.TB, command string, args ...string) {
+func execCommand(t testing.TB, command string, args ...string) string {
 	cmd := exec.Command(command, args...)
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, "failed to execute command %s: %s", cmd.String(), string(output))
+	bs, err := cmd.CombinedOutput()
+	output := string(bytes.TrimSpace(bs))
+	require.NoError(t, err, "failed to execute command %s: %s", cmd.String(), output)
+	return output
 }

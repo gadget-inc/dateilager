@@ -97,25 +97,15 @@ func (tc *TestCtx) FsApi() *api.Fs {
 	}
 }
 
-func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string, opts ...func(*cached.Cached)) *cached.Cached {
-	cached := &cached.Cached{
-		Env:         environment.Test,
-		Client:      cl,
-		StagingPath: stagingPath,
-		CacheUid:    -1,
-		CacheGid:    -1,
-	}
-
-	for _, opt := range opts {
-		opt(cached)
-	}
-
-	return cached
-}
-
-func WithUidGid(uid, gid int) func(*cached.Cached) {
-	return func(c *cached.Cached) {
-		c.CacheUid = uid
-		c.CacheGid = gid
+func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string) *cached.Cached {
+	return &cached.Cached{
+		Env:            environment.Test,
+		Client:         cl,
+		StagingPath:    stagingPath,
+		CacheUid:       os.Getuid(),
+		CacheGid:       os.Getgid(),
+		LVMDevice:      os.Getenv("DL_LVM_DEVICE"),
+		LVMFormat:      os.Getenv("DL_LVM_FORMAT"),
+		LVMVirtualSize: os.Getenv("DL_LVM_VIRTUAL_SIZE"),
 	}
 }
