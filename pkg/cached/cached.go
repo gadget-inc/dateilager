@@ -21,6 +21,7 @@ import (
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/version"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	wrappers "google.golang.org/protobuf/types/known/wrapperspb"
@@ -447,6 +448,8 @@ func execCommand(command string, args ...string) error {
 	} else {
 		cmd = exec.Command(command, args...)
 	}
+
+	logger.Debug(context.TODO(), "executing command", zap.String("command", cmd.String()))
 
 	bs, err := cmd.CombinedOutput()
 	if err != nil {
