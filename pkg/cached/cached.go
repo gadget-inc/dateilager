@@ -138,7 +138,12 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 		return fmt.Errorf("failed to check if base volume %s is formatted: %w", lvmBaseDir, err)
 	}
 
-	if err = execCommand("mount", fmt.Sprintf("--mkdir=%o", 0o777), lvmBaseDir, c.StagingPath); err != nil {
+	// make sure the staging directory exists
+	if err := mkdirAll(c.StagingPath, 0o777); err != nil {
+		return fmt.Errorf("failed to create staging directory %s: %w", c.StagingPath, err)
+	}
+
+	if err = execCommand("mount", lvmBaseDir, c.StagingPath); err != nil {
 		return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", lvmBaseDir, c.StagingPath, err)
 	}
 
