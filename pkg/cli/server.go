@@ -60,18 +60,7 @@ func NewServerCommand() *cobra.Command {
 				return fmt.Errorf("could not load environment: %w", err)
 			}
 
-			var config zap.Config
-			if env == environment.Prod {
-				config = zap.NewProductionConfig()
-			} else {
-				config = zap.NewDevelopmentConfig()
-			}
-
-			config.Encoding = encoding
-			config.Level = zap.NewAtomicLevelAt(*level)
-			config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-
-			err = logger.Init(config)
+			err = logger.Init(env, encoding, zap.NewAtomicLevelAt(*level))
 			if err != nil {
 				return fmt.Errorf("could not initialize logger: %w", err)
 			}
