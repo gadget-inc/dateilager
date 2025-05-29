@@ -3,7 +3,6 @@ package cached
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/gadget-inc/dateilager/internal/logger"
@@ -11,6 +10,18 @@ import (
 	utilexec "k8s.io/utils/exec"
 	"k8s.io/utils/mount"
 )
+
+type cmd struct {
+	utilexec.Cmd
+	command string
+	args    []string
+	ctx     context.Context
+}
+
+func (c *cmd) Start() error {
+	logger.Debug(c.ctx, "executing command", zap.String("command", c.command), zap.Strings("args", c.args))
+	return c.Cmd.Start()
+}
 
 type executor struct {
 	utilexec.Interface
@@ -25,18 +36,17 @@ var mounter = &mount.SafeFormatAndMount{
 	Exec:      exec,
 }
 
-func (e *executor) CommandContext(ctx context.Context, command string, args ...string) utilexec.Cmd {
-	if os.Getenv("RUN_WITH_SUDO") != "" {
-		args = append([]string{command}, args...)
-		command = "sudo"
-	}
-
-	logger.Debug(ctx, "executing command", zap.String("command", command), zap.Strings("args", args))
-	return e.Interface.CommandContext(ctx, command, args...)
+func (e *executor) Command(command string, args ...string) utilexec.Cmd {
+	return e.CommandContext(context.TODO(), command, args...)
 }
 
-func (e *executor) Command(command string, args ...string) utilexec.Cmd {
-	return e.Interface.CommandContext(context.TODO(), command, args...)
+func (e *executor) CommandContext(ctx context.Context, command string, args ...string) utilexec.Cmd {
+	return &cmd{
+		Cmd:     e.Interface.CommandContext(ctx, command, args...),
+		command: command,
+		args:    args,
+		ctx:     ctx,
+	}
 }
 
 func (e *executor) Exec(command string, args ...string) error {
