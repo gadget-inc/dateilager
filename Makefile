@@ -130,9 +130,10 @@ test-integration: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):54
 test-integration: migrate
 	sudo -E env PATH="/usr/sbin:$$PATH" bin/test-integration
 
+bench: bin/test-integration
 bench: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 bench: migrate
-	cd test && go test -v -bench=. -benchtime=10x -run=^# $(BENCH_PROFILE)
+	sudo -E env PATH="/usr/sbin:$$PATH" bin/test-integration -test.v -bench=. -benchtime=10x -run=^# $(BENCH_PROFILE)
 
 bench/cpu: export BENCH_PROFILE = -cpuprofile cpu.pprof
 bench/cpu: bench
