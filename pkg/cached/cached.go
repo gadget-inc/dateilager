@@ -301,7 +301,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		}
 
 		lvmSnapshotDevice := "/dev/" + c.lvmVolumeGroup + "/" + volumeID
-		if err := mounter.FormatAndMount(lvmSnapshotDevice, targetPath, c.LVMFormat, nil); err != nil {
+		if err := mounter.Mount(lvmSnapshotDevice, targetPath, c.LVMFormat, nil); err != nil {
 			return nil, fmt.Errorf("failed to mount snapshot %s to %s: %w", lvmSnapshotDevice, targetPath, err)
 		}
 	}
