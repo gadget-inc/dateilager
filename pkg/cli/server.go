@@ -55,7 +55,7 @@ func NewServerCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cmd.SilenceUsage = true // silence usage when an error occurs after flags have been parsed
 
-			env, err := environment.LoadEnvironment()
+			env, err := environment.Load()
 			if err != nil {
 				return fmt.Errorf("could not load environment: %w", err)
 			}

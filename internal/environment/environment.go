@@ -29,7 +29,7 @@ func (e Env) String() string {
 	}
 }
 
-func LoadEnvironment() (Env, error) {
+func Load() (Env, error) {
 	envStr := os.Getenv("DL_ENV")
 
 	switch strings.ToLower(envStr) {
@@ -42,4 +42,12 @@ func LoadEnvironment() (Env, error) {
 	default:
 		return 0, fmt.Errorf("unknown environment: %s", envStr)
 	}
+}
+
+func LoadOrProduction() (Env, error) {
+	env, err := Load()
+	if err != nil {
+		return Prod, nil
+	}
+	return env, nil
 }
