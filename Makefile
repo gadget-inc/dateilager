@@ -128,7 +128,7 @@ bin/test-integration: $(PKG_GO_FILES) $(INTERNAL_GO_FILES) $(TEST_GO_FILES) go.s
 test-integration: bin/test-integration
 test-integration: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 test-integration: migrate
-	sudo -E env PATH="/usr/sbin:$$PATH" bin/test-integration
+	sudo -E env PATH="/usr/sbin:$$PATH" bin/test-integration -ginkgo.noisySkippings=false
 
 bench: bin/test-integration
 bench: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests

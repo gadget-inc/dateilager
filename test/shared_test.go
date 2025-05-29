@@ -21,7 +21,9 @@ import (
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/files"
+	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/gadget-inc/dateilager/pkg/api"
@@ -30,10 +32,34 @@ import (
 	"github.com/klauspost/compress/s2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 )
+
+func init() {
+	encoding := os.Getenv("LOG_ENCODING")
+	if encoding == "" {
+		encoding = "console"
+	}
+
+	levelStr := os.Getenv("LOG_LEVEL")
+	if levelStr == "" {
+		levelStr = "info"
+	}
+
+	level, err := zapcore.ParseLevel(levelStr)
+	if err != nil {
+		panic(fmt.Sprintf("failed to parse log level: %v", err))
+	}
+
+	err = logger.Init(environment.Dev, encoding, zap.NewAtomicLevelAt(level))
+	if err != nil {
+		panic(fmt.Sprintf("failed to init logger: %v", err))
+	}
+}
 
 type Type int
 
