@@ -72,7 +72,8 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 		// the device is already a physical volume, so we can skip pvcreate
 	case strings.Contains(err.Error(), "Failed to find physical volume"):
 		// the device is not a physical volume, so we need to create it
-		if err = exec.Exec("pvcreate", c.LVMDevice); err != nil {
+		// we ignore the signal killed error because it can be killed after successfully creating the physical volume
+		if err = exec.Exec("pvcreate", c.LVMDevice); err != nil && !strings.Contains(err.Error(), "signal: killed") {
 			return fmt.Errorf("failed to create lvm physical volume %s: %w", c.LVMDevice, err)
 		}
 	default:
