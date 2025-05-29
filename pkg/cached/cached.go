@@ -123,7 +123,7 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 	}
 
 	notMounted, err := mounter.IsLikelyNotMountPoint(c.StagingPath)
-	if err != nil {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("failed to check if staging directory %s is mounted: %w", c.StagingPath, err)
 	}
 
@@ -290,7 +290,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	}
 
 	notMounted, err := mounter.IsLikelyNotMountPoint(targetPath)
-	if err != nil {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("failed to check if target path %s is mounted: %w", targetPath, err)
 	}
 
@@ -339,7 +339,7 @@ func (c *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	}
 
 	notMounted, err := mounter.IsLikelyNotMountPoint(targetPath)
-	if err != nil {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("failed to check if target path %s is mounted: %w", targetPath, err)
 	}
 
