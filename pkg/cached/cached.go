@@ -132,7 +132,7 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 		if err := mkdirAll(c.StagingPath, 0o775); err != nil {
 			return fmt.Errorf("failed to create staging directory %s: %w", c.StagingPath, err)
 		}
-		if err := mounter.Mount(lvmBaseDevice, c.StagingPath, c.LVMFormat, nil); err != nil {
+		if err := mounter.FormatAndMount(lvmBaseDevice, c.StagingPath, c.LVMFormat, nil); err != nil {
 			return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", lvmBaseDevice, c.StagingPath, err)
 		}
 	}
@@ -300,7 +300,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		}
 
 		lvmSnapshotDevice := "/dev/" + c.lvmVolumeGroup + "/" + volumeID
-		if err := mounter.Mount(lvmSnapshotDevice, targetPath, c.LVMFormat, nil); err != nil {
+		if err := mounter.FormatAndMount(lvmSnapshotDevice, targetPath, c.LVMFormat, nil); err != nil {
 			return nil, fmt.Errorf("failed to mount snapshot %s to %s: %w", lvmSnapshotDevice, targetPath, err)
 		}
 	}
@@ -328,15 +328,6 @@ func (c *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 		key.VolumeID.Attribute(volumeID),
 		key.TargetPath.Attribute(targetPath),
 	)
-
-	// Check if the target path exists
-	_, err := os.Stat(targetPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &csi.NodeUnpublishVolumeResponse{}, nil // Nothing for us to do
-		}
-		return nil, fmt.Errorf("failed to stat target path %s: %w", targetPath, err)
-	}
 
 	notMounted, err := mounter.IsLikelyNotMountPoint(targetPath)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {

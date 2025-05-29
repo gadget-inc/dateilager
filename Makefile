@@ -19,6 +19,7 @@ DEV_SHARED_READER_TOKEN ?= v2.public.eyJzdWIiOiJzaGFyZWQtcmVhZGVyIn1CxWdB02s9el0
 
 PKG_GO_FILES := $(shell find pkg/ -type f -name '*.go')
 INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
+TEST_GO_FILES := $(shell find test/ -type f -name '*.go')
 PROTO_FILES := $(shell find internal/pb/ -type f -name '*.proto')
 
 MIGRATE_DIR := ./migrations
@@ -121,10 +122,13 @@ else
 	cd test && go test -run $(name)
 endif
 
+bin/test-integration: $(PKG_GO_FILES) $(INTERNAL_GO_FILES) $(TEST_GO_FILES) go.sum
+	CGO_ENABLED=0 go test ./test -tags integration -c -o $@
+
+test-integration: bin/test-integration
 test-integration: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
-test-integration: export RUN_WITH_SUDO = true
 test-integration: migrate
-	cd test && go test -tags integration
+	sudo -E env PATH="/usr/sbin:$$PATH" bin/test-integration
 
 bench: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
 bench: migrate
