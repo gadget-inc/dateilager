@@ -20,10 +20,12 @@ import (
 	"github.com/gadget-inc/dateilager/pkg/cached"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/version"
+	"github.com/go-logr/zapr"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
+	"k8s.io/klog/v2"
 )
 
 func NewCacheDaemonCommand() *cobra.Command {
@@ -83,6 +85,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
+			klog.SetLogger(zapr.NewLogger(logger.Logger(ctx)))
 
 			if profilePath != "" {
 				file, err := os.Create(profilePath)
