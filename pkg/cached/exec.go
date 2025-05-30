@@ -16,9 +16,9 @@ import (
 
 type cmd struct {
 	utilexec.Cmd
+	ctx     context.Context
 	command string
 	args    []string
-	ctx     context.Context
 }
 
 func (c *cmd) Start() error {
@@ -46,25 +46,11 @@ func (e *executor) Command(command string, args ...string) utilexec.Cmd {
 }
 
 func (e *executor) CommandContext(ctx context.Context, command string, args ...string) utilexec.Cmd {
-	return &cmd{
-		Cmd:     e.Interface.CommandContext(ctx, command, args...),
-		command: command,
-		args:    args,
-		ctx:     ctx,
-	}
+	return &cmd{Cmd: e.Interface.CommandContext(ctx, command, args...), ctx: ctx, command: command, args: args}
 }
 
-func (e *executor) Exec(command string, args ...string) error {
-	cmd := e.CommandContext(context.TODO(), command, args...)
-	bs, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to execute command %s %s: %w: %s", command, strings.Join(args, " "), err, string(bs))
-	}
-	return nil
-}
-
-// execContext executes a command with context and returns combined output
-func (e *executor) execContext(ctx context.Context, command string, args ...string) error {
+// exec executes a command
+func (e *executor) exec(ctx context.Context, command string, args ...string) error {
 	cmd := e.CommandContext(ctx, command, args...)
 	bs, err := cmd.CombinedOutput()
 	if err != nil {
@@ -78,13 +64,13 @@ func (e *executor) execLVM(ctx context.Context, command string, args ...string) 
 	e.lvmLock.Lock()
 	defer e.lvmLock.Unlock()
 
-	return e.execContext(ctx, command, args...)
+	return e.exec(ctx, command, args...)
 }
 
 // udevSettle triggers udev events and waits for device to appear
 func (e *executor) udevSettle(ctx context.Context, devPath string) error {
 	// Trigger udev events for the device
-	if err := e.execContext(ctx, "udevadm", "trigger", "--action=add", devPath); err != nil {
+	if err := e.exec(ctx, "udevadm", "trigger", "--action=add", devPath); err != nil {
 		logger.Warn(ctx, "udevadm trigger failed", zap.String("device", devPath), zap.Error(err))
 		// Continue anyway, the device might still be available
 	}
@@ -93,7 +79,7 @@ func (e *executor) udevSettle(ctx context.Context, devPath string) error {
 	settleCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if err := e.execContext(settleCtx, "udevadm", "settle", "--exit-if-exists="+devPath); err != nil {
+	if err := e.exec(settleCtx, "udevadm", "settle", "--exit-if-exists="+devPath); err != nil {
 		logger.Warn(ctx, "udev settle failed", zap.String("device", devPath), zap.Error(err))
 		// Fallback to polling
 		return e.waitForDevice(ctx, devPath, 5*time.Second)
