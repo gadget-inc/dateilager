@@ -522,9 +522,15 @@ func (c *Cached) setOwnership(ctx context.Context, path string) error {
 	}
 
 	logger.Debug(ctx, "setting ownership", zap.Int("uid", c.CacheUid), zap.Int("gid", c.CacheGid))
-	return fastwalk.Walk(nil, path, func(walkPath string, _ fs.DirEntry, err error) error {
+	return fastwalk.Walk(nil, path, func(walkPath string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if !entry.Type().IsRegular() {
+			// we hardlink regular files, but all other files (e.g.
+			// directories, symlinks) are re-created with the correct
+			// ownership, so we can skip them here
+			return nil
 		}
 		return os.Chown(walkPath, c.CacheUid, c.CacheGid)
 	})
