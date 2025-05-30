@@ -94,7 +94,6 @@ func NewCacheDaemonCommand() *cobra.Command {
 			s := cached.NewServer(ctx)
 
 			cached := &cached.Cached{
-				Env:              env,
 				Client:           cl,
 				DriverNameSuffix: driverNameSuffix,
 				StagingPath:      stagingPath,

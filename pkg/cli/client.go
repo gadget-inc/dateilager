@@ -49,12 +49,7 @@ func NewClientCommand() *cobra.Command {
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			cmd.SilenceUsage = true // silence usage when an error occurs after flags have been parsed
 
-			env, err := environment.LoadOrProduction()
-			if err != nil {
-				return fmt.Errorf("could not load environment: %w", err)
-			}
-
-			err = logger.Init(env, encoding, zap.NewAtomicLevelAt(*level))
+			err := logger.Init(environment.LoadOrProduction(), encoding, zap.NewAtomicLevelAt(*level))
 			if err != nil {
 				return fmt.Errorf("could not initialize logger: %w", err)
 			}

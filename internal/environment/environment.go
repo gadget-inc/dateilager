@@ -44,10 +44,10 @@ func Load() (Env, error) {
 	}
 }
 
-func LoadOrProduction() (Env, error) {
+func LoadOrProduction() Env {
 	env, err := Load()
 	if err != nil {
-		return Prod, nil
+		return Prod
 	}
-	return env, nil
+	return env
 }
