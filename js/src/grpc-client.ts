@@ -50,6 +50,20 @@ export interface DateiLagerGrpcClientOptions {
   rpcOptions?: RpcOptions | (() => RpcOptions | undefined);
 }
 
+/** Options for calls that list objects */
+export interface ListObjectsOptions {
+  /** The project version to start from. If not provided, will send all objects in the latest version. */
+  from?: bigint;
+  /** The project version to end at. If not provided, will send all objects in the latest version. */
+  to?: bigint;
+  /** Don't send objects that are under these given paths. Acts in tandem with subpaths, where objects will only be sent if they pass both the include / exclude filters. */
+  ignores?: string[];
+  /** Only send objects that live at one of these subpaths in the response. Acts in tandem with ignores, where objects will only be sent if they pass both the include / exclude filters. */
+  subpaths?: string[];
+  /** The maximum file size to send content for. If object contents are larger than this, the object's metadata will still be sent but the contents will be omitted */
+  maxContentSendSize?: bigint;
+}
+
 /**
  * A client class for interacting with DateiLager's GRPC API.
  *
@@ -155,9 +169,7 @@ export class DateiLagerGrpcClient {
    * List objects.
    * @param  project The id of the project.
    * @param  path    The path to list objects under.
-   * @param  ignores The paths under {@link path} to ignore.
-   * @param  from    The project version to start from.
-   * @param  to      The project version to end at.
+   * @param  options The options for the list objects call to limit which objects are returned.
    * @returns        A stream of objects.
    * @yields           An object from the stream.
    * @example
@@ -166,13 +178,9 @@ export class DateiLagerGrpcClient {
    *   console.log("[listObjects] content:\n" + object.content);
    * }
    */
-  public async *listObjects(
-    project: bigint,
-    path: string,
-    ignores: string[] = [],
-    from?: bigint,
-    to?: bigint
-  ): AsyncGenerator<Objekt, void> {
+  public async *listObjects(project: bigint, path: string, options: ListObjectsOptions = {}): AsyncGenerator<Objekt, void> {
+    const { ignores = [], subpaths = [], from, to } = options;
+
     const parentContext = contextAPI.active();
     const span = tracer.startSpan(
       "dateilager-grpc-client.list-objects",
@@ -181,6 +189,7 @@ export class DateiLagerGrpcClient {
           "dl.project": String(project),
           "dl.path": path,
           "dl.ignores": ignores,
+          "dl.subpaths": subpaths,
           "dl.from_version": String(from),
           "dl.to_version": String(to),
         },
@@ -199,8 +208,8 @@ export class DateiLagerGrpcClient {
               {
                 path,
                 ignores,
+                subpaths,
                 isPrefix: true,
-                subpaths: [],
               },
             ],
           },
@@ -224,10 +233,7 @@ export class DateiLagerGrpcClient {
    * Get objects.
    * @param project The id of the project.
    * @param path    The path to get objects under.
-   * @param ignores The paths under {@link path} to ignore.
-   * @param from    The project version to start from.
-   * @param to      The project version to end at.
-   * @param maxSize The maximum file size at which the content of the file is sent for.
+   * @param options The options for the get objects call to limit which objcets are returned.
    * @returns       All the objects under {@link path}.
    * @example
    * const response = await client.getObjects(1n, "");
@@ -236,14 +242,9 @@ export class DateiLagerGrpcClient {
    *   console.log("[getObjects] content:\n" + object.content);
    * }
    */
-  public async getObjects(
-    project: bigint,
-    path: string,
-    ignores: string[] = [],
-    from?: bigint,
-    to?: bigint,
-    maxSize?: bigint
-  ): Promise<GetUnaryResponse> {
+  public async getObjects(project: bigint, path: string, options: ListObjectsOptions = {}): Promise<GetUnaryResponse> {
+    const { ignores = [], subpaths = [], from, to, maxContentSendSize } = options;
+
     return await trace(
       "dateilager-grpc-client.get-unary",
       {
@@ -251,9 +252,10 @@ export class DateiLagerGrpcClient {
           "dl.project": String(project),
           "dl.path": path,
           "dl.ignores": ignores,
+          "dl.subpaths": subpaths,
           "dl.from_version": String(from),
           "dl.to_version": String(to),
-          "dl.max_content_send_size": String(maxSize),
+          "dl.max_content_send_size": String(maxContentSendSize),
         },
       },
       async () => {
@@ -262,8 +264,8 @@ export class DateiLagerGrpcClient {
             project,
             fromVersion: from,
             toVersion: to,
-            queries: [{ path, ignores, isPrefix: true, subpaths: [] }],
-            maxContentSendSize: maxSize,
+            maxContentSendSize,
+            queries: [{ path, ignores, isPrefix: true, subpaths }],
           },
           this._rpcOptions()
         );
