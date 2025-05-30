@@ -93,16 +93,13 @@ func NewCacheDaemonCommand() *cobra.Command {
 
 			s := cached.NewServer(ctx)
 
-			cached := &cached.Cached{
-				Client:           cl,
-				DriverNameSuffix: driverNameSuffix,
-				StagingPath:      stagingPath,
-				CacheUid:         cacheUid,
-				CacheGid:         cacheGid,
-				LVMDevice:        lvmDevice,
-				LVMFormat:        lvmFormat,
-				LVMVirtualSize:   lvmVirtualSize,
-			}
+			cached := cached.New(cl, driverNameSuffix)
+			cached.StagingPath = stagingPath
+			cached.CacheUid = cacheUid
+			cached.CacheGid = cacheGid
+			cached.LVMDevice = lvmDevice
+			cached.LVMFormat = lvmFormat
+			cached.LVMVirtualSize = lvmVirtualSize
 
 			s.RegisterCSI(cached)
 

@@ -56,14 +56,15 @@ func New(client *client.Client, driverNameSuffix string) *Cached {
 	driverNameSuffixUnderscored := strings.ReplaceAll(driverNameSuffix, "-", "_")
 
 	return &Cached{
-		Client:         client,
-		StagingPath:    "/var/lib/kubelet/dateilager_cached" + driverNameSuffixUnderscored,
-		CacheUid:       NO_CHANGE_USER,
-		CacheGid:       NO_CHANGE_USER,
-		LVMDevice:      os.Getenv("DL_LVM_DEVICE"),
-		LVMFormat:      os.Getenv("DL_LVM_FORMAT"),
-		LVMVirtualSize: os.Getenv("DL_LVM_VIRTUAL_SIZE"),
-		lvmVg:          "vg_dateilager_cached" + driverNameSuffixUnderscored,
+		Client:           client,
+		DriverNameSuffix: driverNameSuffix,
+		StagingPath:      "/var/lib/kubelet/dateilager_cached" + driverNameSuffixUnderscored,
+		CacheUid:         NO_CHANGE_USER,
+		CacheGid:         NO_CHANGE_USER,
+		LVMDevice:        os.Getenv("DL_LVM_DEVICE"),
+		LVMFormat:        os.Getenv("DL_LVM_FORMAT"),
+		LVMVirtualSize:   os.Getenv("DL_LVM_VIRTUAL_SIZE"),
+		lvmVg:            "vg_dateilager_cached" + driverNameSuffixUnderscored,
 	}
 }
 
