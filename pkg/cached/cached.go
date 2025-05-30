@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -47,7 +48,7 @@ type Cached struct {
 	LVMFormat        string
 	LVMVirtualSize   string
 	lvmVg            string
-	currentVersion   int64
+	currentVersion   atomic.Int64
 	reflinkSupport   bool
 }
 
@@ -135,7 +136,7 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 		return fmt.Errorf("failed to change permissions of staging directory %s: %w", c.StagingPath, err)
 	}
 
-	c.currentVersion = version
+	c.currentVersion.Store(version)
 	c.reflinkSupport = files.HasReflinkSupport(cacheDir)
 
 	logger.Info(ctx, "downloaded golden copy", key.DurationMS.Field(time.Since(start)), key.Version.Field(version), key.Count.Field(int64(count)))
@@ -191,9 +192,9 @@ func (c *Cached) GetPluginCapabilities(ctx context.Context, _ *csi.GetPluginCapa
 
 // Probe returns the health and readiness of the plugin
 func (c *Cached) Probe(ctx context.Context, _ *csi.ProbeRequest) (*csi.ProbeResponse, error) {
-	ready := c.currentVersion == 0
+	ready := c.currentVersion.Load() != 0
 	if !ready {
-		logger.Warn(ctx, "csi probe failed as daemon hasn't prepared cache yet", key.Version.Field(c.currentVersion))
+		logger.Warn(ctx, "csi probe failed as daemon hasn't prepared cache yet", key.Version.Field(c.currentVersion.Load()))
 	}
 	return &csi.ProbeResponse{Ready: &wrappers.BoolValue{Value: ready}}, nil
 }
@@ -274,7 +275,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Errorf(codes.Internal, "failed to change permissions of target path %s: %v", targetPath, err)
 	}
 
-	logger.Info(ctx, "mounted snapshot", key.TargetPath.Field(targetPath), key.Version.Field(c.currentVersion))
+	logger.Info(ctx, "mounted snapshot", key.TargetPath.Field(targetPath), key.Version.Field(c.currentVersion.Load()))
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
