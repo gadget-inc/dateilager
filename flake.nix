@@ -80,6 +80,7 @@
               flake.packages.golangci-lint
               flake.packages.glibcLocales
               flake.packages.google-cloud-sdk
+              flake.packages.dateilager
               git
               protobuf
               protoc-gen-go
