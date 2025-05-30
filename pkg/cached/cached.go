@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charlievieth/fastwalk"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/files"
@@ -55,30 +56,24 @@ type Cached struct {
 	lvmVolumeGroup string
 }
 
-func (c *Cached) GetCachePath() string {
-	return filepath.Join(c.StagingPath, CACHE_PATH_SUFFIX)
-}
-
-// LVM helper methods following the reference implementation pattern
-
 // ensurePhysicalVolume creates LVM physical volume if it doesn't exist
 func (c *Cached) ensurePhysicalVolume(ctx context.Context) error {
 	logger.Debug(ctx, "checking physical volume", zap.String("device", c.LVMDevice))
 
-	err := exec.ExecLVM(ctx, "pvdisplay", c.LVMDevice)
-	switch {
-	case err == nil:
-		logger.Debug(ctx, "physical volume already exists", zap.String("device", c.LVMDevice))
-		return nil
-	case strings.Contains(err.Error(), "Failed to find physical volume"):
-		logger.Info(ctx, "creating physical volume", zap.String("device", c.LVMDevice))
-		if err := exec.ExecLVM(ctx, "pvcreate", c.LVMDevice); err != nil && !strings.Contains(err.Error(), "signal: killed") {
-			return fmt.Errorf("failed to create lvm physical volume %s: %w", c.LVMDevice, err)
+	err := exec.execLVM(ctx, "pvdisplay", c.LVMDevice)
+	if err != nil {
+		if strings.Contains(err.Error(), "Failed to find physical volume") {
+			logger.Info(ctx, "creating physical volume", zap.String("device", c.LVMDevice))
+			if err := exec.execLVM(ctx, "pvcreate", c.LVMDevice); err != nil && !strings.Contains(err.Error(), "signal: killed") {
+				return fmt.Errorf("failed to create lvm physical volume %s: %w", c.LVMDevice, err)
+			}
+			return nil
 		}
-		return nil
-	default:
 		return fmt.Errorf("failed to check lvm physical volume %s: %w", c.LVMDevice, err)
 	}
+
+	logger.Debug(ctx, "physical volume already exists", zap.String("device", c.LVMDevice))
+	return nil
 }
 
 // ensureVolumeGroup creates LVM volume group if it doesn't exist
@@ -86,20 +81,20 @@ func (c *Cached) ensureVolumeGroup(ctx context.Context) error {
 	c.lvmVolumeGroup = "vg_dateilager_cached" + strings.ReplaceAll(c.DriverNameSuffix, "-", "_")
 	logger.Debug(ctx, "checking volume group", zap.String("vg", c.lvmVolumeGroup))
 
-	err := exec.ExecLVM(ctx, "vgdisplay", c.lvmVolumeGroup)
-	switch {
-	case err == nil:
-		logger.Debug(ctx, "volume group already exists", zap.String("vg", c.lvmVolumeGroup))
-		return nil
-	case strings.Contains(err.Error(), "not found"):
-		logger.Info(ctx, "creating volume group", zap.String("vg", c.lvmVolumeGroup), zap.String("device", c.LVMDevice))
-		if err := exec.ExecLVM(ctx, "vgcreate", c.lvmVolumeGroup, c.LVMDevice); err != nil {
-			return fmt.Errorf("failed to create lvm volume group %s: %w", c.lvmVolumeGroup, err)
+	err := exec.execLVM(ctx, "vgdisplay", c.lvmVolumeGroup)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			logger.Info(ctx, "creating volume group", zap.String("vg", c.lvmVolumeGroup), zap.String("device", c.LVMDevice))
+			if err := exec.execLVM(ctx, "vgcreate", c.lvmVolumeGroup, c.LVMDevice); err != nil {
+				return fmt.Errorf("failed to create lvm volume group %s: %w", c.lvmVolumeGroup, err)
+			}
+			return nil
 		}
-		return nil
-	default:
 		return fmt.Errorf("failed to check lvm volume group %s: %w", c.lvmVolumeGroup, err)
 	}
+
+	logger.Debug(ctx, "volume group already exists", zap.String("vg", c.lvmVolumeGroup))
+	return nil
 }
 
 // ensureThinPool creates LVM thin pool if it doesn't exist
@@ -107,20 +102,20 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 	thinPoolPath := c.lvmVolumeGroup + "/thinpool"
 	logger.Debug(ctx, "checking thin pool", zap.String("thinpool", thinPoolPath))
 
-	err := exec.ExecLVM(ctx, "lvdisplay", thinPoolPath)
-	switch {
-	case err == nil:
-		logger.Debug(ctx, "thin pool already exists", zap.String("thinpool", thinPoolPath))
-		return nil
-	case strings.Contains(err.Error(), "Failed to find logical volume"):
-		logger.Info(ctx, "creating thin pool", zap.String("thinpool", thinPoolPath))
-		if err := exec.ExecLVM(ctx, "lvcreate", c.lvmVolumeGroup, "--name=thinpool", "--extents=95%VG", "--thinpool=thinpool"); err != nil {
-			return fmt.Errorf("failed to create lvm thin pool %s: %w", thinPoolPath, err)
+	err := exec.execLVM(ctx, "lvdisplay", thinPoolPath)
+	if err != nil {
+		if strings.Contains(err.Error(), "Failed to find logical volume") {
+			logger.Info(ctx, "creating thin pool", zap.String("thinpool", thinPoolPath))
+			if err := exec.execLVM(ctx, "lvcreate", c.lvmVolumeGroup, "--name=thinpool", "--extents=95%VG", "--thinpool=thinpool"); err != nil {
+				return fmt.Errorf("failed to create lvm thin pool %s: %w", thinPoolPath, err)
+			}
+			return nil
 		}
-		return nil
-	default:
 		return fmt.Errorf("failed to check lvm thin pool %s: %w", thinPoolPath, err)
 	}
+
+	logger.Debug(ctx, "thin pool already exists", zap.String("thinpool", thinPoolPath))
+	return nil
 }
 
 // ensureBaseVolume creates base LVM volume if it doesn't exist
@@ -128,20 +123,20 @@ func (c *Cached) ensureBaseVolume(ctx context.Context) error {
 	basePath := c.lvmVolumeGroup + "/base"
 	logger.Debug(ctx, "checking base volume", zap.String("base", basePath))
 
-	err := exec.ExecLVM(ctx, "lvdisplay", basePath)
-	switch {
-	case err == nil:
-		logger.Debug(ctx, "base volume already exists", zap.String("base", basePath))
-		return nil
-	case strings.Contains(err.Error(), "Failed to find logical volume"):
-		logger.Info(ctx, "creating base volume", zap.String("base", basePath), zap.String("size", c.LVMVirtualSize))
-		if err := exec.ExecLVM(ctx, "lvcreate", "--name=base", "--virtualsize="+c.LVMVirtualSize, "--thinpool="+c.lvmVolumeGroup+"/thinpool"); err != nil {
-			return fmt.Errorf("failed to create base volume %s: %w", basePath, err)
+	err := exec.execLVM(ctx, "lvdisplay", basePath)
+	if err != nil {
+		if strings.Contains(err.Error(), "Failed to find logical volume") {
+			logger.Info(ctx, "creating base volume", zap.String("base", basePath), zap.String("size", c.LVMVirtualSize))
+			if err := exec.execLVM(ctx, "lvcreate", "--name=base", "--virtualsize="+c.LVMVirtualSize, "--thinpool="+c.lvmVolumeGroup+"/thinpool"); err != nil {
+				return fmt.Errorf("failed to create base volume %s: %w", basePath, err)
+			}
+			return nil
 		}
-		return nil
-	default:
 		return fmt.Errorf("failed to check base volume %s: %w", basePath, err)
 	}
+
+	logger.Debug(ctx, "base volume already exists", zap.String("base", basePath))
+	return nil
 }
 
 // createSnapshot creates an LVM snapshot from the base volume
@@ -149,27 +144,27 @@ func (c *Cached) createSnapshot(ctx context.Context, volumeID string) error {
 	snapshotPath := c.lvmVolumeGroup + "/" + volumeID
 	logger.Debug(ctx, "checking snapshot", zap.String("snapshot", snapshotPath))
 
-	err := exec.ExecLVM(ctx, "lvdisplay", snapshotPath)
-	switch {
-	case err == nil:
-		logger.Debug(ctx, "snapshot already exists", zap.String("snapshot", snapshotPath))
-		return nil
-	case strings.Contains(err.Error(), "Failed to find logical volume"):
-		logger.Info(ctx, "creating snapshot", zap.String("snapshot", snapshotPath))
-		if err := exec.ExecLVM(ctx, "lvcreate", c.lvmVolumeGroup+"/base", "--name="+volumeID, "--snapshot", "--setactivationskip=n"); err != nil {
-			return fmt.Errorf("failed to create snapshot of base volume %s: %w", c.lvmVolumeGroup+"/base", err)
-		}
+	err := exec.execLVM(ctx, "lvdisplay", snapshotPath)
+	if err != nil {
+		if strings.Contains(err.Error(), "Failed to find logical volume") {
+			logger.Info(ctx, "creating snapshot", zap.String("snapshot", snapshotPath))
+			if err := exec.execLVM(ctx, "lvcreate", c.lvmVolumeGroup+"/base", "--name="+volumeID, "--snapshot", "--setactivationskip=n"); err != nil {
+				return fmt.Errorf("failed to create snapshot of base volume %s: %w", c.lvmVolumeGroup+"/base", err)
+			}
 
-		// Wait for device to appear and settle udev
-		devicePath := "/dev/" + c.lvmVolumeGroup + "/" + volumeID
-		if err := exec.UdevSettle(ctx, devicePath); err != nil {
-			logger.Warn(ctx, "udev settle failed for snapshot", zap.String("device", devicePath), zap.Error(err))
-		}
+			// Wait for device to appear and settle udev
+			devicePath := "/dev/" + c.lvmVolumeGroup + "/" + volumeID
+			if err := exec.udevSettle(ctx, devicePath); err != nil {
+				logger.Warn(ctx, "udev settle failed for snapshot", zap.String("device", devicePath), zap.Error(err))
+			}
 
-		return nil
-	default:
+			return nil
+		}
 		return fmt.Errorf("failed to check if snapshot %s exists: %w", snapshotPath, err)
 	}
+
+	logger.Debug(ctx, "snapshot already exists", zap.String("snapshot", snapshotPath))
+	return nil
 }
 
 // removeSnapshot removes an LVM snapshot
@@ -177,18 +172,35 @@ func (c *Cached) removeSnapshot(ctx context.Context, volumeID string) error {
 	snapshotDevice := "/dev/" + c.lvmVolumeGroup + "/" + volumeID
 	logger.Debug(ctx, "checking snapshot for removal", zap.String("snapshot", snapshotDevice))
 
-	err := exec.ExecLVM(ctx, "lvdisplay", "-q", snapshotDevice)
-	if err == nil {
-		logger.Info(ctx, "removing snapshot", zap.String("snapshot", snapshotDevice))
-		if err := exec.ExecLVM(ctx, "lvremove", "-y", snapshotDevice); err != nil {
-			return fmt.Errorf("failed to remove snapshot %s: %w", snapshotDevice, err)
+	err := exec.execLVM(ctx, "lvdisplay", "-q", snapshotDevice)
+	if err != nil {
+		if !strings.Contains(err.Error(), "exit status 5") {
+			// exit status 5 means not found, any other error is unexpected
+			return fmt.Errorf("failed to check if snapshot %s exists: %w", snapshotDevice, err)
 		}
-	} else if !strings.Contains(err.Error(), "exit status 5") {
-		// exit status 5 means not found, any other error is unexpected
-		return fmt.Errorf("failed to check if snapshot %s exists: %w", snapshotDevice, err)
+		return nil
 	}
 
+	logger.Info(ctx, "removing snapshot", zap.String("snapshot", snapshotDevice))
+	if err := exec.execLVM(ctx, "lvremove", "-y", snapshotDevice); err != nil {
+		return fmt.Errorf("failed to remove snapshot %s: %w", snapshotDevice, err)
+	}
 	return nil
+}
+
+// setOwnership sets the ownership of a path using os.Chown
+func (c *Cached) setOwnership(ctx context.Context, path string) error {
+	if c.CacheUid == NO_CHANGE_USER && c.CacheGid == NO_CHANGE_USER {
+		return nil
+	}
+
+	logger.Debug(ctx, "setting ownership", zap.Int("uid", c.CacheUid), zap.Int("gid", c.CacheGid))
+	return fastwalk.Walk(nil, path, func(walkPath string, _ fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chown(walkPath, c.CacheUid, c.CacheGid)
+	})
 }
 
 // Fetch the cache into the staging dir
@@ -227,11 +239,11 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 		logger.Info(ctx, "mounting base volume", zap.String("device", lvmBaseDevice), zap.String("target", c.StagingPath))
 
 		// Ensure device is available
-		if err := exec.UdevSettle(ctx, lvmBaseDevice); err != nil {
+		if err := exec.udevSettle(ctx, lvmBaseDevice); err != nil {
 			logger.Warn(ctx, "udev settle failed for base volume", zap.String("device", lvmBaseDevice), zap.Error(err))
 		}
 
-		if err := mkdirAll(c.StagingPath, 0o775); err != nil {
+		if err := os.MkdirAll(c.StagingPath, 0o775); err != nil {
 			return fmt.Errorf("failed to create staging directory %s: %w", c.StagingPath, err)
 		}
 
@@ -246,27 +258,19 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 		}
 	}()
 
-	// Set ownership if specified
-	if c.CacheUid != NO_CHANGE_USER || c.CacheGid != NO_CHANGE_USER {
-		logger.Debug(ctx, "setting ownership", zap.Int("uid", c.CacheUid), zap.Int("gid", c.CacheGid))
-		if err = exec.ExecContext(ctx, "chown", fmt.Sprintf("%d:%d", c.CacheUid, c.CacheGid), c.StagingPath); err != nil {
-			return fmt.Errorf("failed to change permissions of cache directory %s: %w", c.StagingPath, err)
-		}
-		defer func() {
-			if chownErr := exec.ExecContext(ctx, "chown", "-R", fmt.Sprintf("%d:%d", c.CacheUid, c.CacheGid), c.StagingPath); chownErr != nil {
-				err = errors.Join(err, fmt.Errorf("failed to recursively change permissions of cache directory %s: %w", c.StagingPath, chownErr))
-			}
-		}()
-	}
-
 	// Download cache
-	cacheDir := c.GetCachePath()
+	cacheDir := filepath.Join(c.StagingPath, CACHE_PATH_SUFFIX)
 	version, count, err := c.Client.GetCache(ctx, cacheDir, cacheVersion)
 	if err != nil {
 		return err
 	}
 
 	span.SetAttributes(key.Count.Attribute(int64(count)))
+
+	// Set ownership if specified
+	if err = c.setOwnership(ctx, c.StagingPath); err != nil {
+		return fmt.Errorf("failed to change permissions of staging directory %s: %w", c.StagingPath, err)
+	}
 
 	c.currentVersion = version
 	c.reflinkSupport = files.HasReflinkSupport(cacheDir)
@@ -279,31 +283,33 @@ func (c *Cached) Unprepare(ctx context.Context) error {
 	logger.Info(ctx, "unpreparing cached storage", zap.String("vg", c.lvmVolumeGroup))
 
 	// Remove volume group if it exists
-	err := exec.ExecLVM(ctx, "vgdisplay", c.lvmVolumeGroup)
-	switch {
-	case err == nil:
+	err := exec.execLVM(ctx, "vgdisplay", c.lvmVolumeGroup)
+	if err != nil {
+		if !strings.Contains(err.Error(), "not found") {
+			return fmt.Errorf("failed to check lvm volume group %s: %w", c.lvmVolumeGroup, err)
+		} else {
+			logger.Debug(ctx, "volume group does not exist", zap.String("vg", c.lvmVolumeGroup))
+		}
+	} else {
 		logger.Info(ctx, "removing volume group", zap.String("vg", c.lvmVolumeGroup))
-		if err := exec.ExecLVM(ctx, "vgremove", "-y", c.lvmVolumeGroup); err != nil {
+		if err := exec.execLVM(ctx, "vgremove", "-y", c.lvmVolumeGroup); err != nil {
 			return fmt.Errorf("failed to remove lvm volume group %s: %w", c.lvmVolumeGroup, err)
 		}
-	case strings.Contains(err.Error(), "not found"):
-		logger.Debug(ctx, "volume group does not exist", zap.String("vg", c.lvmVolumeGroup))
-	default:
-		return fmt.Errorf("failed to check lvm volume group %s: %w", c.lvmVolumeGroup, err)
 	}
 
 	// Remove physical volume if it exists
-	err = exec.ExecLVM(ctx, "pvdisplay", c.LVMDevice)
-	switch {
-	case err == nil:
+	err = exec.execLVM(ctx, "pvdisplay", c.LVMDevice)
+	if err != nil {
+		if !strings.Contains(err.Error(), "Failed to find physical volume") {
+			return fmt.Errorf("failed to check lvm physical volume %s: %w", c.LVMDevice, err)
+		} else {
+			logger.Debug(ctx, "physical volume does not exist", zap.String("device", c.LVMDevice))
+		}
+	} else {
 		logger.Info(ctx, "removing physical volume", zap.String("device", c.LVMDevice))
-		if err := exec.ExecLVM(ctx, "pvremove", c.LVMDevice); err != nil {
+		if err := exec.execLVM(ctx, "pvremove", c.LVMDevice); err != nil {
 			return fmt.Errorf("failed to remove lvm physical volume %s: %w", c.LVMDevice, err)
 		}
-	case strings.Contains(err.Error(), "Failed to find physical volume"):
-		logger.Debug(ctx, "physical volume does not exist", zap.String("device", c.LVMDevice))
-	default:
-		return fmt.Errorf("failed to check lvm physical volume %s: %w", c.LVMDevice, err)
 	}
 
 	return nil
@@ -397,7 +403,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	if notMounted {
 		// Create target directory
-		if err := mkdirAll(targetPath, 0o775); err != nil {
+		if err := os.MkdirAll(targetPath, 0o775); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to create target path %s: %v", targetPath, err)
 		}
 
@@ -405,7 +411,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		lvmSnapshotDevice := "/dev/" + c.lvmVolumeGroup + "/" + volumeID
 
 		// Ensure device is available before mounting
-		if err := exec.UdevSettle(ctx, lvmSnapshotDevice); err != nil {
+		if err := exec.udevSettle(ctx, lvmSnapshotDevice); err != nil {
 			logger.Warn(ctx, "udev settle failed for snapshot mount", zap.String("device", lvmSnapshotDevice), zap.Error(err))
 		}
 
@@ -532,23 +538,4 @@ func getFolderSize(path string) (int64, error) {
 		return nil
 	})
 	return totalSize, err
-}
-
-func mkdirAll(path string, mode os.FileMode) error {
-	if err := os.MkdirAll(path, mode); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", path, err)
-	}
-
-	info, err := os.Stat(path)
-	if err != nil {
-		return fmt.Errorf("failed to stat directory %s: %w", path, err)
-	}
-
-	if info.Mode()&os.ModePerm != mode {
-		if err := os.Chmod(path, mode); err != nil {
-			return fmt.Errorf("failed to change permissions of directory %s: %w", path, err)
-		}
-	}
-
-	return nil
 }

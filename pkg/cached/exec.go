@@ -63,8 +63,8 @@ func (e *executor) Exec(command string, args ...string) error {
 	return nil
 }
 
-// ExecContext executes a command with context and returns combined output
-func (e *executor) ExecContext(ctx context.Context, command string, args ...string) error {
+// execContext executes a command with context and returns combined output
+func (e *executor) execContext(ctx context.Context, command string, args ...string) error {
 	cmd := e.CommandContext(ctx, command, args...)
 	bs, err := cmd.CombinedOutput()
 	if err != nil {
@@ -73,18 +73,18 @@ func (e *executor) ExecContext(ctx context.Context, command string, args ...stri
 	return nil
 }
 
-// ExecLVM executes LVM commands with proper serialization
-func (e *executor) ExecLVM(ctx context.Context, command string, args ...string) error {
+// execLVM executes LVM commands with proper serialization
+func (e *executor) execLVM(ctx context.Context, command string, args ...string) error {
 	e.lvmLock.Lock()
 	defer e.lvmLock.Unlock()
 
-	return e.ExecContext(ctx, command, args...)
+	return e.execContext(ctx, command, args...)
 }
 
-// UdevSettle triggers udev events and waits for device to appear
-func (e *executor) UdevSettle(ctx context.Context, devPath string) error {
+// udevSettle triggers udev events and waits for device to appear
+func (e *executor) udevSettle(ctx context.Context, devPath string) error {
 	// Trigger udev events for the device
-	if err := e.ExecContext(ctx, "udevadm", "trigger", "--action=add", devPath); err != nil {
+	if err := e.execContext(ctx, "udevadm", "trigger", "--action=add", devPath); err != nil {
 		logger.Warn(ctx, "udevadm trigger failed", zap.String("device", devPath), zap.Error(err))
 		// Continue anyway, the device might still be available
 	}
@@ -93,17 +93,17 @@ func (e *executor) UdevSettle(ctx context.Context, devPath string) error {
 	settleCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if err := e.ExecContext(settleCtx, "udevadm", "settle", "--exit-if-exists="+devPath); err != nil {
-		logger.Warn(ctx, "udevadm settle failed", zap.String("device", devPath), zap.Error(err))
+	if err := e.execContext(settleCtx, "udevadm", "settle", "--exit-if-exists="+devPath); err != nil {
+		logger.Warn(ctx, "udev settle failed", zap.String("device", devPath), zap.Error(err))
 		// Fallback to polling
-		return e.WaitForDevice(ctx, devPath, 5*time.Second)
+		return e.waitForDevice(ctx, devPath, 5*time.Second)
 	}
 
 	return nil
 }
 
-// WaitForDevice polls for device availability with timeout
-func (e *executor) WaitForDevice(ctx context.Context, devicePath string, timeout time.Duration) error {
+// waitForDevice polls for device availability with timeout
+func (e *executor) waitForDevice(ctx context.Context, devicePath string, timeout time.Duration) error {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -123,10 +123,4 @@ func (e *executor) WaitForDevice(ctx context.Context, devicePath string, timeout
 			return ctx.Err()
 		}
 	}
-}
-
-// CheckDeviceExists checks if a device path exists without waiting
-func (e *executor) CheckDeviceExists(devicePath string) bool {
-	_, err := os.Stat(devicePath)
-	return err == nil
 }
