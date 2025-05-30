@@ -23,7 +23,7 @@ describe("grpc client operations", () => {
     expect(result?.content?.toString()).toBe("a v1");
   });
 
-  it("can create and read multiple object", async () => {
+  it("can create and read multiple objects", async () => {
     const projectId = 1337n;
     await grpcClient.newProject(projectId, []);
 
@@ -41,13 +41,93 @@ describe("grpc client operations", () => {
     expect(receivedObjects).toEqual(objects);
   });
 
+  it("can read only objects with some subpaths", async () => {
+    const projectId = 1337n;
+    await grpcClient.newProject(projectId, []);
+
+    await grpcClient.updateObject(1337n, {
+      path: "foo/a.txt",
+      mode: 0o755n,
+      content: encodeContent("a v1"),
+      size: BigInt(1),
+      deleted: false,
+    });
+
+    await grpcClient.updateObject(1337n, {
+      path: "bar/a.txt",
+      mode: 0o755n,
+      content: encodeContent("a v1"),
+      size: BigInt(1),
+      deleted: false,
+    });
+
+    const response = await grpcClient.getObjects(projectId, "", { subpaths: ["foo"] });
+    const receivedObjects = response.objects
+      .map((object) => ({ ...object, content: decodeContent(object.content) }))
+      .sort((a, b) => {
+        const aNum = parseInt(a.path.split("-")[1]!.slice(0, -4));
+        const bNum = parseInt(b.path.split("-")[1]!.slice(0, -4));
+        return aNum - bNum;
+      });
+
+    expect(receivedObjects).toEqual([
+      {
+        path: "foo/a.txt",
+        mode: 0o755n,
+        content: "a v1",
+        size: BigInt(1),
+        deleted: false,
+      },
+    ]);
+  });
+
+  it("can ignore objects in a subpath", async () => {
+    const projectId = 1337n;
+    await grpcClient.newProject(projectId, []);
+
+    await grpcClient.updateObject(1337n, {
+      path: "foo/a.txt",
+      mode: 0o755n,
+      content: encodeContent("a v1"),
+      size: BigInt(1),
+      deleted: false,
+    });
+
+    await grpcClient.updateObject(1337n, {
+      path: "bar/a.txt",
+      mode: 0o755n,
+      content: encodeContent("a v1"),
+      size: BigInt(1),
+      deleted: false,
+    });
+
+    const response = await grpcClient.getObjects(projectId, "", { ignores: ["bar"] });
+    const receivedObjects = response.objects
+      .map((object) => ({ ...object, content: decodeContent(object.content) }))
+      .sort((a, b) => {
+        const aNum = parseInt(a.path.split("-")[1]!.slice(0, -4));
+        const bNum = parseInt(b.path.split("-")[1]!.slice(0, -4));
+        return aNum - bNum;
+      });
+
+    expect(receivedObjects).toEqual([
+      {
+        path: "foo/a.txt",
+        mode: 0o755n,
+        content: "a v1",
+        size: BigInt(1),
+        deleted: false,
+      },
+    ]);
+  });
+
   it("can create and read multiple objects with content size limit set", async () => {
     const projectId = 1337n;
     await grpcClient.newProject(projectId, []);
 
     const objects = await buildTestFiles(64, 10, projectId);
 
-    const response = await grpcClient.getObjects(projectId, "", undefined, undefined, undefined, 256n);
+    const response = await grpcClient.getObjects(projectId, "", { maxContentSendSize: 256n });
     const receivedObjects = response.objects
       .map((object) => ({ ...object, content: decodeContent(object.content) }))
       .sort((a, b) => {
@@ -72,7 +152,7 @@ describe("grpc client operations", () => {
 
     const objects = smallObjects.concat(largeObjects);
 
-    const response = await grpcClient.getObjects(projectId, "", undefined, undefined, undefined, 100n);
+    const response = await grpcClient.getObjects(projectId, "", { maxContentSendSize: 100n });
     const receivedObjects = response.objects
       .map((object) => ({ ...object, content: decodeContent(object.content) }))
       .sort((a, b) => {
