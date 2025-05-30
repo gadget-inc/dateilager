@@ -1,7 +1,7 @@
 package main
 
-import "github.com/gadget-inc/dateilager/pkg/cachedcli"
+import "github.com/gadget-inc/dateilager/pkg/cli"
 
 func main() {
-	cachedcli.CacheDaemonExecute()
+	cli.CacheDaemonExecute()
 }
