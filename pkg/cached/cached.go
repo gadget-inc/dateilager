@@ -457,6 +457,11 @@ func (c *Cached) ensureBaseVolume(ctx context.Context) error {
 			if err := exec(ctx, "lvcreate", "--name=base", "--virtualsize="+c.LVMVirtualSize, "--thinpool="+c.lvmVg+"/thinpool"); err != nil {
 				return fmt.Errorf("failed to create base volume %s: %w", basePath, err)
 			}
+			// Wait for device to appear and settle udev
+			devicePath := "/dev/" + c.lvmVg + "/" + "base"
+			if err := c.udevSettle(ctx, devicePath); err != nil {
+				logger.Warn(ctx, "udev settle failed for base volume", zap.String("device", devicePath), zap.Error(err))
+			}
 			return nil
 		}
 		return fmt.Errorf("failed to check base volume %s: %w", basePath, err)
