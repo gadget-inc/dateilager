@@ -98,14 +98,7 @@ func (tc *TestCtx) FsApi() *api.Fs {
 }
 
 func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string) *cached.Cached {
-	return &cached.Cached{
-		Env:            environment.Test,
-		Client:         cl,
-		StagingPath:    stagingPath,
-		CacheUid:       os.Getuid(),
-		CacheGid:       os.Getgid(),
-		LVMDevice:      os.Getenv("DL_LVM_DEVICE"),
-		LVMFormat:      os.Getenv("DL_LVM_FORMAT"),
-		LVMVirtualSize: os.Getenv("DL_LVM_VIRTUAL_SIZE"),
-	}
+	c := cached.New(cl, "")
+	c.StagingPath = stagingPath
+	return c
 }

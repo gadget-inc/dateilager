@@ -245,7 +245,7 @@ upload-prerelease-container-image:
 ifndef version_tag
 	docker build --platform linux/arm64,linux/amd64 --push -t us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:pre-$(GIT_COMMIT) .
 else
-	docker build --platform linux/arm64,linux/amd64 --push -t "us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:$(version_tag)"  -t "us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:v$(version_tag)" -t us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:pre-latest .
+	docker build --platform linux/arm64,linux/amd64 --push -t "us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:$(version_tag)" -t us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:pre-latest .
 endif
 
 build-local-container:
