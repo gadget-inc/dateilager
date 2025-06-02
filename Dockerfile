@@ -34,6 +34,8 @@ ARG TARGETARCH
 
 RUN apt-get update && \
     apt-get install -y curl findutils gzip kmod less lvm2 net-tools postgresql procps tar time udev && \
+    mkdir -p /lvm-tmp/lvm && \
+    cp -r /etc/lvm /lvm-tmp/lvm && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
 RUN GRPC_HEALTH_PROBE_VERSION=v0.4.23 \
@@ -58,6 +60,7 @@ COPY --from=build-stage /app/release/server_linux_${TARGETARCH} server
 
 COPY migrations migrations
 COPY entrypoint.sh entrypoint.sh
+COPY entrypoint-cached.sh entrypoint-cached.sh
 
 # smoke test -- ensure the commands can run
 RUN ./server --help
