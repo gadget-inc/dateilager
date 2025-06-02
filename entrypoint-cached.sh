@@ -8,4 +8,4 @@ set -euo pipefail
 /bin/sed -i -e "s/.*udev_rules = 1.*/	udev_rules = 0/" /etc/lvm/lvm.conf
 /bin/sed -i -e "s/.*locking_dir = .*/	locking_dir = \"\/tmp\"/" /etc/lvm/lvm.conf
 
-/gce-pd-csi-driver "$@"
+./cached "$@"
