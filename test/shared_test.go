@@ -21,7 +21,9 @@ import (
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/files"
+	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/gadget-inc/dateilager/pkg/api"
@@ -30,10 +32,34 @@ import (
 	"github.com/klauspost/compress/s2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 )
+
+func init() {
+	encoding := os.Getenv("LOG_ENCODING")
+	if encoding == "" {
+		encoding = "console"
+	}
+
+	levelStr := os.Getenv("LOG_LEVEL")
+	if levelStr == "" {
+		levelStr = "info"
+	}
+
+	level, err := zapcore.ParseLevel(levelStr)
+	if err != nil {
+		panic(fmt.Sprintf("failed to parse log level: %v", err))
+	}
+
+	err = logger.Init(environment.Dev, encoding, zap.NewAtomicLevelAt(level))
+	if err != nil {
+		panic(fmt.Sprintf("failed to init logger: %v", err))
+	}
+}
 
 type Type int
 
@@ -320,7 +346,7 @@ func workspaceDir(t testing.TB) string {
 // emptyTmpDir returns a temporary directory for testing. (e.g. tmp/test/dateilager_test_<random>)
 func emptyTmpDir(t testing.TB) string {
 	wd := workspaceDir(t)
-	mkdirAll(t, path.Join(wd, "tmp/test"), 0o755)
+	mkdirAll(t, path.Join(wd, "tmp/test"), 0o777)
 	dir, err := os.MkdirTemp(path.Join(wd, "tmp/test"), "dateilager_test_")
 	require.NoError(t, err, "failed to create tmp dir")
 	return dir
@@ -977,8 +1003,10 @@ func compareFileContents(info os.FileInfo, file1, file2 string) (bool, error) {
 	return bytes.Equal(hash1.Sum(nil), hash2.Sum(nil)), nil
 }
 
-func execCommand(t testing.TB, command string, args ...string) {
+func execCommand(t testing.TB, command string, args ...string) string {
 	cmd := exec.Command(command, args...)
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, "failed to execute command %s: %s", cmd.String(), string(output))
+	bs, err := cmd.CombinedOutput()
+	output := string(bytes.TrimSpace(bs))
+	require.NoError(t, err, "failed to execute command %s: %s", cmd.String(), output)
+	return output
 }
