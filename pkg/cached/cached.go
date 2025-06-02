@@ -531,13 +531,7 @@ func (c *Cached) setOwnership(ctx context.Context, path string) error {
 		if err != nil {
 			return err
 		}
-		if !entry.Type().IsRegular() {
-			// we hardlink regular files, but all other files (e.g.
-			// directories, symlinks) are re-created with the correct
-			// ownership, so we can skip them here
-			return nil
-		}
-		return os.Chown(walkPath, c.CacheUid, c.CacheGid)
+		return os.Lchown(walkPath, c.CacheUid, c.CacheGid)
 	})
 }
 
