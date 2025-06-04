@@ -76,41 +76,25 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 	start := time.Now()
 	logger.Info(ctx, "preparing cached storage", zap.Int64("cacheVersion", cacheVersion))
 
-	if err := c.ensurePhysicalVolume(ctx); err != nil {
+	var err error
+	if err = c.ensurePhysicalVolume(ctx); err != nil {
 		return err
 	}
 
-	if err := c.ensureVolumeGroup(ctx); err != nil {
+	if err = c.ensureVolumeGroup(ctx); err != nil {
 		return err
 	}
 
-	if err := c.ensureThinPool(ctx); err != nil {
+	if err = c.ensureThinPool(ctx); err != nil {
 		return err
 	}
 
-	if err := c.ensureBaseVolume(ctx); err != nil {
+	if err = c.ensureBaseVolume(ctx); err != nil {
 		return err
 	}
 
-	notMounted, err := mounter.IsLikelyNotMountPoint(c.StagingPath)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("failed to check if staging directory %s is mounted: %w", c.StagingPath, err)
-	}
-
-	lvmBaseDevice := "/dev/" + c.lvmVg + "/base"
-	if notMounted {
-		logger.Info(ctx, "mounting base volume", zap.String("device", lvmBaseDevice), zap.String("target", c.StagingPath))
-		if err := c.udevSettle(ctx, lvmBaseDevice); err != nil {
-			logger.Warn(ctx, "udev settle failed for base volume", zap.String("device", lvmBaseDevice), zap.Error(err))
-		}
-
-		if err := os.MkdirAll(c.StagingPath, 0o775); err != nil {
-			return fmt.Errorf("failed to create staging directory %s: %w", c.StagingPath, err)
-		}
-
-		if err := mounter.FormatAndMount(lvmBaseDevice, c.StagingPath, c.LVMFormat, nil); err != nil {
-			return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", lvmBaseDevice, c.StagingPath, err)
-		}
+	if err = c.mountAndFormatBaseVolume(ctx); err != nil {
+		return err
 	}
 
 	defer func() {
@@ -126,7 +110,11 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 	}
 
 	if err = c.setOwnership(ctx, c.StagingPath); err != nil {
-		return fmt.Errorf("failed to change permissions of staging directory %s: %w", c.StagingPath, err)
+		return err
+	}
+
+	if err := exec(ctx, "fstrim", "-v", c.StagingPath); err != nil {
+		logger.Warn(ctx, "failed to trim staging directory", zap.String("path", c.StagingPath), zap.Error(err))
 	}
 
 	c.currentVersion.Store(version)
@@ -237,14 +225,10 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			return nil, status.Errorf(codes.Internal, "failed to create target path %s: %v", targetPath, err)
 		}
 
-		lvmSnapshotDevice := "/dev/" + c.lvmVg + "/" + volumeID
-		if err := c.udevSettle(ctx, lvmSnapshotDevice); err != nil {
-			logger.Warn(ctx, "udev settle failed for snapshot mount", zap.String("device", lvmSnapshotDevice), zap.Error(err))
-		}
-
-		logger.Info(ctx, "mounting snapshot", zap.String("device", lvmSnapshotDevice), zap.String("target", targetPath))
-		if err := mounter.Mount(lvmSnapshotDevice, targetPath, c.LVMFormat, nil); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to mount snapshot %s to %s: %v", lvmSnapshotDevice, targetPath, err)
+		devicePath := "/dev/" + c.lvmVg + "/" + volumeID
+		logger.Info(ctx, "mounting snapshot", zap.String("device", devicePath), zap.String("target", targetPath))
+		if err := mounter.Mount(devicePath, targetPath, c.LVMFormat, nil); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to mount snapshot %s to %s: %v", devicePath, targetPath, err)
 		}
 	}
 
@@ -440,6 +424,49 @@ func (c *Cached) ensureBaseVolume(ctx context.Context) error {
 	devicePath := "/dev/" + c.lvmVg + "/" + "base"
 	if err := c.udevSettle(ctx, devicePath); err != nil {
 		logger.Warn(ctx, "udev settle failed for base volume", zap.String("device", devicePath), zap.Error(err))
+	}
+
+	return nil
+}
+
+func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
+	notMounted, err := mounter.IsLikelyNotMountPoint(c.StagingPath)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("failed to check if staging directory %s is mounted: %w", c.StagingPath, err)
+	}
+
+	if !notMounted {
+		logger.Debug(ctx, "staging directory is already mounted", zap.String("path", c.StagingPath))
+		return nil
+	}
+
+	lvmBaseDevice := "/dev/" + c.lvmVg + "/base"
+	logger.Info(ctx, "mounting base volume", zap.String("device", lvmBaseDevice), zap.String("target", c.StagingPath))
+	if err := os.MkdirAll(c.StagingPath, 0o775); err != nil {
+		return fmt.Errorf("failed to create staging directory %s: %w", c.StagingPath, err)
+	}
+
+	var mountOptions []string
+	if c.LVMFormat == "ext4" {
+		// ext4 is created with `lazy_itable_init=1` by default. That means the inode tables are not fully zero-initialized at mkfs time.
+		// Instead, the kernel's `ext4lazyinit` thread clears the remaining blocks later while the filesystem is mounted.
+		//
+		// On ordinary block devices that "pay-as-you-go" strategy is fine, but on our LVM thin snapshots it is disastrous: every background
+		// write touches a previously shared metadata block, so the thin-pool must allocate a fresh block for the snapshot (copy-on-write). For
+		// example, a 350 GiB filesystem can burn ~3-4 GiB of pool space per snapshot before the inode tables are finally clean.
+		//
+		// Mounting with `init_itable=0` tells the kernel to finish that zeroing in one burst now on the base volume. We take the hit once,
+		// up-front, and future snapshots stay space-neutral until real user data is written.
+		mountOptions = append(mountOptions, "init_itable=0")
+	}
+
+	if err := mounter.FormatAndMount(lvmBaseDevice, c.StagingPath, c.LVMFormat, mountOptions); err != nil {
+		return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", lvmBaseDevice, c.StagingPath, err)
+	}
+
+	// Clean up lost+found directory, it's not needed and wastes space.
+	if err := os.RemoveAll(filepath.Join(c.StagingPath, "lost+found")); err != nil {
+		return fmt.Errorf("failed to remove lost+found directory %s: %w", filepath.Join(c.StagingPath, "lost+found"), err)
 	}
 
 	return nil
