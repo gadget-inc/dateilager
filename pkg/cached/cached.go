@@ -100,16 +100,16 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 	lvmBaseDevice := "/dev/" + c.lvmVg + "/base"
 	if notMounted {
 		logger.Info(ctx, "mounting base volume", zap.String("device", lvmBaseDevice), zap.String("target", c.StagingPath))
-		if err := c.udevSettle(ctx, lvmBaseDevice); err != nil {
-			logger.Warn(ctx, "udev settle failed for base volume", zap.String("device", lvmBaseDevice), zap.Error(err))
-		}
-
 		if err := os.MkdirAll(c.StagingPath, 0o775); err != nil {
 			return fmt.Errorf("failed to create staging directory %s: %w", c.StagingPath, err)
 		}
 
-		if err := mounter.FormatAndMount(lvmBaseDevice, c.StagingPath, c.LVMFormat, nil); err != nil {
+		if err := mounter.FormatAndMount(lvmBaseDevice, c.StagingPath, c.LVMFormat, []string{"init_itable=0"}); err != nil {
 			return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", lvmBaseDevice, c.StagingPath, err)
+		}
+
+		if err := os.RemoveAll(filepath.Join(c.StagingPath, "lost+found")); err != nil {
+			return fmt.Errorf("failed to remove lost+found directory %s: %w", filepath.Join(c.StagingPath, "lost+found"), err)
 		}
 	}
 
@@ -127,6 +127,10 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 
 	if err = c.setOwnership(ctx, c.StagingPath); err != nil {
 		return fmt.Errorf("failed to change permissions of staging directory %s: %w", c.StagingPath, err)
+	}
+
+	if err := exec(ctx, "fstrim", "-v", c.StagingPath); err != nil {
+		logger.Warn(ctx, "failed to trim staging directory", zap.String("path", c.StagingPath), zap.Error(err))
 	}
 
 	c.currentVersion.Store(version)
@@ -237,14 +241,10 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			return nil, status.Errorf(codes.Internal, "failed to create target path %s: %v", targetPath, err)
 		}
 
-		lvmSnapshotDevice := "/dev/" + c.lvmVg + "/" + volumeID
-		if err := c.udevSettle(ctx, lvmSnapshotDevice); err != nil {
-			logger.Warn(ctx, "udev settle failed for snapshot mount", zap.String("device", lvmSnapshotDevice), zap.Error(err))
-		}
-
-		logger.Info(ctx, "mounting snapshot", zap.String("device", lvmSnapshotDevice), zap.String("target", targetPath))
-		if err := mounter.Mount(lvmSnapshotDevice, targetPath, c.LVMFormat, nil); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to mount snapshot %s to %s: %v", lvmSnapshotDevice, targetPath, err)
+		devicePath := "/dev/" + c.lvmVg + "/" + volumeID
+		logger.Info(ctx, "mounting snapshot", zap.String("device", devicePath), zap.String("target", targetPath))
+		if err := mounter.Mount(devicePath, targetPath, c.LVMFormat, nil); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to mount snapshot %s to %s: %v", devicePath, targetPath, err)
 		}
 	}
 
