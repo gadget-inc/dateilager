@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/charlievieth/fastwalk"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
@@ -48,8 +48,8 @@ type Cached struct {
 	LVMFormat        string
 	LVMVirtualSize   string
 	lvmVg            string
+	lvmBaseDevice    string
 	currentVersion   atomic.Int64
-	reflinkSupport   bool
 }
 
 func New(client *client.Client, driverNameSuffix string) *Cached {
@@ -65,16 +65,17 @@ func New(client *client.Client, driverNameSuffix string) *Cached {
 		LVMFormat:        os.Getenv("DL_LVM_FORMAT"),
 		LVMVirtualSize:   os.Getenv("DL_LVM_VIRTUAL_SIZE"),
 		lvmVg:            "vg_dateilager_cached" + driverNameSuffixUnderscored,
+		lvmBaseDevice:    "/dev/" + "vg_dateilager_cached" + driverNameSuffixUnderscored + "/base",
 	}
 }
 
 // Fetch the cache into the staging dir
 func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
+	logger.Info(ctx, "preparing cache", zap.Int64("cacheVersion", cacheVersion))
 	ctx, span := telemetry.Start(ctx, "cached.prepare", trace.WithAttributes(key.CacheVersion.Attribute(cacheVersion)))
 	defer span.End()
 
 	start := time.Now()
-	logger.Info(ctx, "preparing cached storage", zap.Int64("cacheVersion", cacheVersion))
 
 	var err error
 	if err = c.ensurePhysicalVolume(ctx); err != nil {
@@ -98,30 +99,20 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 	}
 
 	defer func() {
-		if unmountErr := mounter.Unmount(c.StagingPath); unmountErr != nil && !errors.Is(unmountErr, fs.ErrNotExist) {
-			err = errors.Join(err, fmt.Errorf("failed to unmount staging directory %s: %w", c.StagingPath, unmountErr))
-		}
+		err = errors.Join(err, c.unmountBaseVolume(ctx))
 	}()
 
-	cacheDir := filepath.Join(c.StagingPath, CACHE_PATH_SUFFIX)
-	version, count, err := c.Client.GetCache(ctx, cacheDir, cacheVersion)
+	var version int64
+	var count uint32
+	version, count, err = c.Client.GetCache(ctx, filepath.Join(c.StagingPath, CACHE_PATH_SUFFIX), cacheVersion)
 	if err != nil {
 		return err
 	}
 
-	if err = c.setOwnership(ctx, c.StagingPath); err != nil {
-		return err
-	}
-
-	if err := exec(ctx, "fstrim", "-v", c.StagingPath); err != nil {
-		logger.Warn(ctx, "failed to trim staging directory", zap.String("path", c.StagingPath), zap.Error(err))
-	}
-
 	c.currentVersion.Store(version)
-	c.reflinkSupport = files.HasReflinkSupport(cacheDir)
-
-	logger.Info(ctx, "downloaded golden copy", key.DurationMS.Field(time.Since(start)), key.Version.Field(version), key.Count.Field(int64(count)))
+	logger.Info(ctx, "cache prepared", key.DurationMS.Field(time.Since(start)), key.Version.Field(version), key.Count.Field(int64(count)))
 	span.SetAttributes(key.Count.Attribute(int64(count)))
+
 	return err
 }
 
@@ -325,13 +316,22 @@ var mounter = &mount.SafeFormatAndMount{
 
 // exec executes a command
 func exec(ctx context.Context, command string, args ...string) error {
+	_, err := execOutput(ctx, command, args...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// execOutput executes a command and returns the output
+func execOutput(ctx context.Context, command string, args ...string) (string, error) {
 	logger.Debug(ctx, "executing command", zap.String("command", command), zap.Strings("args", args))
 	cmd := executor.CommandContext(ctx, command, args...)
 	bs, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to execute command %s %s: %w: %s", command, strings.Join(args, " "), err, string(bs))
+		return "", fmt.Errorf("failed to execute command %s %s: %w: %s", command, strings.Join(args, " "), err, string(bs))
 	}
-	return nil
+	return strings.TrimSpace(string(bs)), nil
 }
 
 // ensurePhysicalVolume creates LVM physical volume if it doesn't exist
@@ -403,25 +403,25 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 
 // ensureBaseVolume creates base LVM volume if it doesn't exist
 func (c *Cached) ensureBaseVolume(ctx context.Context) error {
-	basePath := c.lvmVg + "/base"
-	logger.Debug(ctx, "checking base volume", zap.String("base", basePath))
+	lvPath := c.lvmVg + "/base"
+	devicePath := "/dev/" + lvPath
+	logger.Debug(ctx, "checking base volume", zap.String("lv", lvPath), zap.String("device", devicePath))
 
-	err := exec(ctx, "lvdisplay", basePath)
+	err := exec(ctx, "lvdisplay", lvPath)
 	if err == nil {
-		logger.Debug(ctx, "base volume already exists", zap.String("base", basePath))
+		logger.Debug(ctx, "base volume already exists", zap.String("lv", lvPath), zap.String("device", devicePath))
 		return nil
 	}
 
 	if !strings.Contains(err.Error(), "Failed to find logical volume") {
-		return fmt.Errorf("failed to check base volume %s: %w", basePath, err)
+		return fmt.Errorf("failed to check base volume %s: %w", lvPath, err)
 	}
 
-	logger.Info(ctx, "creating base volume", zap.String("base", basePath), zap.String("size", c.LVMVirtualSize)) // TODO: --virtualsize must be able to fit the size of the cache
-	if err := exec(ctx, "lvcreate", "--name=base", "--virtualsize="+c.LVMVirtualSize, "--thinpool="+c.lvmVg+"/thinpool"); err != nil {
-		return fmt.Errorf("failed to create base volume %s: %w", basePath, err)
+	logger.Info(ctx, "creating base volume", zap.String("lv", lvPath), zap.String("device", devicePath))
+	if err := exec(ctx, "lvcreate", "--name=base", "--virtualsize=1t", "--thinpool="+c.lvmVg+"/thinpool"); err != nil {
+		return fmt.Errorf("failed to create base volume %s: %w", lvPath, err)
 	}
 
-	devicePath := "/dev/" + c.lvmVg + "/" + "base"
 	if err := c.udevSettle(ctx, devicePath); err != nil {
 		logger.Warn(ctx, "udev settle failed for base volume", zap.String("device", devicePath), zap.Error(err))
 	}
@@ -441,8 +441,7 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 		return nil
 	}
 
-	lvmBaseDevice := "/dev/" + c.lvmVg + "/base"
-	logger.Info(ctx, "mounting base volume", zap.String("device", lvmBaseDevice), zap.String("target", c.StagingPath))
+	logger.Info(ctx, "mounting base volume", zap.String("device", c.lvmBaseDevice), zap.String("target", c.StagingPath))
 	if err := os.MkdirAll(c.StagingPath, 0o775); err != nil {
 		return fmt.Errorf("failed to create staging directory %s: %w", c.StagingPath, err)
 	}
@@ -461,13 +460,102 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 		mountOptions = append(mountOptions, "init_itable=0")
 	}
 
-	if err := mounter.FormatAndMount(lvmBaseDevice, c.StagingPath, c.LVMFormat, mountOptions); err != nil {
-		return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", lvmBaseDevice, c.StagingPath, err)
+	if err := mounter.FormatAndMount(c.lvmBaseDevice, c.StagingPath, c.LVMFormat, mountOptions); err != nil {
+		return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", c.lvmBaseDevice, c.StagingPath, err)
 	}
 
-	// Clean up lost+found directory, it's not needed and wastes space.
+	// Clean up lost+found directory, it's not needed and confusing.
 	if err := os.RemoveAll(filepath.Join(c.StagingPath, "lost+found")); err != nil {
 		return fmt.Errorf("failed to remove lost+found directory %s: %w", filepath.Join(c.StagingPath, "lost+found"), err)
+	}
+
+	return nil
+}
+
+// unmountBaseVolume unmounts the staging directory and resizes the base volume to the required size
+func (c *Cached) unmountBaseVolume(ctx context.Context) error {
+	if c.CacheUid != NO_CHANGE_USER || c.CacheGid != NO_CHANGE_USER {
+		logger.Debug(ctx, "setting ownership", zap.Int("uid", c.CacheUid), zap.Int("gid", c.CacheGid))
+		if err := fastwalk.Walk(nil, c.StagingPath, func(walkPath string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			return os.Lchown(walkPath, c.CacheUid, c.CacheGid)
+		}); err != nil {
+			return fmt.Errorf("failed to set ownership of staging directory %s: %w", c.StagingPath, err)
+		}
+	}
+
+	if err := mounter.Unmount(c.StagingPath); err != nil {
+		return fmt.Errorf("failed to unmount staging directory %s: %w", c.StagingPath, err)
+	}
+
+	if err := exec(ctx, "fstrim", "-v", c.StagingPath); err != nil {
+		return fmt.Errorf("failed to trim base volume %s: %w", c.lvmBaseDevice, err)
+	}
+
+	lvsOutput, err := execOutput(ctx, "lvs", c.lvmVg+"/base", "--options=lv_size,data_percent", "--units=b", "--noheadings", "--nosuffix", "--separator=:")
+	if err != nil {
+		return fmt.Errorf("failed to get base volume size: %w", err)
+	}
+
+	parts := strings.Split(lvsOutput, ":")
+	if len(parts) != 2 {
+		return fmt.Errorf("failed to parse base volume size from lvs output: %s", lvsOutput)
+	}
+
+	// Parse the base volume size in bytes
+	baseVolumeSizeBytes, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid size value: %w", err)
+	}
+
+	// Parse the percentage of the base volume that is claimed by the cache
+	usedPercentage, err := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if err != nil {
+		return fmt.Errorf("invalid percent value: %w", err)
+	}
+
+	// Calculate the cache size in bytes
+	cacheSizeBytes := int64(usedPercentage / 100.0 * float64(baseVolumeSizeBytes))
+
+	// Parse the configured virtual size to add as buffer
+	lvmVirtualSize := strings.ToUpper(c.LVMVirtualSize)
+	var multiplier int64
+
+	switch {
+	case strings.HasSuffix(lvmVirtualSize, "G"):
+		multiplier = 1024 * 1024 * 1024
+		lvmVirtualSize = strings.TrimSuffix(lvmVirtualSize, "G")
+	case strings.HasSuffix(lvmVirtualSize, "M"):
+		multiplier = 1024 * 1024
+		lvmVirtualSize = strings.TrimSuffix(lvmVirtualSize, "M")
+	case strings.HasSuffix(lvmVirtualSize, "K"):
+		multiplier = 1024
+		lvmVirtualSize = strings.TrimSuffix(lvmVirtualSize, "K")
+	default:
+		return fmt.Errorf("invalid LVM virtual size: %s", c.LVMVirtualSize)
+	}
+
+	lvmVirtualSizeInt, err := strconv.ParseInt(lvmVirtualSize, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse LVM virtual size: %w", err)
+	}
+
+	// Convert the configured virtual size to bytes
+	lvmVirtualSizeBytes := lvmVirtualSizeInt * multiplier
+
+	// Calculate the required size for the lvm virtual size to be enforced (cache size + lvm virtual size)
+	requiredSizeBytes := cacheSizeBytes + lvmVirtualSizeBytes
+
+	logger.Info(ctx, "resizing base volume",
+		zap.Int64("base_volume_size_bytes", baseVolumeSizeBytes),
+		zap.Int64("cache_size_bytes", cacheSizeBytes),
+		zap.Int64("lvm_virtual_size_bytes", lvmVirtualSizeBytes),
+		zap.Int64("required_size_bytes", requiredSizeBytes))
+
+	if err := exec(ctx, "lvresize", c.lvmBaseDevice, "--size", fmt.Sprintf("%dB", requiredSizeBytes), "--resizefs"); err != nil {
+		return fmt.Errorf("failed to resize base volume %s: %w", c.lvmBaseDevice, err)
 	}
 
 	return nil
@@ -527,21 +615,6 @@ func (c *Cached) removeSnapshot(ctx context.Context, volumeID string) error {
 	return nil
 }
 
-// setOwnership sets the ownership of a path using os.Chown
-func (c *Cached) setOwnership(ctx context.Context, path string) error {
-	if c.CacheUid == NO_CHANGE_USER && c.CacheGid == NO_CHANGE_USER {
-		return nil
-	}
-
-	logger.Debug(ctx, "setting ownership", zap.Int("uid", c.CacheUid), zap.Int("gid", c.CacheGid))
-	return fastwalk.Walk(nil, path, func(walkPath string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		return os.Lchown(walkPath, c.CacheUid, c.CacheGid)
-	})
-}
-
 // udevSettle triggers udev events and waits for device to appear
 func (c *Cached) udevSettle(ctx context.Context, devPath string) error {
 	// Trigger udev events for the device
@@ -597,7 +670,7 @@ func first(ss ...string) string {
 }
 
 func getFolderSize(path string) (int64, error) {
-	var totalSize int64
+	var totalBytes atomic.Int64
 	err := fastwalk.Walk(nil, path, func(_ string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -609,8 +682,8 @@ func getFolderSize(path string) (int64, error) {
 		if err != nil {
 			return err
 		}
-		totalSize += info.Size()
+		totalBytes.Add(info.Size())
 		return nil
 	})
-	return totalSize, err
+	return totalBytes.Load(), err
 }
