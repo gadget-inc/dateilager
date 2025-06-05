@@ -429,6 +429,7 @@ func (c *Cached) ensureBaseVolume(ctx context.Context) error {
 	return nil
 }
 
+// mountAndFormatBaseVolume mounts and formats the base volume
 func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 	notMounted, err := mounter.IsLikelyNotMountPoint(c.StagingPath)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
