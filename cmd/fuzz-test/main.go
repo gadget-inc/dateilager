@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	dlc "github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/version"
@@ -657,21 +658,7 @@ func main() {
 	ctx := context.Background()
 	cmd := newCommand()
 
-	err := logger.Init(zap.Config{
-		Level:       zap.NewAtomicLevelAt(zapcore.InfoLevel),
-		Development: true,
-		Encoding:    "console",
-		EncoderConfig: zapcore.EncoderConfig{
-			TimeKey:       "",
-			LevelKey:      "",
-			NameKey:       "",
-			CallerKey:     "",
-			MessageKey:    "M",
-			StacktraceKey: "",
-		},
-		OutputPaths:      []string{"stderr"},
-		ErrorOutputPaths: []string{"stderr"},
-	})
+	err := logger.Init(environment.Dev, "console", zap.NewAtomicLevelAt(zapcore.InfoLevel))
 	if err != nil {
 		stdlog.Fatal("failed to init logger", err)
 	}

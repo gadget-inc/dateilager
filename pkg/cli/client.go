@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
 	"github.com/gadget-inc/dateilager/pkg/client"
@@ -48,12 +49,7 @@ func NewClientCommand() *cobra.Command {
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			cmd.SilenceUsage = true // silence usage when an error occurs after flags have been parsed
 
-			config := zap.NewProductionConfig()
-			config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-			config.Level = zap.NewAtomicLevelAt(*level)
-			config.Encoding = encoding
-
-			err := logger.Init(config)
+			err := logger.Init(environment.LoadOrProduction(), encoding, zap.NewAtomicLevelAt(*level))
 			if err != nil {
 				return fmt.Errorf("could not initialize logger: %w", err)
 			}
