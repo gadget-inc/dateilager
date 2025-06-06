@@ -48,6 +48,9 @@ func NewCacheDaemonCommand() *cobra.Command {
 		cacheVersion     int64
 		cacheUid         int
 		cacheGid         int
+		lvmDevice        string
+		lvmFormat        string
+		lvmVirtualSize   string
 	)
 
 	cmd := &cobra.Command{
@@ -58,23 +61,12 @@ func NewCacheDaemonCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cmd.SilenceUsage = true // silence usage when an error occurs after flags have been parsed
 
-			env, err := environment.LoadEnvironment()
+			env, err := environment.Load()
 			if err != nil {
 				return fmt.Errorf("could not load environment: %w", err)
 			}
 
-			var config zap.Config
-			if env == environment.Prod {
-				config = zap.NewProductionConfig()
-			} else {
-				config = zap.NewDevelopmentConfig()
-			}
-
-			config.Encoding = encoding
-			config.Level = zap.NewAtomicLevelAt(*level)
-			config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-
-			err = logger.Init(config)
+			err = logger.Init(env, encoding, zap.NewAtomicLevelAt(*level))
 			if err != nil {
 				return fmt.Errorf("could not initialize logger: %w", err)
 			}
@@ -101,14 +93,13 @@ func NewCacheDaemonCommand() *cobra.Command {
 
 			s := cached.NewServer(ctx)
 
-			cached := &cached.Cached{
-				Env:              env,
-				Client:           cl,
-				DriverNameSuffix: driverNameSuffix,
-				StagingPath:      stagingPath,
-				CacheUid:         cacheUid,
-				CacheGid:         cacheGid,
-			}
+			cached := cached.New(cl, driverNameSuffix)
+			cached.StagingPath = stagingPath
+			cached.CacheUid = cacheUid
+			cached.CacheGid = cacheGid
+			cached.LVMDevice = lvmDevice
+			cached.LVMFormat = lvmFormat
+			cached.LVMVirtualSize = lvmVirtualSize
 
 			s.RegisterCSI(cached)
 
@@ -184,9 +175,15 @@ func NewCacheDaemonCommand() *cobra.Command {
 	flags.Int64Var(&cacheVersion, "cache-version", -1, "cache version to use")
 	flags.IntVar(&cacheUid, "cache-uid", -1, "uid for cache files")
 	flags.IntVar(&cacheGid, "cache-gid", -1, "gid for cache files")
+	flags.StringVar(&lvmDevice, "lvm-device", "", "lvm device to use")
+	flags.StringVar(&lvmFormat, "lvm-format", "", "lvm format to use")
+	flags.StringVar(&lvmVirtualSize, "lvm-virtual-size", "", "lvm virtual size to use")
 
 	_ = cmd.MarkPersistentFlagRequired("csi-socket")
 	_ = cmd.MarkPersistentFlagRequired("staging-path")
+	_ = cmd.MarkPersistentFlagRequired("lvm-device")
+	_ = cmd.MarkPersistentFlagRequired("lvm-format")
+	_ = cmd.MarkPersistentFlagRequired("lvm-virtual-size")
 
 	return cmd
 }

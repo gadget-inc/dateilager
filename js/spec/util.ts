@@ -17,6 +17,12 @@ export const binaryClient = new DateiLagerBinaryClient({
   },
   token: devAdminToken,
   command: path.join(__dirname, "..", "..", "bin", "client"),
+  logger: {
+    level: "debug",
+    log: (level, msg, fields) => {
+      console.log({ level, msg, fields });
+    },
+  },
 });
 
 export function tmpdir(): string {
