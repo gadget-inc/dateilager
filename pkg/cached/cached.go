@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -499,6 +500,100 @@ func (c *Cached) unmountBaseVolume(ctx context.Context) error {
 
 	if err := mounter.Unmount(c.StagingPath); err != nil {
 		return fmt.Errorf("failed to unmount staging directory %s: %w", c.StagingPath, err)
+	}
+
+	// Get thin pool information to calculate actual space usage
+	poolLvsOutput, err := execOutput(ctx, "lvs", c.lvmVg+"/thinpool", "--options=lv_size", "--units=b", "--noheadings", "--nosuffix")
+	if err != nil {
+		return fmt.Errorf("failed to get thin pool size: %w", err)
+	}
+
+	poolSizeBytes, err := strconv.ParseInt(poolLvsOutput, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid pool size value: %w", err)
+	}
+
+	// Get the base volume information
+	baseVolumeLvsOutput, err := execOutput(ctx, "lvs", c.lvmVg+"/base", "--options=lv_size,data_percent", "--units=b", "--noheadings", "--nosuffix", "--separator=:")
+	if err != nil {
+		return fmt.Errorf("failed to get base volume size: %w", err)
+	}
+
+	parts := strings.Split(baseVolumeLvsOutput, ":")
+	if len(parts) != 2 {
+		return fmt.Errorf("failed to parse base volume info from lvs output: %s", baseVolumeLvsOutput)
+	}
+
+	// Parse the base volume size in bytes
+	baseVolumeSizeBytes, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid size value: %w", err)
+	}
+
+	// Parse the percentage of the thin pool that is used by the base volume
+	usedPercentage, err := strconv.ParseFloat(parts[1], 64)
+	if err != nil {
+		return fmt.Errorf("invalid percent value: %w", err)
+	}
+
+	// Calculate actual space used in the thin pool by the base volume
+	// data_percent represents the percentage of the thin pool consumed by the base volume
+	cacheSizeBytes := int64(usedPercentage / 100.0 * float64(poolSizeBytes))
+
+	// Parse the configured virtual size to add as buffer
+	lvmVirtualSize := strings.ToUpper(c.LVMVirtualSize)
+	var multiplier int64
+
+	switch {
+	case strings.HasSuffix(lvmVirtualSize, "G"):
+		multiplier = 1024 * 1024 * 1024
+		lvmVirtualSize = strings.TrimSuffix(lvmVirtualSize, "G")
+	case strings.HasSuffix(lvmVirtualSize, "M"):
+		multiplier = 1024 * 1024
+		lvmVirtualSize = strings.TrimSuffix(lvmVirtualSize, "M")
+	case strings.HasSuffix(lvmVirtualSize, "K"):
+		multiplier = 1024
+		lvmVirtualSize = strings.TrimSuffix(lvmVirtualSize, "K")
+	default:
+		return fmt.Errorf("invalid LVM virtual size: %s", c.LVMVirtualSize)
+	}
+
+	lvmVirtualSizeInt, err := strconv.ParseInt(lvmVirtualSize, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse LVM virtual size: %w", err)
+	}
+
+	// Convert the configured virtual size to bytes
+	lvmVirtualSizeBytes := lvmVirtualSizeInt * multiplier
+
+	// Calculate the required size for the lvm virtual size to be enforced (cache size + lvm virtual size)
+	requiredSizeBytes := cacheSizeBytes + lvmVirtualSizeBytes
+
+	// Ensure the required size is a multiple of 512
+	remainder := requiredSizeBytes % 512
+	if remainder != 0 {
+		// round up to the next multiple of 512
+		requiredSizeBytes = requiredSizeBytes - remainder + 512
+	}
+
+	logger.Info(ctx, "resizing base volume",
+		zap.Int64("pool_size_bytes", poolSizeBytes),
+		zap.Int64("base_volume_size_bytes", baseVolumeSizeBytes),
+		zap.Float64("used_percentage", usedPercentage),
+		zap.Int64("cache_size_bytes", cacheSizeBytes),
+		zap.Int64("lvm_virtual_size_bytes", lvmVirtualSizeBytes),
+		zap.Int64("required_size_bytes", requiredSizeBytes))
+
+	// Only resize if the required size is different from current size
+	if requiredSizeBytes != baseVolumeSizeBytes {
+		if err := exec(ctx, "lvresize", c.lvmBaseDevice, "--size", fmt.Sprintf("%dB", requiredSizeBytes), "--resizefs"); err != nil {
+			return fmt.Errorf("failed to resize base volume %s to %d bytes: %w", c.lvmBaseDevice, requiredSizeBytes, err)
+		}
+		logger.Info(ctx, "successfully resized base volume",
+			zap.Int64("old_size_bytes", baseVolumeSizeBytes),
+			zap.Int64("new_size_bytes", requiredSizeBytes))
+	} else {
+		logger.Info(ctx, "base volume size is already correct, skipping resize")
 	}
 
 	return nil
