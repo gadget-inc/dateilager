@@ -486,38 +486,53 @@ func (c *Cached) unmountBaseVolume(ctx context.Context) error {
 		}
 	}
 
+	// Trim filesystem before unmounting
+	if err := exec(ctx, "fstrim", "-v", c.StagingPath); err != nil {
+		logger.Warn(ctx, "failed to trim filesystem (non-fatal)", zap.Error(err))
+		// Don't return error - fstrim failure shouldn't block the process
+	}
+
 	if err := mounter.Unmount(c.StagingPath); err != nil {
 		return fmt.Errorf("failed to unmount staging directory %s: %w", c.StagingPath, err)
 	}
 
-	if err := exec(ctx, "fstrim", "-v", c.StagingPath); err != nil {
-		return fmt.Errorf("failed to trim base volume %s: %w", c.lvmBaseDevice, err)
+	// Get thin pool information to calculate actual space usage
+	poolLvsOutput, err := execOutput(ctx, "lvs", c.lvmVg+"/thinpool", "--options=lv_size", "--units=b", "--noheadings", "--nosuffix")
+	if err != nil {
+		return fmt.Errorf("failed to get thin pool size: %w", err)
 	}
 
-	lvsOutput, err := execOutput(ctx, "lvs", c.lvmVg+"/base", "--options=lv_size,data_percent", "--units=b", "--noheadings", "--nosuffix", "--separator=:")
+	poolSizeBytes, err := strconv.ParseInt(poolLvsOutput, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid pool size value: %w", err)
+	}
+
+	// Get the base volume information
+	baseVolumeLvsOutput, err := execOutput(ctx, "lvs", c.lvmVg+"/base", "--options=lv_size,data_percent", "--units=b", "--noheadings", "--nosuffix", "--separator=:")
 	if err != nil {
 		return fmt.Errorf("failed to get base volume size: %w", err)
 	}
 
-	parts := strings.Split(lvsOutput, ":")
+	parts := strings.Split(baseVolumeLvsOutput, ":")
 	if len(parts) != 2 {
-		return fmt.Errorf("failed to parse base volume size from lvs output: %s", lvsOutput)
+		return fmt.Errorf("failed to parse base volume info from lvs output: %s", baseVolumeLvsOutput)
 	}
 
 	// Parse the base volume size in bytes
-	baseVolumeSizeBytes, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+	baseVolumeSizeBytes, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid size value: %w", err)
 	}
 
-	// Parse the percentage of the base volume that is claimed by the cache
-	usedPercentage, err := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	// Parse the percentage of the thin pool that is used by the base volume
+	usedPercentage, err := strconv.ParseFloat(parts[1], 64)
 	if err != nil {
 		return fmt.Errorf("invalid percent value: %w", err)
 	}
 
-	// Calculate the cache size in bytes
-	cacheSizeBytes := int64(usedPercentage / 100.0 * float64(baseVolumeSizeBytes))
+	// Calculate actual space used in the thin pool by the base volume
+	// data_percent represents the percentage of the thin pool consumed by the base volume
+	cacheSizeBytes := int64(usedPercentage / 100.0 * float64(poolSizeBytes))
 
 	// Parse the configured virtual size to add as buffer
 	lvmVirtualSize := strings.ToUpper(c.LVMVirtualSize)
@@ -556,13 +571,23 @@ func (c *Cached) unmountBaseVolume(ctx context.Context) error {
 	}
 
 	logger.Info(ctx, "resizing base volume",
+		zap.Int64("pool_size_bytes", poolSizeBytes),
 		zap.Int64("base_volume_size_bytes", baseVolumeSizeBytes),
+		zap.Float64("used_percentage", usedPercentage),
 		zap.Int64("cache_size_bytes", cacheSizeBytes),
 		zap.Int64("lvm_virtual_size_bytes", lvmVirtualSizeBytes),
 		zap.Int64("required_size_bytes", requiredSizeBytes))
 
-	if err := exec(ctx, "lvresize", c.lvmBaseDevice, "--size", fmt.Sprintf("%dB", requiredSizeBytes), "--resizefs"); err != nil {
-		return fmt.Errorf("failed to resize base volume %s: %w", c.lvmBaseDevice, err)
+	// Only resize if the required size is different from current size
+	if requiredSizeBytes != baseVolumeSizeBytes {
+		if err := exec(ctx, "lvresize", c.lvmBaseDevice, "--size", fmt.Sprintf("%dB", requiredSizeBytes), "--resizefs"); err != nil {
+			return fmt.Errorf("failed to resize base volume %s to %d bytes: %w", c.lvmBaseDevice, requiredSizeBytes, err)
+		}
+		logger.Info(ctx, "successfully resized base volume",
+			zap.Int64("old_size_bytes", baseVolumeSizeBytes),
+			zap.Int64("new_size_bytes", requiredSizeBytes))
+	} else {
+		logger.Info(ctx, "base volume size is already correct, skipping resize")
 	}
 
 	return nil
