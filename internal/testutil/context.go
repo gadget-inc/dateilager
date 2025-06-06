@@ -9,6 +9,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/pkg/api"
+	"github.com/gadget-inc/dateilager/pkg/cached"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
@@ -96,8 +97,8 @@ func (tc *TestCtx) FsApi() *api.Fs {
 	}
 }
 
-func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string, opts ...func(*api.Cached)) *api.Cached {
-	cached := &api.Cached{
+func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string, opts ...func(*cached.Cached)) *cached.Cached {
+	cached := &cached.Cached{
 		Env:         environment.Test,
 		Client:      cl,
 		StagingPath: stagingPath,
@@ -112,8 +113,8 @@ func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string, opts ...func
 	return cached
 }
 
-func WithUidGid(uid, gid int) func(*api.Cached) {
-	return func(c *api.Cached) {
+func WithUidGid(uid, gid int) func(*cached.Cached) {
+	return func(c *cached.Cached) {
 		c.CacheUid = uid
 		c.CacheGid = gid
 	}

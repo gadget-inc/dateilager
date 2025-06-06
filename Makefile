@@ -32,7 +32,6 @@ KUBE_CONTEXT ?= orbstack
 .PHONY: reset-db setup-local build-cache-version server server-profile cached
 .PHONY: client-update client-large-update client-get client-rebuild client-rebuild-with-cache
 .PHONY: client-getcache client-gc-contents client-gc-project client-gc-random-projects
-.PHONY: cachedclient-probe cachedclient-populate cachedclient-stats
 .PHONY: health upload-container-image upload-prerelease-container-image run-container gen-docs
 .PHONY: load-test-new load-test-update load-test-update-large load-test-get load-test-get-compress
 .PHONY: k8s k8s/start k8s/stop k8s/delete k8s/reset k8s/deploy
@@ -71,7 +70,7 @@ development/server.key:
 
 development/server.crt: development/server.key
 
-build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go internal/pb/cache.pb.go internal/pb/cache_grpc.pb.go bin/server bin/client bin/cached development/server.crt
+build: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go bin/server bin/client bin/cached development/server.crt
 
 lint:
 	golangci-lint run
@@ -158,7 +157,7 @@ server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go development/serve
 
 cached: export DL_ENV=dev
 cached: export DL_TOKEN=$(DEV_SHARED_READER_TOKEN)
-cached: internal/pb/cache.pb.go internal/pb/cache_grpc.pb.go
+cached:
 	go run cmd/cached/main.go --upstream-host $(GRPC_HOST) --upstream-port $(GRPC_PORT) --csi-socket $(CACHED_SOCKET) --staging-path tmp/cache-stage
 
 client-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
@@ -223,15 +222,6 @@ client-gc-random-projects: export DL_TOKEN=$(DEV_TOKEN_ADMIN)
 client-gc-random-projects: export DL_SKIP_SSL_VERIFICATION=1
 client-gc-random-projects:
 	go run cmd/client/main.go gc --host $(GRPC_HOST) --mode random-projects --sample 25 --keep 1
-
-cachedclient-probe:
-	go run cmd/cached-client/main.go probe --socket $(CACHED_SOCKET)
-
-cachedclient-populate:
-	go run cmd/cached-client/main.go populate --socket $(CACHED_SOCKET) --path input/cache
-
-cachedclient-stats:
-	go run cmd/cached-client/main.go stats --socket $(CACHED_SOCKET)
 
 health:
 	grpc-health-probe -addr $(GRPC_SERVER)

@@ -19,7 +19,6 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/files"
@@ -576,29 +575,6 @@ func createTestClient(tc util.TestCtx) (*client.Client, *api.Fs, func()) {
 	c := client.NewClientConn(getConn())
 
 	return c, fs, func() { c.Close(); s.Stop() }
-}
-
-// Make a new client that connects to a test cached server
-// Under the hood, this creates a test storage server and connects to that
-func createTestCachedClient(tc util.TestCtx) (*client.CachedClient, *api.Cached, func()) {
-	lis, s, getConn := createTestGRPCServer(tc)
-
-	cl, _, closeClient := createTestClient(tc)
-	stagingPath := emptyTmpDir(tc.T())
-
-	cached := tc.CachedApi(cl, stagingPath)
-	pb.RegisterCachedServer(s, cached)
-	csi.RegisterIdentityServer(s, cached)
-	csi.RegisterNodeServer(s, cached)
-
-	go func() {
-		err := s.Serve(lis)
-		require.NoError(tc.T(), err, "Server exited")
-	}()
-
-	cachedClient := client.NewCachedClientConn(getConn())
-
-	return cachedClient, cached, func() { cachedClient.Close(); closeClient(); s.Stop() }
 }
 
 func rebuild(tc util.TestCtx, c *client.Client, project int64, toVersion *int64, dir string, cacheDir *string, expected expectedResponse, subpaths []string) {

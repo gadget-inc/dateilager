@@ -3,78 +3,367 @@ package cached
 import (
 	"context"
 	"fmt"
-	"net"
-	"net/url"
+	"math"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"syscall"
+	"time"
 
+	"github.com/charlievieth/fastwalk"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/gadget-inc/dateilager/internal/environment"
+	"github.com/gadget-inc/dateilager/internal/files"
+	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
-	"github.com/gadget-inc/dateilager/internal/pb"
-	"github.com/gadget-inc/dateilager/pkg/api"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"google.golang.org/grpc"
+	"github.com/gadget-inc/dateilager/internal/telemetry"
+	"github.com/gadget-inc/dateilager/pkg/client"
+	"github.com/gadget-inc/dateilager/pkg/version"
+	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	wrappers "google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-type CachedServer struct {
-	Grpc *grpc.Server
+const (
+	DRIVER_NAME       = "dev.gadget.dateilager.cached"
+	CACHE_PATH_SUFFIX = "dl_cache"
+	UPPER_DIR         = "upper"
+	WORK_DIR          = "work"
+	NO_CHANGE_USER    = -1
+)
+
+type Cached struct {
+	csi.UnimplementedIdentityServer
+	csi.UnimplementedNodeServer
+
+	Env environment.Env
+
+	Client           *client.Client
+	DriverNameSuffix string
+	StagingPath      string
+	CacheUid         int
+	CacheGid         int
+
+	// the current version of the cache on disk
+	currentVersion int64
+	reflinkSupport bool
 }
 
-func NewServer(ctx context.Context) *CachedServer {
-	grpcServer := grpc.NewServer(
-		grpc.StatsHandler(otelgrpc.NewServerHandler()),
-		grpc.UnaryInterceptor(
-			grpc_middleware.ChainUnaryServer(
-				grpc_recovery.UnaryServerInterceptor(),
-				logger.UnaryServerInterceptor(),
-			),
-		),
-	)
-
-	server := &CachedServer{
-		Grpc: grpcServer,
-	}
-
-	return server
+func (c *Cached) GetCachePath() string {
+	return filepath.Join(c.StagingPath, CACHE_PATH_SUFFIX)
 }
 
-func (s *CachedServer) RegisterCached(cached *api.Cached) {
-	pb.RegisterCachedServer(s.Grpc, cached)
-}
+// Fetch the cache into the staging dir
+func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
+	ctx, span := telemetry.Start(ctx, "cached.prepare", trace.WithAttributes(key.CacheVersion.Attribute(cacheVersion)))
+	defer span.End()
 
-func (s *CachedServer) RegisterCSI(cached *api.Cached) {
-	csi.RegisterIdentityServer(s.Grpc, cached)
-	csi.RegisterNodeServer(s.Grpc, cached)
-}
+	start := time.Now()
 
-func (s *CachedServer) Serve(socketPath string) error {
-	u, err := url.Parse(socketPath)
+	version, count, err := c.Client.GetCache(ctx, c.GetCachePath(), cacheVersion)
 	if err != nil {
-		return fmt.Errorf("unable to parse socket address: %q", err)
+		return err
 	}
 
-	addr := path.Join(u.Host, filepath.FromSlash(u.Path))
-	if u.Host == "" {
-		addr = filepath.FromSlash(u.Path)
-	}
+	span.SetAttributes(key.Count.Attribute(int64(count)))
 
-	// CSI plugins talk only over UNIX sockets currently
-	if u.Scheme != "unix" {
-		return fmt.Errorf("currently only unix domain sockets are supported, have incorrect protocol: %s", u.Scheme)
-	} else {
-		// remove the socket if it's already there. This can happen if we deploy a new version and the socket was created from the old running plugin.
-		if err := os.Remove(addr); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("failed to remove unix domain socket file %s, error: %s", addr, err)
+	if c.CacheUid != NO_CHANGE_USER || c.CacheGid != NO_CHANGE_USER {
+		// make the cache owned by the provided uid and gid
+		err = fastwalk.Walk(nil, c.GetCachePath(), func(path string, de os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if de.Type() == os.ModeSymlink {
+				return nil // symlinks are recreated so we don't need to chown them
+			}
+			if os.Getenv("RUN_WITH_SUDO") != "" {
+				return execCommand("chown", fmt.Sprintf("%d:%d", c.CacheUid, c.CacheGid), path)
+			} else {
+				return os.Chown(path, c.CacheUid, c.CacheGid)
+			}
+		})
+		if err != nil {
+			return fmt.Errorf("failed to chown cache path %s: %v", c.GetCachePath(), err)
 		}
 	}
 
-	listener, err := net.Listen(u.Scheme, addr)
-	if err != nil {
-		return fmt.Errorf("failed to listen: %v", err)
+	c.currentVersion = version
+	c.reflinkSupport = files.HasReflinkSupport(c.GetCachePath())
+
+	logger.Info(ctx, "downloaded golden copy", key.DurationMS.Field(time.Since(start)), key.Version.Field(version), key.Count.Field(int64(count)))
+	return nil
+}
+
+// GetPluginInfo returns metadata of the plugin
+func (c *Cached) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
+	resp := &csi.GetPluginInfoResponse{
+		Name:          DRIVER_NAME + c.DriverNameSuffix,
+		VendorVersion: version.Version,
 	}
 
-	return s.Grpc.Serve(listener)
+	return resp, nil
+}
+
+// GetPluginCapabilities returns available capabilities of the plugin
+func (c *Cached) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
+	resp := &csi.GetPluginCapabilitiesResponse{
+		Capabilities: []*csi.PluginCapability{},
+	}
+
+	return resp, nil
+}
+
+// Probe returns the health and readiness of the plugin
+func (c *Cached) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.ProbeResponse, error) {
+	ready := true
+	if c.currentVersion == 0 {
+		ready = false
+		logger.Warn(ctx, "csi probe failed as daemon hasn't prepared cache yet", key.Version.Field(c.currentVersion))
+	}
+
+	return &csi.ProbeResponse{
+		Ready: &wrappers.BoolValue{
+			Value: ready,
+		},
+	}, nil
+}
+
+// NodeGetCapabilities returns the supported capabilities of the node server
+// this driver has no capabilities like expansion or staging, because we only use it for node local volumes
+func (c *Cached) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
+	nscaps := []*csi.NodeServiceCapability{}
+
+	return &csi.NodeGetCapabilitiesResponse{
+		Capabilities: nscaps,
+	}, nil
+}
+
+// NodeGetInfo returns the supported capabilities of the node server. This
+// Usually, a CSI driver would return some interesting stuff about the node here for the controller to use to place volumes, but because we're only supporting node local volumes, we return something very basic
+func (c *Cached) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	return &csi.NodeGetInfoResponse{
+		NodeId:            first(os.Getenv("NODE_ID"), os.Getenv("NODE_NAME"), os.Getenv("K8S_NODE_NAME"), "dev"),
+		MaxVolumesPerNode: 110,
+	}, nil
+}
+
+func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	if req.VolumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume ID must be provided")
+	}
+
+	if req.TargetPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Target Path must be provided")
+	}
+
+	if req.VolumeCapability == nil {
+		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
+	}
+
+	targetPath := req.GetTargetPath()                    // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount
+	volumePath := path.Join(targetPath, "..")            // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a
+	upperDir := path.Join(volumePath, UPPER_DIR)         // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/upper
+	workDir := path.Join(volumePath, WORK_DIR)           // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/work
+	cacheDir := path.Join(targetPath, CACHE_PATH_SUFFIX) // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount/dl_cache
+
+	trace.SpanFromContext(ctx).SetAttributes(
+		key.TargetPath.Attribute(targetPath),
+		key.VolumePath.Attribute(volumePath),
+		key.UpperDir.Attribute(upperDir),
+		key.WorkDir.Attribute(workDir),
+		key.CacheDir.Attribute(cacheDir),
+	)
+
+	if err := mkdirAll(upperDir, 0o777); err != nil {
+		return nil, fmt.Errorf("failed to create overlay upper directory %s: %w", upperDir, err)
+	}
+
+	if err := mkdirAll(workDir, 0o777); err != nil {
+		return nil, fmt.Errorf("failed to create overlay work directory %s: %w", workDir, err)
+	}
+
+	// Create the cache directory and make it writable by the pod
+	if err := os.MkdirAll(targetPath, 0o777); err != nil {
+		return nil, fmt.Errorf("failed to create target path directory %s: %w", targetPath, err)
+	}
+
+	mountArgs := []string{
+		"-t",
+		"overlay",
+		"overlay",
+		"-n",
+		"--options",
+		fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", c.StagingPath, upperDir, workDir),
+		targetPath,
+	}
+
+	if err := execCommand("mount", mountArgs...); err != nil {
+		return nil, fmt.Errorf("failed to mount overlay at %s: %w", targetPath, err)
+	}
+
+	if err := mkdirAll(cacheDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create cache path %s: %w", cacheDir, err)
+	}
+
+	logger.Info(ctx, "mounted overlay", key.TargetPath.Field(targetPath), key.Version.Field(c.currentVersion))
+	return &csi.NodePublishVolumeResponse{}, nil
+}
+
+func (s *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	if req.VolumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Volume ID must be provided")
+	}
+
+	if req.TargetPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Target Path must be provided")
+	}
+
+	targetPath := req.GetTargetPath()            // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/mount
+	volumePath := path.Join(targetPath, "..")    // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a
+	upperDir := path.Join(volumePath, UPPER_DIR) // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/upper
+	workDir := path.Join(volumePath, WORK_DIR)   // e.g. /var/lib/kubelet/pods/967704ca-30eb-4df5-b299-690f78c51b30/volumes/kubernetes.io~csi/a/work
+
+	trace.SpanFromContext(ctx).SetAttributes(
+		key.TargetPath.Attribute(targetPath),
+		key.VolumePath.Attribute(volumePath),
+		key.UpperDir.Attribute(upperDir),
+		key.WorkDir.Attribute(workDir),
+	)
+
+	// Check if the volume path exists
+	_, err := os.Stat(volumePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &csi.NodeUnpublishVolumeResponse{}, nil // Nothing for us to do
+		}
+		return nil, fmt.Errorf("failed to stat volume path %s: %w", volumePath, err)
+	}
+
+	// Check if the overlay is mounted
+	err = execCommand("mountpoint", "-q", targetPath)
+	if err == nil {
+		// The overlay is mounted, so we need to unmount it
+		if err := execCommand("umount", targetPath); err != nil {
+			return nil, fmt.Errorf("failed to unmount overlay at %s: %w", targetPath, err)
+		}
+	} else if err.Error() != "exit status 32" {
+		// exit status 32 means not mounted, so if it's not 32, then it's an unexpected error
+		// See: https://man7.org/linux/man-pages/man1/mountpoint.1.html
+		return nil, fmt.Errorf("failed to check if overlay at %s is mounted: %w", targetPath, err)
+	}
+
+	// Clean up upper directory from the overlay
+	if err := removeAll(upperDir); err != nil {
+		return nil, fmt.Errorf("failed to remove upper directory %s: %w", upperDir, err)
+	}
+
+	// Clean up work directory from the overlay
+	if err := removeAll(workDir); err != nil {
+		return nil, fmt.Errorf("failed to remove work directory %s: %w", workDir, err)
+	}
+
+	logger.Info(ctx, "volume unpublished and data removed", key.TargetPath.Field(targetPath))
+	return &csi.NodeUnpublishVolumeResponse{}, nil
+}
+
+// NodeGetVolumeStats returns the volume capacity statistics available for the given volume.
+func (c *Cached) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	if req.VolumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats Volume ID must be provided")
+	}
+
+	volumePath := req.VolumePath
+	if volumePath == "" {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats Volume Path must be provided")
+	}
+
+	usedBytes, err := getFolderSize(volumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve used size statistics for volume path %s: %v", volumePath, err)
+	}
+
+	var stat syscall.Statfs_t
+	err = syscall.Statfs(volumePath, &stat)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve total size statistics for volume path %s: %v", volumePath, err)
+	}
+
+	// Calculate free space in bytes
+	freeBytes := stat.Bavail * uint64(stat.Bsize)
+	if freeBytes > math.MaxInt64 {
+		return nil, status.Errorf(codes.Internal, "total size statistics for volume path too big for int64: %d", freeBytes)
+	}
+	signedFreeBytes := int64(freeBytes)
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{
+			{
+				Available: signedFreeBytes,
+				Total:     signedFreeBytes + usedBytes,
+				Used:      usedBytes,
+				Unit:      csi.VolumeUsage_BYTES,
+			},
+		},
+	}, nil
+}
+
+func first(ss ...string) string {
+	for _, s := range ss {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+func getFolderSize(path string) (int64, error) {
+	var totalSize int64
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			totalSize += info.Size()
+		}
+		return nil
+	})
+	return totalSize, err
+}
+
+func execCommand(cmdName string, args ...string) error {
+	if os.Getenv("RUN_WITH_SUDO") != "" {
+		cmd := exec.Command("sudo", append([]string{cmdName}, args...)...)
+		return cmd.Run()
+	}
+
+	cmd := exec.Command(cmdName, args...)
+	return cmd.Run()
+}
+
+func mkdirAll(path string, mode os.FileMode) error {
+	if err := os.MkdirAll(path, mode); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", path, err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("failed to stat directory %s: %w", path, err)
+	}
+
+	if info.Mode()&os.ModePerm != mode {
+		if err := os.Chmod(path, mode); err != nil {
+			return fmt.Errorf("failed to change permissions of directory %s: %w", path, err)
+		}
+	}
+
+	return nil
+}
+
+func removeAll(path string) error {
+	if os.Getenv("RUN_WITH_SUDO") != "" {
+		return execCommand("sudo", "rm", "-rf", path)
+	}
+	return os.RemoveAll(path)
 }
