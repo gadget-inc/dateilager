@@ -548,6 +548,13 @@ func (c *Cached) unmountBaseVolume(ctx context.Context) error {
 	// Calculate the required size for the lvm virtual size to be enforced (cache size + lvm virtual size)
 	requiredSizeBytes := cacheSizeBytes + lvmVirtualSizeBytes
 
+	// Ensure the required size is a multiple of 512
+	remainder := requiredSizeBytes % 512
+	if remainder != 0 {
+		// round up to the next multiple of 512
+		requiredSizeBytes = requiredSizeBytes - remainder + 512
+	}
+
 	logger.Info(ctx, "resizing base volume",
 		zap.Int64("base_volume_size_bytes", baseVolumeSizeBytes),
 		zap.Int64("cache_size_bytes", cacheSizeBytes),
