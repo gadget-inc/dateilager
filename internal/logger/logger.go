@@ -2,21 +2,40 @@ package logger
 
 import (
 	"context"
+	stdlog "log"
 
+	"github.com/gadget-inc/dateilager/internal/environment"
+	"github.com/go-logr/zapr"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"k8s.io/klog/v2"
 )
 
 type contextKey struct{}
 
 var key = &contextKey{}
 
-func Init(config zap.Config, opts ...zap.Option) error {
-	log, err := config.Build(append(opts, zap.AddCallerSkip(2))...)
+func Init(env environment.Env, encoding string, level zap.AtomicLevel) error {
+	var config zap.Config
+	if env == environment.Prod {
+		config = zap.NewProductionConfig()
+	} else {
+		config = zap.NewDevelopmentConfig()
+	}
+
+	config.Encoding = encoding
+	config.Level = level
+	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+
+	log, err := config.Build(zap.AddCallerSkip(2))
 	if err != nil {
 		return err
 	}
+
 	zap.ReplaceGlobals(log)
+	klog.SetLogger(zapr.NewLogger(log))
+	stdlog.SetOutput(zap.NewStdLog(log).Writer())
+
 	return nil
 }
 
