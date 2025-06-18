@@ -405,7 +405,7 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 	}
 
 	logger.Info(ctx, "creating thin pool")
-	if err := exec(ctx, "lvcreate", c.lvmVg, "--name=thinpool", "--extents=95%VG", "--thinpool=thinpool"); err != nil {
+	if err := exec(ctx, "lvcreate", c.lvmVg, "--name=thinpool", "--extents=95%VG", "--thinpool=thinpool", "--chunksize=64k"); err != nil {
 		return fmt.Errorf("failed to create lvm thin pool %s: %w", thinPool, err)
 	}
 
