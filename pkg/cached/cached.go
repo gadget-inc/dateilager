@@ -215,9 +215,14 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			return nil, status.Errorf(codes.Internal, "failed to create target path %s: %v", targetPath, err)
 		}
 
+		var mountOptions []string
+		if c.LVMFormat == "ext4" {
+			mountOptions = ext4MountOptions()
+		}
+
 		device := "/dev/" + c.lvmVg + "/" + volumeID
 		logger.Info(ctx, "mounting snapshot", key.Device.Field(device), key.TargetPath.Field(targetPath))
-		if err := mounter.Mount(device, targetPath, c.LVMFormat, nil); err != nil {
+		if err := mounter.Mount(device, targetPath, c.LVMFormat, mountOptions); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to mount snapshot %s to %s: %v", device, targetPath, err)
 		}
 	}
@@ -454,6 +459,8 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 
 	var mountOptions []string
 	if c.LVMFormat == "ext4" {
+		mountOptions = ext4MountOptions()
+
 		// ext4 is created with `lazy_itable_init=1` by default. That means the inode tables are not fully zero-initialized at mkfs time.
 		// Instead, the kernel's `ext4lazyinit` thread clears the remaining blocks later while the filesystem is mounted.
 		//
@@ -632,4 +639,29 @@ func getFolderSize(path string) (int64, error) {
 		return nil
 	})
 	return totalBytes.Load(), err
+}
+
+// ext4MountOptions returns the mount options that improve write performance for ext4 filesystems
+func ext4MountOptions() []string {
+	return []string{
+		// Eliminates most time-stamp writes (noatime/nodiratime) and defers the rest (lazytime) so they piggy-back on larger I/O.
+		// Safe enough for most apps that don’t rely on atime, but you give up the ability to audit “last accessed” precisely.
+		"noatime", "nodiratime", "lazytime",
+
+		// Journals only metadata; user-data blocks may hit disk long after their metadata, so post-crash files can contain stale garbage.
+		// Best-case throughput boost for random-write workloads.
+		"data=writeback",
+
+		// Skips the flush/write-barrier that normally forces the drive cache to commit data in-order. If the device isn’t battery-backed, a
+		// sudden power loss can wipe everything written since the last barrier.
+		"nobarrier",
+
+		// Lets kjournald2 ship the journal’s commit block without waiting for descriptor blocks, cutting one synchronous flush per commit.
+		// Pairs well with long commit= intervals.
+		"journal_async_commit",
+
+		// Metadata is flushed only every two minutes (default is 5 s). You’ll lose up to the last 120 s of metadata on a crash—sometimes more
+		// thanks to delayed allocation.
+		"commit=120",
+	}
 }
