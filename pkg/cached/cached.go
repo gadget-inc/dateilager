@@ -47,12 +47,14 @@ type Cached struct {
 	LVMFormat        string
 	LVMVirtualSize   string
 	lvmVg            string
-	lvmBaseDevice    string
+	lvmBaseLv        string
 	currentVersion   atomic.Int64
 }
 
 func New(client *client.Client, driverNameSuffix string) *Cached {
 	driverNameSuffixUnderscored := strings.ReplaceAll(driverNameSuffix, "-", "_")
+	lvmVg := "vg_dateilager_cached" + driverNameSuffixUnderscored
+	lvmBaseLv := lvmVg + "/base"
 
 	return &Cached{
 		Client:           client,
@@ -63,8 +65,8 @@ func New(client *client.Client, driverNameSuffix string) *Cached {
 		LVMDevice:        os.Getenv("DL_LVM_DEVICE"),
 		LVMFormat:        os.Getenv("DL_LVM_FORMAT"),
 		LVMVirtualSize:   os.Getenv("DL_LVM_VIRTUAL_SIZE"),
-		lvmVg:            "vg_dateilager_cached" + driverNameSuffixUnderscored,
-		lvmBaseDevice:    "/dev/" + "vg_dateilager_cached" + driverNameSuffixUnderscored + "/base",
+		lvmVg:            lvmVg,
+		lvmBaseLv:        lvmBaseLv,
 	}
 }
 
@@ -412,28 +414,25 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 
 // ensureBaseVolume creates base LVM volume if it doesn't exist
 func (c *Cached) ensureBaseVolume(ctx context.Context) error {
-	baseLv := c.lvmVg + "/base"
-	baseDevice := "/dev/" + baseLv
-
-	ctx = logger.With(ctx, key.LogicalVolume.Field(baseLv), key.Device.Field(baseDevice), key.VirtualSize.Field(c.LVMVirtualSize))
+	ctx = logger.With(ctx, key.LogicalVolume.Field(c.lvmBaseLv), key.VirtualSize.Field(c.LVMVirtualSize))
 	logger.Debug(ctx, "checking base volume")
 
-	err := exec(ctx, "lvdisplay", baseLv)
+	err := exec(ctx, "lvdisplay", c.lvmBaseLv)
 	if err == nil {
 		logger.Debug(ctx, "base volume already exists")
 		return nil
 	}
 
 	if !strings.Contains(err.Error(), "Failed to find logical volume") {
-		return fmt.Errorf("failed to check base volume %s: %w", baseLv, err)
+		return fmt.Errorf("failed to check base volume %s: %w", c.lvmBaseLv, err)
 	}
 
 	logger.Info(ctx, "creating base volume")
 	if err := exec(ctx, "lvcreate", "--name=base", "--virtualsize="+c.LVMVirtualSize, "--thinpool="+c.lvmVg+"/thinpool"); err != nil {
-		return fmt.Errorf("failed to create base volume %s: %w", baseLv, err)
+		return fmt.Errorf("failed to create base volume %s: %w", c.lvmBaseLv, err)
 	}
 
-	if err := c.udevSettle(ctx, baseDevice); err != nil {
+	if err := c.udevSettle(ctx, "/dev/"+c.lvmBaseLv); err != nil {
 		logger.Warn(ctx, "udev settle failed for base volume", zap.Error(err))
 	}
 
@@ -452,7 +451,7 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 		return nil
 	}
 
-	logger.Info(ctx, "mounting base volume", key.Device.Field(c.lvmBaseDevice), key.Path.Field(c.StagingPath))
+	logger.Info(ctx, "mounting base volume", key.LogicalVolume.Field(c.lvmBaseLv), key.Path.Field(c.StagingPath))
 	if err := os.MkdirAll(c.StagingPath, 0o775); err != nil {
 		return fmt.Errorf("failed to create staging directory %s: %w", c.StagingPath, err)
 	}
@@ -473,8 +472,8 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 		mountOptions = append(mountOptions, "init_itable=0")
 	}
 
-	if err := mounter.FormatAndMount(c.lvmBaseDevice, c.StagingPath, c.LVMFormat, mountOptions); err != nil {
-		return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", c.lvmBaseDevice, c.StagingPath, err)
+	if err := mounter.FormatAndMount("/dev/"+c.lvmBaseLv, c.StagingPath, c.LVMFormat, mountOptions); err != nil {
+		return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", "/dev/"+c.lvmBaseLv, c.StagingPath, err)
 	}
 
 	// Clean up lost+found directory, it's not needed and confusing.
@@ -514,9 +513,7 @@ func (c *Cached) unmountBaseVolume(ctx context.Context) error {
 // createSnapshot creates an LVM snapshot from the base volume
 func (c *Cached) createSnapshot(ctx context.Context, volumeID string) error {
 	snapshotLv := c.lvmVg + "/" + volumeID
-	snapshotDevice := "/dev/" + snapshotLv
-
-	ctx = logger.With(ctx, key.LogicalVolume.Field(snapshotLv), key.Device.Field(snapshotDevice))
+	ctx = logger.With(ctx, key.LogicalVolume.Field(snapshotLv))
 	logger.Debug(ctx, "checking snapshot")
 
 	err := exec(ctx, "lvdisplay", snapshotLv)
@@ -530,12 +527,12 @@ func (c *Cached) createSnapshot(ctx context.Context, volumeID string) error {
 	}
 
 	logger.Info(ctx, "creating snapshot")
-	if err := exec(ctx, "lvcreate", c.lvmVg+"/base", "--name="+volumeID, "--snapshot", "--setactivationskip=n"); err != nil {
-		return fmt.Errorf("failed to create snapshot of base volume %s: %w", c.lvmVg+"/base", err)
+	if err := exec(ctx, "lvcreate", c.lvmBaseLv, "--name="+volumeID, "--snapshot", "--setactivationskip=n"); err != nil {
+		return fmt.Errorf("failed to create snapshot of base volume %s: %w", c.lvmBaseLv, err)
 	}
 
 	// Wait for device to appear and settle udev
-	if err := c.udevSettle(ctx, snapshotDevice); err != nil {
+	if err := c.udevSettle(ctx, "/dev/"+snapshotLv); err != nil {
 		// keep going, the device might still be available
 		logger.Warn(ctx, "udev settle failed for snapshot", zap.Error(err))
 	}
@@ -546,9 +543,7 @@ func (c *Cached) createSnapshot(ctx context.Context, volumeID string) error {
 // removeSnapshot removes an LVM snapshot
 func (c *Cached) removeSnapshot(ctx context.Context, volumeID string) error {
 	snapshotLv := c.lvmVg + "/" + volumeID
-	snapshotDevice := "/dev/" + snapshotLv
-
-	ctx = logger.With(ctx, key.LogicalVolume.Field(snapshotLv), key.Device.Field(snapshotDevice))
+	ctx = logger.With(ctx, key.LogicalVolume.Field(snapshotLv))
 	logger.Debug(ctx, "checking snapshot for removal")
 
 	err := exec(ctx, "lvdisplay", snapshotLv)
@@ -562,7 +557,7 @@ func (c *Cached) removeSnapshot(ctx context.Context, volumeID string) error {
 
 	logger.Info(ctx, "removing snapshot")
 	if err := exec(ctx, "lvremove", "-y", snapshotLv); err != nil {
-		return fmt.Errorf("failed to remove snapshot %s: %w", snapshotDevice, err)
+		return fmt.Errorf("failed to remove snapshot %s: %w", snapshotLv, err)
 	}
 
 	return nil
