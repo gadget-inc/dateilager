@@ -200,8 +200,9 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
 	}
 
-	logger.Info(ctx, "publishing volume", key.VolumeID.Field(volumeID), key.TargetPath.Field(targetPath))
-	trace.SpanFromContext(ctx).SetAttributes(key.VolumeID.Attribute(volumeID), key.TargetPath.Attribute(targetPath))
+	ctx = logger.With(ctx, key.VolumeID.Field(volumeID), key.TargetPath.Field(targetPath), key.Version.Field(c.currentVersion.Load()))
+	trace.SpanFromContext(ctx).SetAttributes(key.VolumeID.Attribute(volumeID), key.TargetPath.Attribute(targetPath), key.Version.Attribute(c.currentVersion.Load()))
+	logger.Info(ctx, "publishing volume")
 
 	if err := c.createSnapshot(ctx, volumeID); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create snapshot: %v", err)
@@ -223,7 +224,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		}
 
 		device := "/dev/" + c.lvmVg + "/" + volumeID
-		logger.Info(ctx, "mounting snapshot", key.Device.Field(device), key.TargetPath.Field(targetPath))
+		logger.Info(ctx, "mounting snapshot", key.Device.Field(device))
 		if err := mounter.Mount(device, targetPath, c.LVMFormat, mountOptions); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to mount snapshot %s to %s: %v", device, targetPath, err)
 		}
@@ -233,7 +234,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Errorf(codes.Internal, "failed to change permissions of target path %s: %v", targetPath, err)
 	}
 
-	logger.Info(ctx, "mounted snapshot", key.TargetPath.Field(targetPath), key.Version.Field(c.currentVersion.Load()))
+	logger.Info(ctx, "mounted snapshot")
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
@@ -249,9 +250,8 @@ func (c *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Target Path must be provided")
 	}
 
-	trace.SpanFromContext(ctx).SetAttributes(key.VolumeID.Attribute(volumeID), key.TargetPath.Attribute(targetPath))
-	ctx = logger.With(ctx, key.VolumeID.Field(volumeID), key.TargetPath.Field(targetPath))
-
+	ctx = logger.With(ctx, key.VolumeID.Field(volumeID), key.TargetPath.Field(targetPath), key.Version.Field(c.currentVersion.Load()))
+	trace.SpanFromContext(ctx).SetAttributes(key.VolumeID.Attribute(volumeID), key.TargetPath.Attribute(targetPath), key.Version.Attribute(c.currentVersion.Load()))
 	logger.Info(ctx, "unpublishing volume")
 
 	notMounted, err := mounter.IsLikelyNotMountPoint(targetPath)
