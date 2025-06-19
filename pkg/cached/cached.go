@@ -653,8 +653,8 @@ func ext4FormatOptions() []string {
 		// Bigalloc: 64 KiB clusters dramatically reduce bitmap scanning.
 		"-C", "65536",
 
-		// One inode per 4 MiB, matching mkfs’s “largefile4” preset.
-		"-T", "largefile4", "-i", "4194304",
+		// One inode per 16 KiB, matching mkfs’s “news” preset.
+		"-T", "news", "-i", "16384",
 
 		// Zero per-FS reserve; we don’t plan to rescue a 100 %-full volume.
 		"-m", "0",
