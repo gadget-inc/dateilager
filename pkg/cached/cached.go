@@ -408,19 +408,15 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 		// Make the thin pool take up 95% of the volume group's space
 		"--extents=95%VG",
 
-		// Smaller chunk size for small files - reduces internal fragmentation
-		// 32k is better than 64k for node_modules with many small files
-		"--chunksize=32k",
+		// Use minimum allowed chunk size for better small file efficiency
+		// 64k is the minimum, but still better than default (usually 64k or larger)
+		"--chunksize=64k",
 
 		// Skip zeroing for faster creation and better write performance
 		"--zero=n",
 
 		// Pass TRIM/discard commands through to underlying storage
 		"--discards=passdown",
-
-		// Optimize metadata allocation - use smaller metadata LV for better performance
-		// This reduces metadata overhead for small allocations
-		"--poolmetadatasize=128M",
 
 		// Skip wiping signatures for faster creation
 		"--wipesignatures=n",
