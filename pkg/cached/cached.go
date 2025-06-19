@@ -33,6 +33,7 @@ const (
 	DRIVER_NAME       = "dev.gadget.dateilager.cached"
 	CACHE_PATH_SUFFIX = "dl_cache"
 	NO_CHANGE_USER    = -1
+	EXT4              = "ext4"
 )
 
 type Cached struct {
@@ -219,7 +220,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		}
 
 		var mountOptions []string
-		if c.LVMFormat == "ext4" {
+		if c.LVMFormat == EXT4 {
 			mountOptions = ext4MountOptions()
 		}
 
@@ -315,12 +316,10 @@ func (c *Cached) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 	}, nil
 }
 
-var executor = utilexec.New()
-
-var mounter = &mount.SafeFormatAndMount{
-	Interface: mount.New(""),
-	Exec:      executor,
-}
+var (
+	executor = utilexec.New()
+	mounter  = mount.New("")
+)
 
 // exec executes a command
 func exec(ctx context.Context, command string, args ...string) error {
@@ -458,7 +457,7 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 
 	if fsFormat != c.LVMFormat {
 		formatOptions := []string{"/dev/" + c.lvmBaseLv}
-		if c.LVMFormat == "ext4" {
+		if c.LVMFormat == EXT4 {
 			formatOptions = append(formatOptions, ext4FormatOptions()...)
 		}
 
@@ -474,7 +473,7 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 	}
 
 	var mountOptions []string
-	if c.LVMFormat == "ext4" {
+	if c.LVMFormat == EXT4 {
 		mountOptions = ext4MountOptions()
 	}
 
