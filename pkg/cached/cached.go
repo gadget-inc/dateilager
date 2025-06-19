@@ -404,7 +404,27 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 	}
 
 	logger.Info(ctx, "creating thin pool")
-	if err := exec(ctx, "lvcreate", "-T", c.lvmVg+"/thinpool", "--extents=95%VG", "--chunksize=64k", "--zero=n", "--discards=passdown"); err != nil {
+	if err := exec(ctx, "lvcreate", "-T", c.lvmVg+"/thinpool",
+		// Make the thin pool take up 95% of the volume group's space
+		"--extents=95%VG",
+
+		// Smaller chunk size for small files - reduces internal fragmentation
+		// 32k is better than 64k for node_modules with many small files
+		"--chunksize=32k",
+
+		// Skip zeroing for faster creation and better write performance
+		"--zero=n",
+
+		// Pass TRIM/discard commands through to underlying storage
+		"--discards=passdown",
+
+		// Optimize metadata allocation - use smaller metadata LV for better performance
+		// This reduces metadata overhead for small allocations
+		"--poolmetadatasize=128M",
+
+		// Skip wiping signatures for faster creation
+		"--wipesignatures=n",
+	); err != nil {
 		return fmt.Errorf("failed to create lvm thin pool %s: %w", thinPool, err)
 	}
 
@@ -641,54 +661,86 @@ func getFolderSize(path string) (int64, error) {
 	return totalBytes.Load(), err
 }
 
-// ext4FormatOptions returns the format options for ext4 filesystems
+// ext4FormatOptions returns the format options for ext4 filesystems optimized for node_modules
 func ext4FormatOptions() []string {
 	return []string{
-		// Force creation even if the target looks mounted or already formatted.
+		// Force creation even if the target looks mounted or already formatted
 		"-F",
 
-		// 4 KiB logical blocks – safe upper bound on x86-64 and ARM64.
+		// 4 KiB logical blocks - better balance for small files on modern storage
+		// 1K blocks have higher metadata overhead and don't align well with NVMe page sizes
 		"-b", "4096",
 
-		// Bigalloc: 64 KiB clusters dramatically reduce bitmap scanning.
-		"-C", "65536",
+		// Smaller clusters for small files - 8 KiB for better packing
+		"-C", "8192",
 
-		// One inode per 16 KiB, matching mkfs’s “news” preset.
-		"-T", "news", "-i", "16384",
+		// Extremely high inode density for node_modules - one inode per 512 KiB
+		// node_modules can have 100k+ files, so we need lots of inodes
+		"-T", "small", "-i", "524288",
 
-		// Zero per-FS reserve; we don’t plan to rescue a 100 %-full volume.
+		// Zero per-FS reserve since this is a dedicated node_modules volume
 		"-m", "0",
 
-		// Pack 64 block groups into a single flex_bg group – fewer metadata islands.
+		// Larger flex_bg groups for better allocation - 64 block groups
 		"-G", "64",
 
-		// Feature flags: turn on throughput helpers, turn off safety nets.
-		"-O", "extent,bigalloc,dir_index,sparse_super2,flex_bg,huge_file,64bit,^has_journal,^metadata_csum",
+		// Optimized feature flags for write performance and small files
+		"-O", "extent,dir_index,sparse_super2,flex_bg,huge_file,64bit,inline_data,^has_journal,^metadata_csum,^dir_nlink,filetype",
 
-		// Extended parameters:
-		//   stride/stripe-width  → 512 KiB alignment (128 × 4 KiB blocks)
-		//   lazy_*_init=0        → zero tables up front; no background I/O later
-		//   discard              → issue TRIMs immediately on block free
-		"-E", "stride=128,stripe-width=128,lazy_itable_init=0,lazy_journal_init=0,discard",
+		// Extended parameters optimized for NVMe and small files:
+		//   No stride/stripe-width for better flexibility
+		//   lazy_*_init=0 for predictable performance
+		//   nodiscard during format for faster creation
+		//   packed_meta_blocks for better metadata locality
+		"-E", "lazy_itable_init=0,lazy_journal_init=0,nodiscard,packed_meta_blocks=1,num_backup_sb=0",
 	}
 }
 
-// ext4MountOptions returns the mount options that improve write performance for ext4 filesystems
+// ext4MountOptions returns mount options optimized for maximum write performance
 func ext4MountOptions() []string {
 	return []string{
-		// Eliminates most time-stamp writes (noatime/nodiratime) and defers the rest (lazytime) so they piggy-back on larger I/O.
-		// Safe enough for most apps that don’t rely on atime, but you give up the ability to audit “last accessed” precisely.
+		// Eliminate all timestamp updates for maximum performance
 		"noatime", "nodiratime", "lazytime",
 
-		// Skips the flush/write-barrier that normally forces the drive cache to commit data in-order. If the device isn’t battery-backed, a
-		// sudden power loss can wipe everything written since the last barrier.
+		// Disable write barriers - assumes battery-backed storage or acceptable data loss risk
 		"nobarrier",
 
-		// Explicitly keep delayed allocation on (it’s the default, but being explicit signals intent).
-		// Extents are allocated in large chunks once the kernel can coalesce writes, reducing fragmentation and metadata churn.
+		// Keep delayed allocation for better extent allocation
 		"delalloc",
 
-		// Relay TRIMs to the NVMe
+		// Enable discard for SSD/NVMe TRIM support
 		"discard",
+
+		// Maximum write performance - no data journaling
+		"data=writeback",
+
+		// Very frequent commits for faster sync operations (node package managers sync frequently)
+		"commit=1",
+
+		// Disable all journal safety features for maximum speed
+		"journal_checksum=0",
+		"journal_async_commit=0",
+
+		// Batch optimization - allow maximum batching before forcing writes
+		"max_batch_time=0",
+		"min_batch_time=0",
+
+		// Disable read-ahead since node_modules access patterns are random
+		"readahead=0",
+
+		// Increase maximum file handles for concurrent operations
+		"inode_readahead_blks=0",
+
+		// Optimize for many small files
+		"stripe=1",
+
+		// Disable automatic fsck to avoid delays
+		"errors=continue",
+
+		// Enable more aggressive allocation strategies
+		"allocsize=1m",
+
+		// Disable directory entry caching since node_modules directories change frequently
+		"cache=loose",
 	}
 }
