@@ -667,9 +667,6 @@ func ext4FormatOptions() []string {
 		// 1K blocks have higher metadata overhead and don't align well with NVMe page sizes
 		"-b", "4096",
 
-		// Smaller clusters for small files - 8 KiB for better packing
-		"-C", "8192",
-
 		// Extremely high inode density for node_modules - one inode per 512 KiB
 		// node_modules can have 100k+ files, so we need lots of inodes
 		"-T", "small", "-i", "524288",
@@ -681,7 +678,8 @@ func ext4FormatOptions() []string {
 		"-G", "64",
 
 		// Optimized feature flags for write performance and small files
-		"-O", "extent,dir_index,sparse_super2,flex_bg,huge_file,64bit,inline_data,^has_journal,^metadata_csum,^dir_nlink,filetype",
+		// Note: bigalloc could be added for cluster support, but adds complexity
+		"-O", "extent,dir_index,sparse_super2,flex_bg,huge_file,64bit,inline_data,^has_journal,^metadata_csum,filetype",
 
 		// Extended parameters optimized for NVMe and small files:
 		//   No stride/stripe-width for better flexibility
