@@ -349,7 +349,7 @@ func (c *Cached) ensurePhysicalVolume(ctx context.Context) error {
 
 	err := exec(ctx, "pvdisplay", c.LVMDevice)
 	if err == nil {
-		logger.Debug(ctx, "physical volume already exists")
+		logger.Info(ctx, "physical volume already exists")
 		return nil
 	}
 
@@ -372,7 +372,7 @@ func (c *Cached) ensureVolumeGroup(ctx context.Context) error {
 
 	err := exec(ctx, "vgdisplay", c.lvmVg)
 	if err == nil {
-		logger.Debug(ctx, "volume group already exists")
+		logger.Info(ctx, "volume group already exists")
 		return nil
 	}
 
@@ -396,7 +396,7 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 
 	err := exec(ctx, "lvdisplay", thinPool)
 	if err == nil {
-		logger.Debug(ctx, "thin pool already exists")
+		logger.Info(ctx, "thin pool already exists")
 		return nil
 	}
 
@@ -405,7 +405,7 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 	}
 
 	logger.Info(ctx, "creating thin pool")
-	if err := exec(ctx, "lvcreate", c.lvmVg, "--name=thinpool", "--extents=95%VG", "--thinpool=thinpool", "--chunksize=64k"); err != nil {
+	if err := exec(ctx, "lvcreate", "-T", c.lvmVg+"/thinpool", "--extents=95%VG", "--chunksize=64k", "--zero=n", "--discards=passdown"); err != nil {
 		return fmt.Errorf("failed to create lvm thin pool %s: %w", thinPool, err)
 	}
 
@@ -419,7 +419,7 @@ func (c *Cached) ensureBaseVolume(ctx context.Context) error {
 
 	err := exec(ctx, "lvdisplay", c.lvmBaseLv)
 	if err == nil {
-		logger.Debug(ctx, "base volume already exists")
+		logger.Info(ctx, "base volume already exists")
 		return nil
 	}
 
@@ -447,8 +447,25 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 	}
 
 	if !notMounted {
-		logger.Debug(ctx, "staging directory is already mounted", key.Path.Field(c.StagingPath))
+		logger.Info(ctx, "staging directory is already mounted", key.Path.Field(c.StagingPath))
 		return nil
+	}
+
+	fsFormat, err := execOutput(ctx, "blkid", "-o", "value", "-s", "TYPE", "/dev/"+c.lvmBaseLv)
+	if err != nil && !strings.Contains(err.Error(), "exit status 2") {
+		return fmt.Errorf("failed to get filesystem type of base volume %s: %w", "/dev/"+c.lvmBaseLv, err)
+	}
+
+	if fsFormat != c.LVMFormat {
+		formatOptions := []string{"/dev/" + c.lvmBaseLv}
+		if c.LVMFormat == "ext4" {
+			formatOptions = append(formatOptions, ext4FormatOptions()...)
+		}
+
+		logger.Info(ctx, "base volume is not formatted as expected, formatting", zap.String("expected", c.LVMFormat), zap.String("actual", fsFormat))
+		if err := exec(ctx, "mkfs."+c.LVMFormat, formatOptions...); err != nil {
+			return fmt.Errorf("failed to format base volume %s: %w", "/dev/"+c.lvmBaseLv, err)
+		}
 	}
 
 	logger.Info(ctx, "mounting base volume", key.LogicalVolume.Field(c.lvmBaseLv), key.Path.Field(c.StagingPath))
@@ -459,20 +476,9 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 	var mountOptions []string
 	if c.LVMFormat == "ext4" {
 		mountOptions = ext4MountOptions()
-
-		// ext4 is created with `lazy_itable_init=1` by default. That means the inode tables are not fully zero-initialized at mkfs time.
-		// Instead, the kernel's `ext4lazyinit` thread clears the remaining blocks later while the filesystem is mounted.
-		//
-		// On ordinary block devices that "pay-as-you-go" strategy is fine, but on our LVM thin snapshots it is disastrous: every background
-		// write touches a previously shared metadata block, so the thin-pool must allocate a fresh block for the snapshot (copy-on-write). For
-		// example, a 350 GiB filesystem can burn ~3-4 GiB of pool space per snapshot before the inode tables are finally clean.
-		//
-		// Mounting with `init_itable=0` tells the kernel to finish that zeroing in one burst now on the base volume. We take the hit once,
-		// up-front, and future snapshots stay space-neutral until real user data is written.
-		mountOptions = append(mountOptions, "init_itable=0")
 	}
 
-	if err := mounter.FormatAndMount("/dev/"+c.lvmBaseLv, c.StagingPath, c.LVMFormat, mountOptions); err != nil {
+	if err := mounter.Mount("/dev/"+c.lvmBaseLv, c.StagingPath, c.LVMFormat, mountOptions); err != nil {
 		return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", "/dev/"+c.lvmBaseLv, c.StagingPath, err)
 	}
 
@@ -487,7 +493,7 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 // unmountBaseVolume unmounts the staging directory and resizes the base volume to the required size
 func (c *Cached) unmountBaseVolume(ctx context.Context) error {
 	if c.CacheUid != NO_CHANGE_USER || c.CacheGid != NO_CHANGE_USER {
-		logger.Debug(ctx, "setting ownership", zap.Int("uid", c.CacheUid), zap.Int("gid", c.CacheGid))
+		logger.Info(ctx, "setting ownership", zap.Int("uid", c.CacheUid), zap.Int("gid", c.CacheGid))
 		if err := fastwalk.Walk(nil, c.StagingPath, func(walkPath string, entry fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -636,6 +642,38 @@ func getFolderSize(path string) (int64, error) {
 	return totalBytes.Load(), err
 }
 
+// ext4FormatOptions returns the format options for ext4 filesystems
+func ext4FormatOptions() []string {
+	return []string{
+		// Force creation even if the target looks mounted or already formatted.
+		"-F",
+
+		// 4 KiB logical blocks – safe upper bound on x86-64 and ARM64.
+		"-b", "4096",
+
+		// Bigalloc: 64 KiB clusters dramatically reduce bitmap scanning.
+		"-C", "65536",
+
+		// One inode per 4 MiB, matching mkfs’s “largefile4” preset.
+		"-T", "largefile4", "-i", "4194304",
+
+		// Zero per-FS reserve; we don’t plan to rescue a 100 %-full volume.
+		"-m", "0",
+
+		// Pack 64 block groups into a single flex_bg group – fewer metadata islands.
+		"-G", "64",
+
+		// Feature flags: turn on throughput helpers, turn off safety nets.
+		"-O", "extent,bigalloc,dir_index,sparse_super2,flex_bg,huge_file,64bit,^has_journal,^metadata_csum",
+
+		// Extended parameters:
+		//   stride/stripe-width  → 512 KiB alignment (128 × 4 KiB blocks)
+		//   lazy_*_init=0        → zero tables up front; no background I/O later
+		//   discard              → issue TRIMs immediately on block free
+		"-E", "stride=128,stripe-width=128,lazy_itable_init=0,lazy_journal_init=0,discard",
+	}
+}
+
 // ext4MountOptions returns the mount options that improve write performance for ext4 filesystems
 func ext4MountOptions() []string {
 	return []string{
@@ -658,5 +696,9 @@ func ext4MountOptions() []string {
 		// Metadata is flushed only every two minutes (default is 5 s). You’ll lose up to the last 120 s of metadata on a crash—sometimes more
 		// thanks to delayed allocation.
 		"commit=120",
+
+		// Explicitly keep delayed allocation on (it’s the default, but being explicit signals intent).
+		// Extents are allocated in large chunks once the kernel can coalesce writes, reducing fragmentation and metadata churn.
+		"delalloc",
 	}
 }
