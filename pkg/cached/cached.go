@@ -699,17 +699,18 @@ func ext4MountOptions() []string {
 		// Disable write barriers - assumes battery-backed storage or acceptable data loss risk
 		"nobarrier",
 
-		// Keep delayed allocation for better extent allocation
-		"delalloc",
+		// Disable buffer heads for direct I/O performance
+		"nobh",
+
+		// Disable delayed allocation - can help with small file workloads
+		// Forces immediate allocation which can reduce fragmentation for node_modules
+		"nodelalloc",
 
 		// Enable discard for SSD/NVMe TRIM support
 		"discard",
 
 		// Note: data=writeback and commit options are journal-related
 		// Since we disabled journaling (^has_journal), these are not needed
-
-		// Disable read-ahead since node_modules access patterns are random
-		"readahead=0",
 
 		// Continue on errors rather than remounting read-only
 		"errors=continue",
