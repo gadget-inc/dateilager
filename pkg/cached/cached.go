@@ -680,24 +680,15 @@ func ext4MountOptions() []string {
 		// Safe enough for most apps that don’t rely on atime, but you give up the ability to audit “last accessed” precisely.
 		"noatime", "nodiratime", "lazytime",
 
-		// Journals only metadata; user-data blocks may hit disk long after their metadata, so post-crash files can contain stale garbage.
-		// Best-case throughput boost for random-write workloads.
-		"data=writeback",
-
 		// Skips the flush/write-barrier that normally forces the drive cache to commit data in-order. If the device isn’t battery-backed, a
 		// sudden power loss can wipe everything written since the last barrier.
 		"nobarrier",
 
-		// Lets kjournald2 ship the journal’s commit block without waiting for descriptor blocks, cutting one synchronous flush per commit.
-		// Pairs well with long commit= intervals.
-		"journal_async_commit",
-
-		// Metadata is flushed only every two minutes (default is 5 s). You’ll lose up to the last 120 s of metadata on a crash—sometimes more
-		// thanks to delayed allocation.
-		"commit=120",
-
 		// Explicitly keep delayed allocation on (it’s the default, but being explicit signals intent).
 		// Extents are allocated in large chunks once the kernel can coalesce writes, reducing fragmentation and metadata churn.
 		"delalloc",
+
+		// Relay TRIMs to the NVMe
+		"discard",
 	}
 }
