@@ -664,12 +664,10 @@ func ext4FormatOptions() []string {
 		"-F",
 
 		// 4 KiB logical blocks - better balance for small files on modern storage
-		// 1K blocks have higher metadata overhead and don't align well with NVMe page sizes
 		"-b", "4096",
 
-		// Extremely high inode density for node_modules - one inode per 512 KiB
-		// node_modules can have 100k+ files, so we need lots of inodes
-		"-T", "small", "-i", "524288",
+		// One inode per 16 KiB of projected data. 256-byte inodes instead of 128, required for inline_data.
+		"-i", "16384", "-I", "256",
 
 		// Zero per-FS reserve since this is a dedicated node_modules volume
 		"-m", "0",
@@ -678,8 +676,7 @@ func ext4FormatOptions() []string {
 		"-G", "64",
 
 		// Optimized feature flags for write performance and small files
-		// Note: bigalloc could be added for cluster support, but adds complexity
-		"-O", "extent,dir_index,sparse_super2,flex_bg,huge_file,64bit,inline_data,^has_journal,^metadata_csum,filetype",
+		"-O", "extent,dir_index,sparse_super2,filetype,flex_bg,64bit,inline_data,^has_journal,^metadata_csum",
 
 		// Extended parameters optimized for NVMe and small files:
 		//   No stride/stripe-width for better flexibility
@@ -698,9 +695,6 @@ func ext4MountOptions() []string {
 
 		// Disable write barriers - assumes battery-backed storage or acceptable data loss risk
 		"nobarrier",
-
-		// Disable buffer heads for direct I/O performance
-		"nobh",
 
 		// Disable delayed allocation - can help with small file workloads
 		// Forces immediate allocation which can reduce fragmentation for node_modules
