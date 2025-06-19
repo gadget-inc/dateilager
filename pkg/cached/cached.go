@@ -705,36 +705,13 @@ func ext4MountOptions() []string {
 		// Enable discard for SSD/NVMe TRIM support
 		"discard",
 
-		// Maximum write performance - no data journaling
-		"data=writeback",
-
-		// Very frequent commits for faster sync operations (node package managers sync frequently)
-		"commit=1",
-
-		// Disable all journal safety features for maximum speed
-		"journal_checksum=0",
-		"journal_async_commit=0",
-
-		// Batch optimization - allow maximum batching before forcing writes
-		"max_batch_time=0",
-		"min_batch_time=0",
+		// Note: data=writeback and commit options are journal-related
+		// Since we disabled journaling (^has_journal), these are not needed
 
 		// Disable read-ahead since node_modules access patterns are random
 		"readahead=0",
 
-		// Increase maximum file handles for concurrent operations
-		"inode_readahead_blks=0",
-
-		// Optimize for many small files
-		"stripe=1",
-
-		// Disable automatic fsck to avoid delays
+		// Continue on errors rather than remounting read-only
 		"errors=continue",
-
-		// Enable more aggressive allocation strategies
-		"allocsize=1m",
-
-		// Disable directory entry caching since node_modules directories change frequently
-		"cache=loose",
 	}
 }
