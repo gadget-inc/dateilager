@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -44,7 +45,8 @@ type Cached struct {
 	StagingPath      string
 	CacheUid         int
 	CacheGid         int
-	LVMDevice        string
+	DataDeviceGlob   string
+	DataDevices      []string
 	LVMFormat        string
 	LVMVirtualSize   string
 	lvmVg            string
@@ -63,7 +65,7 @@ func New(client *client.Client, driverNameSuffix string) *Cached {
 		StagingPath:      "/var/lib/kubelet/dateilager_cached" + driverNameSuffixUnderscored,
 		CacheUid:         NO_CHANGE_USER,
 		CacheGid:         NO_CHANGE_USER,
-		LVMDevice:        os.Getenv("DL_LVM_DEVICE"),
+		DataDeviceGlob:   os.Getenv("DL_DATA_DEVICE_GLOB"),
 		LVMFormat:        os.Getenv("DL_LVM_FORMAT"),
 		LVMVirtualSize:   os.Getenv("DL_LVM_VIRTUAL_SIZE"),
 		lvmVg:            lvmVg,
@@ -80,7 +82,12 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 	start := time.Now()
 
 	var err error
-	if err = c.ensurePhysicalVolume(ctx); err != nil {
+
+	if err = c.findDataDevices(ctx); err != nil {
+		return err
+	}
+
+	if err = c.ensurePhysicalVolumes(ctx); err != nil {
 		return err
 	}
 
@@ -135,16 +142,18 @@ func (c *Cached) Unprepare(ctx context.Context) error {
 		}
 	}
 
-	// Remove physical volume if it exists
-	err = exec(ctx, "pvdisplay", c.LVMDevice)
-	if err != nil && !strings.Contains(err.Error(), "Failed to find physical volume") {
-		return fmt.Errorf("failed to check lvm physical volume %s: %w", c.LVMDevice, err)
-	}
+	// Remove each physical volume if it exists
+	for _, device := range c.DataDevices {
+		err = exec(ctx, "pvdisplay", device)
+		if err != nil && !strings.Contains(err.Error(), "Failed to find physical volume") {
+			return fmt.Errorf("failed to check lvm physical volume %s: %w", device, err)
+		}
 
-	if err == nil {
-		logger.Info(ctx, "removing physical volume", key.Device.Field(c.LVMDevice))
-		if err := exec(ctx, "pvremove", c.LVMDevice); err != nil {
-			return fmt.Errorf("failed to remove lvm physical volume %s: %w", c.LVMDevice, err)
+		if err == nil {
+			logger.Info(ctx, "removing physical volume", key.Device.Field(device))
+			if err := exec(ctx, "pvremove", device); err != nil {
+				return fmt.Errorf("failed to remove lvm physical volume %s: %w", device, err)
+			}
 		}
 	}
 
@@ -341,32 +350,53 @@ func execOutput(ctx context.Context, command string, args ...string) (string, er
 	return strings.TrimSpace(string(bs)), nil
 }
 
-// ensurePhysicalVolume creates LVM physical volume if it doesn't exist
-func (c *Cached) ensurePhysicalVolume(ctx context.Context) error {
-	ctx = logger.With(ctx, key.Device.Field(c.LVMDevice))
-	logger.Debug(ctx, "checking physical volume")
+func (c *Cached) findDataDevices(ctx context.Context) error {
+	globs := strings.Split(c.DataDeviceGlob, ",")
+	var allDevices []string
 
-	err := exec(ctx, "pvdisplay", c.LVMDevice)
-	if err == nil {
-		logger.Info(ctx, "physical volume already exists")
-		return nil
+	for _, glob := range globs {
+		glob = strings.TrimSpace(glob)
+		devices, err := filepath.Glob(glob)
+		if err != nil {
+			return fmt.Errorf("failed to find data devices for glob %s: %w", glob, err)
+		}
+		allDevices = append(allDevices, devices...)
 	}
 
-	if !strings.Contains(err.Error(), "Failed to find physical volume") {
-		return fmt.Errorf("failed to check lvm physical volume %s: %w", c.LVMDevice, err)
+	if len(allDevices) == 0 {
+		return fmt.Errorf("no data devices found for globs %s", c.DataDeviceGlob)
 	}
+	c.DataDevices = allDevices
+	return nil
+}
 
-	logger.Info(ctx, "creating physical volume")
-	if err := exec(ctx, "pvcreate", c.LVMDevice); err != nil && !strings.Contains(err.Error(), "signal: killed") {
-		return fmt.Errorf("failed to create lvm physical volume %s: %w", c.LVMDevice, err)
+// ensurePhysicalVolumes creates LVM physical volumes if they don't exist for each data device
+func (c *Cached) ensurePhysicalVolumes(ctx context.Context) error {
+	for _, device := range c.DataDevices {
+		ctx = logger.With(ctx, key.Device.Field(device))
+		logger.Debug(ctx, "checking physical volume")
+
+		err := exec(ctx, "pvdisplay", device)
+		if err == nil {
+			logger.Info(ctx, "physical volume already exists")
+			continue
+		}
+
+		if !strings.Contains(err.Error(), "Failed to find physical volume") {
+			return fmt.Errorf("failed to check lvm physical volume %s: %w", device, err)
+		}
+
+		logger.Info(ctx, "creating physical volume")
+		if err := exec(ctx, "pvcreate", device); err != nil && !strings.Contains(err.Error(), "signal: killed") {
+			return fmt.Errorf("failed to create lvm physical volume %s: %w", device, err)
+		}
 	}
-
 	return nil
 }
 
 // ensureVolumeGroup creates LVM volume group if it doesn't exist
 func (c *Cached) ensureVolumeGroup(ctx context.Context) error {
-	ctx = logger.With(ctx, key.VolumeGroup.Field(c.lvmVg), key.Device.Field(c.LVMDevice))
+	ctx = logger.With(ctx, key.VolumeGroup.Field(c.lvmVg), key.DeviceGlob.Field(c.DataDeviceGlob))
 	logger.Debug(ctx, "checking volume group")
 
 	err := exec(ctx, "vgdisplay", c.lvmVg)
@@ -380,7 +410,8 @@ func (c *Cached) ensureVolumeGroup(ctx context.Context) error {
 	}
 
 	logger.Info(ctx, "creating volume group")
-	if err := exec(ctx, "vgcreate", c.lvmVg, c.LVMDevice); err != nil {
+	args := append([]string{"vgcreate", c.lvmVg}, c.DataDevices...)
+	if err := exec(ctx, args[0], args[1:]...); err != nil {
 		return fmt.Errorf("failed to create lvm volume group %s: %w", c.lvmVg, err)
 	}
 
@@ -412,7 +443,14 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 		// 64k is the minimum, but still better than default (usually 64k or larger)
 		"--chunksize=64k",
 
+		// Use one stripe per data device to maximize performance
+		"--stripes="+strconv.Itoa(len(c.DataDevices)),
+
+		// Use a small stripe size for better IO performance on small files
+		"--stripesize=64k",
+
 		// Skip zeroing for faster creation and better write performance
+		// TODO: figure out data leakage risk
 		"--zero=n",
 
 		// Pass TRIM/discard commands through to underlying storage

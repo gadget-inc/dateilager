@@ -26,11 +26,13 @@ jobs:
           sudo chown $USER:$USER $GITHUB_WORKSPACE
           findmnt
 
-      - name: Setup LVM device
+      - name: Setup LVM devices
         run: |
-          sudo truncate -s 10G /var/tmp/lvm.img
-          device=$(sudo losetup --find --show /var/tmp/lvm.img)
-          echo "DL_LVM_DEVICE=$device" >> $GITHUB_ENV
+          sudo truncate -s 5G /var/tmp/lvm-1.img
+          sudo truncate -s 5G /var/tmp/lvm-2.img
+          device1=$(sudo losetup --find --show /var/tmp/lvm-1.img)
+          device2=$(sudo losetup --find --show /var/tmp/lvm-2.img)
+          echo "DL_DATA_DEVICE_GLOB=$device1,$device2" >> $GITHUB_ENV
           echo "DL_LVM_VIRTUAL_SIZE=5G" >> $GITHUB_ENV
           echo "DL_LVM_FORMAT=${{ matrix.filesystem }}" >> $GITHUB_ENV
 
