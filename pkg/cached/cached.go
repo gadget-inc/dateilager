@@ -714,7 +714,7 @@ func ext4FormatOptions() []string {
 		"-G", "64",
 
 		// Optimized feature flags for write performance and small files
-		"-O", "extent,dir_index,sparse_super2,filetype,flex_bg,64bit,inline_data,^has_journal,^metadata_csum",
+		"-O", "extent,dir_index,sparse_super2,filetype,flex_bg,64bit,inline_data,^metadata_csum",
 
 		// Extended parameters optimized for NVMe and small files:
 		//   No stride/stripe-width for better flexibility
@@ -734,15 +734,14 @@ func ext4MountOptions() []string {
 		// Disable write barriers - assumes battery-backed storage or acceptable data loss risk
 		"nobarrier",
 
-		// Disable delayed allocation - can help with small file workloads
-		// Forces immediate allocation which can reduce fragmentation for node_modules
-		"nodelalloc",
-
 		// Enable discard for SSD/NVMe TRIM support
 		"discard",
 
-		// Note: data=writeback and commit options are journal-related
-		// Since we disabled journaling (^has_journal), these are not needed
+		// Enable writeback for better performance
+		"data=writeback",
+
+		// Set commit interval to 60 seconds for better performance
+		"commit=60",
 
 		// Continue on errors rather than remounting read-only
 		"errors=continue",
