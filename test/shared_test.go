@@ -337,7 +337,7 @@ var (
 func workspaceDir(t testing.TB) string {
 	cachedWorkspaceDirOnce.Do(func() {
 		s, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
-		require.NoError(t, err, "git rev-parse --show-toplevel failed")
+		require.NoError(t, err, "git rev-parse --show-toplevel failed: %v", err)
 		cachedWorkspaceDir = strings.TrimSpace(string(s))
 	})
 	return cachedWorkspaceDir
