@@ -19,6 +19,7 @@ const (
 	Command            = StringKey("dl.command")
 	Count              = Int64Key("dl.count")
 	Device             = StringKey("dl.device")
+	DeviceGlob         = StringKey("dl.device_glob")
 	DiffCount          = Uint32Key("dl.diff_count")
 	Directory          = StringKey("dl.directory")
 	DurationMS         = DurationKey("dl.duration_ms")
