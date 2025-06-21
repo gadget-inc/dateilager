@@ -35,6 +35,7 @@ jobs:
           echo "DL_DATA_DEVICE_GLOB=$device1,$device2" >> $GITHUB_ENV
           echo "DL_LVM_VIRTUAL_SIZE=5G" >> $GITHUB_ENV
           echo "DL_LVM_FORMAT=${{ matrix.filesystem }}" >> $GITHUB_ENV
+          echo "DL_RAM_WRITEBACK_CACHE_SIZE_KB=4194304" >> $GITHUB_ENV
 
       - name: Checkout repository
         uses: actions/checkout@v3

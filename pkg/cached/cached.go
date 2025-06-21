@@ -40,18 +40,21 @@ const (
 type Cached struct {
 	csi.UnimplementedIdentityServer
 	csi.UnimplementedNodeServer
-	Client           *client.Client
-	DriverNameSuffix string
-	StagingPath      string
-	CacheUid         int
-	CacheGid         int
-	DataDeviceGlob   string
-	DataDevices      []string
-	LVMFormat        string
-	LVMVirtualSize   string
-	lvmVg            string
-	lvmBaseLv        string
-	currentVersion   atomic.Int64
+	Client                  *client.Client
+	DriverNameSuffix        string
+	StagingPath             string
+	CacheUid                int
+	CacheGid                int
+	DataDeviceGlob          string
+	DataDevices             []string
+	LVMFormat               string
+	LVMVirtualSize          string
+	RAMWritebackCacheSizeKB int64
+	lvmVg                   string
+	lvmBaseLv               string
+	baseDevicePath          string
+	ramDevicePath           string
+	currentVersion          atomic.Int64
 }
 
 func New(client *client.Client, driverNameSuffix string) *Cached {
@@ -59,17 +62,25 @@ func New(client *client.Client, driverNameSuffix string) *Cached {
 	lvmVg := "vg_dateilager_cached" + driverNameSuffixUnderscored
 	lvmBaseLv := lvmVg + "/base"
 
+	writebackCacheSizeKB := int64(0)
+	if envSize := os.Getenv("DL_RAM_WRITEBACK_CACHE_SIZE_KB"); envSize != "" {
+		if size, err := strconv.ParseInt(envSize, 10, 64); err == nil {
+			writebackCacheSizeKB = size
+		}
+	}
+
 	return &Cached{
-		Client:           client,
-		DriverNameSuffix: driverNameSuffix,
-		StagingPath:      "/var/lib/kubelet/dateilager_cached" + driverNameSuffixUnderscored,
-		CacheUid:         NO_CHANGE_USER,
-		CacheGid:         NO_CHANGE_USER,
-		DataDeviceGlob:   os.Getenv("DL_DATA_DEVICE_GLOB"),
-		LVMFormat:        os.Getenv("DL_LVM_FORMAT"),
-		LVMVirtualSize:   os.Getenv("DL_LVM_VIRTUAL_SIZE"),
-		lvmVg:            lvmVg,
-		lvmBaseLv:        lvmBaseLv,
+		Client:                  client,
+		DriverNameSuffix:        driverNameSuffix,
+		StagingPath:             "/var/lib/kubelet/dateilager_cached" + driverNameSuffixUnderscored,
+		CacheUid:                NO_CHANGE_USER,
+		CacheGid:                NO_CHANGE_USER,
+		DataDeviceGlob:          os.Getenv("DL_DATA_DEVICE_GLOB"),
+		LVMFormat:               os.Getenv("DL_LVM_FORMAT"),
+		LVMVirtualSize:          os.Getenv("DL_LVM_VIRTUAL_SIZE"),
+		RAMWritebackCacheSizeKB: writebackCacheSizeKB,
+		lvmVg:                   lvmVg,
+		lvmBaseLv:               lvmBaseLv,
 	}
 }
 
@@ -93,6 +104,12 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 
 	if err = c.ensureVolumeGroup(ctx); err != nil {
 		return err
+	}
+
+	if c.RAMWritebackCacheSizeKB > 0 {
+		if err = c.ensureRamPool(ctx); err != nil {
+			return err
+		}
 	}
 
 	if err = c.ensureThinPool(ctx); err != nil {
@@ -153,6 +170,21 @@ func (c *Cached) Unprepare(ctx context.Context) error {
 			logger.Info(ctx, "removing physical volume", key.Device.Field(device))
 			if err := exec(ctx, "pvremove", device); err != nil {
 				return fmt.Errorf("failed to remove lvm physical volume %s: %w", device, err)
+			}
+		}
+	}
+
+	// Remove RAM cache physical volume if it exists
+	if c.ramDevicePath != "" {
+		err = exec(ctx, "pvdisplay", c.ramDevicePath)
+		if err != nil && !strings.Contains(err.Error(), "Failed to find physical volume") {
+			return fmt.Errorf("failed to check lvm physical volume %s: %w", c.ramDevicePath, err)
+		}
+
+		if err == nil {
+			logger.Info(ctx, "removing physical volume", key.Device.Field(c.ramDevicePath))
+			if err := exec(ctx, "pvremove", c.ramDevicePath); err != nil {
+				return fmt.Errorf("failed to remove lvm physical volume %s: %w", c.ramDevicePath, err)
 			}
 		}
 	}
@@ -435,7 +467,7 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 	}
 
 	logger.Info(ctx, "creating thin pool")
-	if err := exec(ctx, "lvcreate", "-T", c.lvmVg+"/thinpool",
+	if err := exec(ctx, "lvcreate", "--thin", c.lvmVg+"/thinpool",
 		// Make the thin pool take up 95% of the volume group's space
 		"--extents=95%VG",
 
@@ -458,8 +490,45 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 
 		// Skip wiping signatures for faster creation
 		"--wipesignatures=n",
+
+		// Don't activate the thinpool yet so we can muck with it for RAM writeback caching if needed
+		"--activate=n",
 	); err != nil {
 		return fmt.Errorf("failed to create lvm thin pool %s: %w", thinPool, err)
+	}
+
+	if c.RAMWritebackCacheSizeKB > 0 {
+		if err := exec(ctx, "lvconvert", "--yes", "--type", "writecache", "--cachesettings", "high_watermark=75 low_watermark=60 writeback_jobs=4 block_size=4096", "--cachevol", c.lvmVg+"/cache", c.lvmVg+"/thinpool"); err != nil {
+			return fmt.Errorf("failed to create writeback cache for data lv %s: %w", c.lvmBaseLv, err)
+		}
+
+		// invoke lvconvert to move the thinpool metadata to the ram device cache_meta LV
+		// TOOD: get working, creates transaction id mismatch errors if enabled
+		// if err := exec(ctx, "lvconvert", "--yes", "--thinpool", c.lvmVg+"/thinpool", "--poolmetadata", c.lvmVg+"/cache_meta"); err != nil {
+		// 	return fmt.Errorf("failed to move thinpool metadata to ram device cache_meta LV %s to %s: %w", c.lvmVg+"/thinpool", c.lvmVg+"/cache_meta", err)
+		// }
+
+		logger.Info(ctx, "writeback cache created successfully")
+	}
+
+	// activate the thinpool
+	if err := exec(ctx, "lvchange", "--activate", "y", c.lvmVg+"/thinpool"); err != nil {
+		return fmt.Errorf("failed to activate thinpool %s: %w", c.lvmVg+"/thinpool", err)
+	}
+
+	if err := c.udevSettle(ctx, "/dev/"+c.lvmVg+"/thinpool"); err != nil {
+		logger.Warn(ctx, "udev settle failed for thinpool", zap.Error(err))
+	}
+
+	// Refresh the thinpool to fix mismatched transaction ID issues
+	if err := exec(ctx, "pvscan", "--cache", "--activate", "ay"); err != nil {
+		return fmt.Errorf("failed to rescan pv cache: %w", err)
+	}
+	if err := exec(ctx, "lvchange", "--refresh", c.lvmVg); err != nil {
+		return fmt.Errorf("failed to refresh vg %s: %w", c.lvmVg, err)
+	}
+	if err := exec(ctx, "lvchange", "--refresh", c.lvmVg+"/thinpool"); err != nil {
+		return fmt.Errorf("failed to refresh thinpool %s: %w", c.lvmVg+"/thinpool", err)
 	}
 
 	return nil
@@ -504,20 +573,26 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 		return nil
 	}
 
-	fsFormat, err := execOutput(ctx, "blkid", "-o", "value", "-s", "TYPE", "/dev/"+c.lvmBaseLv)
+	// Use the cached device path if available, otherwise use the original LVM device
+	baseDevicePath := "/dev/" + c.lvmBaseLv
+	if c.baseDevicePath != "" {
+		baseDevicePath = "/dev/" + c.baseDevicePath
+	}
+
+	fsFormat, err := execOutput(ctx, "blkid", "-o", "value", "-s", "TYPE", baseDevicePath)
 	if err != nil && !strings.Contains(err.Error(), "exit status 2") {
-		return fmt.Errorf("failed to get filesystem type of base volume %s: %w", "/dev/"+c.lvmBaseLv, err)
+		return fmt.Errorf("failed to get filesystem type of base volume %s: %w", baseDevicePath, err)
 	}
 
 	if fsFormat != c.LVMFormat {
-		formatOptions := []string{"/dev/" + c.lvmBaseLv}
+		formatOptions := []string{baseDevicePath}
 		if c.LVMFormat == EXT4 {
 			formatOptions = append(formatOptions, ext4FormatOptions()...)
 		}
 
 		logger.Info(ctx, "base volume is not formatted as expected, formatting", zap.String("expected", c.LVMFormat), zap.String("actual", fsFormat))
 		if err := exec(ctx, "mkfs."+c.LVMFormat, formatOptions...); err != nil {
-			return fmt.Errorf("failed to format base volume %s: %w", "/dev/"+c.lvmBaseLv, err)
+			return fmt.Errorf("failed to format base volume %s: %w", baseDevicePath, err)
 		}
 	}
 
@@ -531,8 +606,8 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 		mountOptions = ext4MountOptions()
 	}
 
-	if err := mounter.Mount("/dev/"+c.lvmBaseLv, c.StagingPath, c.LVMFormat, mountOptions); err != nil {
-		return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", "/dev/"+c.lvmBaseLv, c.StagingPath, err)
+	if err := mounter.Mount(baseDevicePath, c.StagingPath, c.LVMFormat, mountOptions); err != nil {
+		return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", baseDevicePath, c.StagingPath, err)
 	}
 
 	// Clean up lost+found directory, it's not needed and confusing.
@@ -586,6 +661,7 @@ func (c *Cached) createSnapshot(ctx context.Context, volumeID string) error {
 	}
 
 	logger.Info(ctx, "creating snapshot")
+	// Use the original LVM base volume for creating snapshots, not the cached device
 	if err := exec(ctx, "lvcreate", c.lvmBaseLv, "--name="+volumeID, "--snapshot", "--setactivationskip=n"); err != nil {
 		return fmt.Errorf("failed to create snapshot of base volume %s: %w", c.lvmBaseLv, err)
 	}
@@ -746,4 +822,59 @@ func ext4MountOptions() []string {
 		// Continue on errors rather than remounting read-only
 		"errors=continue",
 	}
+}
+
+// ensureRamPool creates a RAM device using dmsetup for use as a writeback cache
+func (c *Cached) ensureRamPool(ctx context.Context) error {
+	c.ramDevicePath = "/dev/ram0"
+	ctx = logger.With(ctx, key.Device.Field(c.ramDevicePath), key.Count.Field(c.RAMWritebackCacheSizeKB))
+	logger.Info(ctx, "creating RAM device for writeback cache")
+
+	if _, err := os.Stat(c.ramDevicePath); err == nil {
+		logger.Info(ctx, "RAM device already exists")
+	} else {
+		if err := exec(ctx, "modprobe", "brd", "rd_nr=1", "rd_size="+strconv.Itoa(int(c.RAMWritebackCacheSizeKB))); err != nil {
+			return fmt.Errorf("failed to create RAM device %s: %w", c.ramDevicePath, err)
+		}
+	}
+
+	// Initialize as PV and add to VG
+	if err := exec(ctx, "pvdisplay", c.ramDevicePath); err == nil {
+		logger.Info(ctx, "RAM device already a PV")
+	} else {
+		if err := exec(ctx, "pvcreate", c.ramDevicePath); err != nil {
+			return fmt.Errorf("failed to pvcreate RAM device %s: %w", c.ramDevicePath, err)
+		}
+	}
+	if err := exec(ctx, "vgdisplay", c.lvmVg); err == nil {
+		logger.Info(ctx, "RAM volume group already exists")
+	} else {
+		if err := exec(ctx, "vgextend", c.lvmVg, c.ramDevicePath); err != nil {
+			return fmt.Errorf("failed to vgextend RAM device to VG %s: %w", c.lvmVg, err)
+		}
+	}
+
+	metaCacheSize := int64(float64(c.RAMWritebackCacheSizeKB) * 0.2)
+	cacheSize := int64(float64(c.RAMWritebackCacheSizeKB) * 0.79)
+
+	// Create an LV that will act as the writeback cache for the metadata, will create an LV like vg_dateilager_cached_ram_<driver_name>/cache_meta
+	if err := exec(ctx, "lvcreate", "--size", strconv.FormatInt(metaCacheSize, 10)+"kb", "--name", "cache_meta", "--setactivationskip=y", c.lvmVg); err != nil {
+		if strings.Contains(err.Error(), "already exists in volume group") {
+			logger.Info(ctx, "metadata cache LV already exists")
+		} else {
+			return fmt.Errorf("failed to create metadata cache LV on RAM VG %s: %w", c.lvmVg, err)
+		}
+	}
+
+	// Create an LV that will act as the writeback cache for the data, will create an LV like vg_dateilager_cached_ram_<driver_name>/cache
+	if err := exec(ctx, "lvcreate", "--size", strconv.FormatInt(cacheSize, 10)+"kb", "--name", "cache", "--setactivationskip=y", c.lvmVg); err != nil {
+		if strings.Contains(err.Error(), "already exists in volume group") {
+			logger.Info(ctx, "data cache LV already exists")
+		} else {
+			return fmt.Errorf("failed to create data cache LV on RAM VG %s: %w", c.lvmVg, err)
+		}
+	}
+
+	logger.Info(ctx, "RAM device created, initialized as PV, added to VG, and created data and metadata cache LV")
+	return nil
 }

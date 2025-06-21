@@ -29,14 +29,29 @@ RUN go mod download
 COPY . ./
 RUN make release/server_linux_$TARGETARCH release/cached_linux_$TARGETARCH
 
-FROM buildpack-deps:bullseye AS build-release-stage
+FROM buildpack-deps:bookworm AS build-release-stage
 ARG TARGETARCH
 
 RUN apt-get update && \
-    apt-get install -y curl findutils gzip kmod less lvm2 net-tools postgresql procps tar time udev && \
-    rm -rf /var/cache/apt/archives /var/lib/apt/lists/* && \
-    mkdir -p /lvm-tmp/lvm && \
-    cp -r /etc/lvm /lvm-tmp/lvm
+    apt-get install -y curl findutils gzip kmod less net-tools postgresql procps tar time udev && \
+    rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
+
+# ------------------------------------------------------------------------
+# Newer LVM userspace (>= 2.03.18) is required to support write-cache on
+# thin-pools.  Debian bullseye only ships 2.03.11, so we pull lvm2 from the
+# "testing" (currently trixie) suite and keep everything else on stable.
+# ------------------------------------------------------------------------
+# 1. Add testing repository with a lower pin priority so only explicitly
+#    requested packages come from it.
+# 2. Install lvm2 (+ thin-provisioning-tools dependency).
+
+RUN echo "deb http://deb.debian.org/debian testing main" > /etc/apt/sources.list.d/testing.list && \
+printf 'Package: *\nPin: release a=testing\nPin-Priority: 90\n' > /etc/apt/preferences.d/limit-testing && \
+apt-get update && \
+apt-get install -y --no-install-recommends -t testing lvm2 thin-provisioning-tools && \
+apt-get clean && rm -rf /var/lib/apt/lists/* && \
+mkdir -p /lvm-tmp/lvm && \
+cp -r /etc/lvm /lvm-tmp/lvm
 
 RUN GRPC_HEALTH_PROBE_VERSION=v0.4.23 \
     && curl -Lfso /bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-${TARGETARCH} \
@@ -65,5 +80,7 @@ COPY entrypoint-cached.sh entrypoint-cached.sh
 # smoke test -- ensure the commands can run
 RUN ./server --help
 RUN ./cached --help
+
+
 
 ENTRYPOINT ["./entrypoint.sh"]
