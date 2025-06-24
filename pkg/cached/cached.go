@@ -96,6 +96,7 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 		return err
 	}
 
+	// TODO: don't need this since vgcreate/vgextend will create physical volumes if they don't exist
 	if err = c.ensurePhysicalVolumes(ctx); err != nil {
 		return err
 	}
@@ -118,14 +119,17 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 		return err
 	}
 
+	// TODO: move into ensureBaseVolume
 	if err = c.mountAndFormatBaseVolume(ctx); err != nil {
 		return err
 	}
 
+	// TODO: move into ensureBaseVolume
 	defer func() {
 		err = errors.Join(err, c.unmountBaseVolume(ctx))
 	}()
 
+	// TODO: move into ensureBaseVolume
 	var version int64
 	var count uint32
 	version, count, err = c.Client.GetCache(ctx, filepath.Join(c.StagingPath, CACHE_PATH_SUFFIX), cacheVersion)
@@ -401,6 +405,7 @@ func (c *Cached) ensurePhysicalVolumes(ctx context.Context) error {
 	return nil
 }
 
+// TODO: if base device, vgimportclone and vgextend, else vgcreate
 // ensureVolumeGroup creates LVM volume group if it doesn't exist
 func (c *Cached) ensureVolumeGroup(ctx context.Context) error {
 	ctx = logger.With(ctx, key.VolumeGroup.Field(c.lvmVg), key.DeviceGlob.Field(c.LVMDeviceGlob))
@@ -424,6 +429,7 @@ func (c *Cached) ensureVolumeGroup(ctx context.Context) error {
 	return nil
 }
 
+// TODO: pass PVs explicitly so the thin pool isn't created on the base device (if one exists)
 // ensureThinPool creates LVM thin pool if it doesn't exist
 func (c *Cached) ensureThinPool(ctx context.Context) error {
 	thinPool := c.lvmVg + "/thinpool"
@@ -508,6 +514,7 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 	return nil
 }
 
+// TODO: if base device, assert that the base LV already exists, else create it
 // ensureBaseVolume creates base LVM volume if it doesn't exist
 func (c *Cached) ensureBaseVolume(ctx context.Context) error {
 	ctx = logger.With(ctx, key.LogicalVolume.Field(c.lvmBaseLv), key.VirtualSize.Field(c.LVMVirtualSize))
