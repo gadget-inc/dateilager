@@ -46,13 +46,12 @@ type Cached struct {
 	CacheUid                   int
 	CacheGid                   int
 	LVMDeviceGlob              string
-	DataDevices                []string
 	LVMFormat                  string
 	LVMVirtualSize             string
 	LVMRAMWritebackCacheSizeKB int64
 	lvmVg                      string
 	lvmBaseLv                  string
-	baseDevicePath             string
+	lvmDevices                 []string
 	ramDevicePath              string
 	currentVersion             atomic.Int64
 }
@@ -159,7 +158,7 @@ func (c *Cached) Unprepare(ctx context.Context) error {
 	}
 
 	// Remove each physical volume if it exists
-	for _, device := range c.DataDevices {
+	for _, device := range c.lvmDevices {
 		err = exec.Run(ctx, "pvdisplay", device)
 		if err != nil && !strings.Contains(err.Error(), "Failed to find physical volume") {
 			return fmt.Errorf("failed to check lvm physical volume %s: %w", device, err)
@@ -374,13 +373,13 @@ func (c *Cached) findDevices(_ context.Context) error {
 	if len(allDevices) == 0 {
 		return fmt.Errorf("no lvm devices found for globs %s", c.LVMDeviceGlob)
 	}
-	c.DataDevices = allDevices
+	c.lvmDevices = allDevices
 	return nil
 }
 
 // ensurePhysicalVolumes creates LVM physical volumes if they don't exist for each data device
 func (c *Cached) ensurePhysicalVolumes(ctx context.Context) error {
-	for _, device := range c.DataDevices {
+	for _, device := range c.lvmDevices {
 		ctx := logger.With(ctx, key.Device.Field(device))
 		logger.Debug(ctx, "checking physical volume")
 
@@ -418,8 +417,7 @@ func (c *Cached) ensureVolumeGroup(ctx context.Context) error {
 	}
 
 	logger.Info(ctx, "creating volume group")
-	args := append([]string{"vgcreate", c.lvmVg}, c.DataDevices...)
-	if err := exec.Run(ctx, args[0], args[1:]...); err != nil {
+	if err := exec.Run(ctx, "vgcreate", append([]string{c.lvmVg}, c.lvmDevices...)...); err != nil {
 		return fmt.Errorf("failed to create lvm volume group %s: %w", c.lvmVg, err)
 	}
 
@@ -452,7 +450,7 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 		"--chunksize=64k",
 
 		// Use one stripe per data device to maximize performance
-		"--stripes="+strconv.Itoa(len(c.DataDevices)),
+		"--stripes="+strconv.Itoa(len(c.lvmDevices)),
 
 		// Use a small stripe size for better IO performance on small files
 		"--stripesize=64k",
@@ -549,11 +547,7 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 		return nil
 	}
 
-	// Use the cached device path if available, otherwise use the original LVM device
 	baseDevicePath := "/dev/" + c.lvmBaseLv
-	if c.baseDevicePath != "" {
-		baseDevicePath = "/dev/" + c.baseDevicePath
-	}
 
 	fsFormat, err := exec.Output(ctx, "blkid", "-o", "value", "-s", "TYPE", baseDevicePath)
 	if err != nil && !strings.Contains(err.Error(), "exit status 2") {
