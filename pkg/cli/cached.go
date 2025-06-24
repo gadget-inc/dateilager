@@ -33,25 +33,25 @@ func NewCacheDaemonCommand() *cobra.Command {
 	)
 
 	var (
-		level                   *zapcore.Level
-		encoding                string
-		tracing                 bool
-		profilePath             string
-		upstreamHost            string
-		upstreamPort            uint16
-		healthzPort             uint16
-		timeout                 uint
-		headlessHost            string
-		driverNameSuffix        string
-		stagingPath             string
-		csiSocket               string
-		cacheVersion            int64
-		cacheUid                int
-		cacheGid                int
-		lvmDeviceGlob           string
-		lvmFormat               string
-		lvmVirtualSize          string
-		ramWritebackCacheSizeKB int64
+		level                      *zapcore.Level
+		encoding                   string
+		tracing                    bool
+		profilePath                string
+		upstreamHost               string
+		upstreamPort               uint16
+		healthzPort                uint16
+		timeout                    uint
+		headlessHost               string
+		driverNameSuffix           string
+		stagingPath                string
+		csiSocket                  string
+		cacheVersion               int64
+		cacheUid                   int
+		cacheGid                   int
+		lvmDeviceGlob              string
+		lvmFormat                  string
+		lvmVirtualSize             string
+		lvmRamWritebackCacheSizeKB int64
 	)
 
 	cmd := &cobra.Command{
@@ -98,10 +98,10 @@ func NewCacheDaemonCommand() *cobra.Command {
 			cached.StagingPath = stagingPath
 			cached.CacheUid = cacheUid
 			cached.CacheGid = cacheGid
-			cached.DataDeviceGlob = lvmDeviceGlob
+			cached.LVMDeviceGlob = lvmDeviceGlob
 			cached.LVMFormat = lvmFormat
 			cached.LVMVirtualSize = lvmVirtualSize
-			cached.RAMWritebackCacheSizeKB = ramWritebackCacheSizeKB
+			cached.LVMRAMWritebackCacheSizeKB = lvmRamWritebackCacheSizeKB
 
 			s.RegisterCSI(cached)
 
@@ -180,7 +180,7 @@ func NewCacheDaemonCommand() *cobra.Command {
 	flags.StringVar(&lvmDeviceGlob, "lvm-device-glob", "", "glob of lvm devices to use")
 	flags.StringVar(&lvmFormat, "lvm-format", "", "lvm format to use")
 	flags.StringVar(&lvmVirtualSize, "lvm-virtual-size", "", "lvm virtual size to use")
-	flags.Int64Var(&ramWritebackCacheSizeKB, "ram-writeback-cache-size-kb", 0, "writeback cache size in KB")
+	flags.Int64Var(&lvmRamWritebackCacheSizeKB, "lvm-ram-writeback-cache-size-kb", 0, "writeback cache size in KB")
 
 	_ = cmd.MarkPersistentFlagRequired("csi-socket")
 	_ = cmd.MarkPersistentFlagRequired("staging-path")

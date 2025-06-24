@@ -40,21 +40,21 @@ const (
 type Cached struct {
 	csi.UnimplementedIdentityServer
 	csi.UnimplementedNodeServer
-	Client                  *client.Client
-	DriverNameSuffix        string
-	StagingPath             string
-	CacheUid                int
-	CacheGid                int
-	DataDeviceGlob          string
-	DataDevices             []string
-	LVMFormat               string
-	LVMVirtualSize          string
-	RAMWritebackCacheSizeKB int64
-	lvmVg                   string
-	lvmBaseLv               string
-	baseDevicePath          string
-	ramDevicePath           string
-	currentVersion          atomic.Int64
+	Client                     *client.Client
+	DriverNameSuffix           string
+	StagingPath                string
+	CacheUid                   int
+	CacheGid                   int
+	LVMDeviceGlob              string
+	DataDevices                []string
+	LVMFormat                  string
+	LVMVirtualSize             string
+	LVMRAMWritebackCacheSizeKB int64
+	lvmVg                      string
+	lvmBaseLv                  string
+	baseDevicePath             string
+	ramDevicePath              string
+	currentVersion             atomic.Int64
 }
 
 func New(client *client.Client, driverNameSuffix string) *Cached {
@@ -62,25 +62,25 @@ func New(client *client.Client, driverNameSuffix string) *Cached {
 	lvmVg := "vg_dateilager_cached" + driverNameSuffixUnderscored
 	lvmBaseLv := lvmVg + "/base"
 
-	writebackCacheSizeKB := int64(0)
-	if envSize := os.Getenv("DL_RAM_WRITEBACK_CACHE_SIZE_KB"); envSize != "" {
+	lvmRamWritebackCacheSizeKB := int64(0)
+	if envSize := os.Getenv("DL_LVM_RAM_WRITEBACK_CACHE_SIZE_KB"); envSize != "" {
 		if size, err := strconv.ParseInt(envSize, 10, 64); err == nil {
-			writebackCacheSizeKB = size
+			lvmRamWritebackCacheSizeKB = size
 		}
 	}
 
 	return &Cached{
-		Client:                  client,
-		DriverNameSuffix:        driverNameSuffix,
-		StagingPath:             "/var/lib/kubelet/dateilager_cached" + driverNameSuffixUnderscored,
-		CacheUid:                NO_CHANGE_USER,
-		CacheGid:                NO_CHANGE_USER,
-		DataDeviceGlob:          os.Getenv("DL_DATA_DEVICE_GLOB"),
-		LVMFormat:               os.Getenv("DL_LVM_FORMAT"),
-		LVMVirtualSize:          os.Getenv("DL_LVM_VIRTUAL_SIZE"),
-		RAMWritebackCacheSizeKB: writebackCacheSizeKB,
-		lvmVg:                   lvmVg,
-		lvmBaseLv:               lvmBaseLv,
+		Client:                     client,
+		DriverNameSuffix:           driverNameSuffix,
+		StagingPath:                "/var/lib/kubelet/dateilager_cached" + driverNameSuffixUnderscored,
+		CacheUid:                   NO_CHANGE_USER,
+		CacheGid:                   NO_CHANGE_USER,
+		LVMDeviceGlob:              os.Getenv("DL_LVM_DEVICE_GLOB"),
+		LVMFormat:                  os.Getenv("DL_LVM_FORMAT"),
+		LVMVirtualSize:             os.Getenv("DL_LVM_VIRTUAL_SIZE"),
+		LVMRAMWritebackCacheSizeKB: lvmRamWritebackCacheSizeKB,
+		lvmVg:                      lvmVg,
+		lvmBaseLv:                  lvmBaseLv,
 	}
 }
 
@@ -93,8 +93,7 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 	start := time.Now()
 
 	var err error
-
-	if err = c.findDataDevices(ctx); err != nil {
+	if err = c.findDevices(ctx); err != nil {
 		return err
 	}
 
@@ -106,7 +105,7 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 		return err
 	}
 
-	if c.RAMWritebackCacheSizeKB > 0 {
+	if c.LVMRAMWritebackCacheSizeKB > 0 {
 		if err = c.ensureRamPool(ctx); err != nil {
 			return err
 		}
@@ -382,21 +381,21 @@ func execOutput(ctx context.Context, command string, args ...string) (string, er
 	return strings.TrimSpace(string(bs)), nil
 }
 
-func (c *Cached) findDataDevices(ctx context.Context) error {
-	globs := strings.Split(c.DataDeviceGlob, ",")
+func (c *Cached) findDevices(_ context.Context) error {
+	globs := strings.Split(c.LVMDeviceGlob, ",")
 	var allDevices []string
 
 	for _, glob := range globs {
 		glob = strings.TrimSpace(glob)
 		devices, err := filepath.Glob(glob)
 		if err != nil {
-			return fmt.Errorf("failed to find data devices for glob %s: %w", glob, err)
+			return fmt.Errorf("failed to find lvm devices for glob %s: %w", glob, err)
 		}
 		allDevices = append(allDevices, devices...)
 	}
 
 	if len(allDevices) == 0 {
-		return fmt.Errorf("no data devices found for globs %s", c.DataDeviceGlob)
+		return fmt.Errorf("no lvm devices found for globs %s", c.LVMDeviceGlob)
 	}
 	c.DataDevices = allDevices
 	return nil
@@ -405,7 +404,7 @@ func (c *Cached) findDataDevices(ctx context.Context) error {
 // ensurePhysicalVolumes creates LVM physical volumes if they don't exist for each data device
 func (c *Cached) ensurePhysicalVolumes(ctx context.Context) error {
 	for _, device := range c.DataDevices {
-		ctx = logger.With(ctx, key.Device.Field(device))
+		ctx := logger.With(ctx, key.Device.Field(device))
 		logger.Debug(ctx, "checking physical volume")
 
 		err := exec(ctx, "pvdisplay", device)
@@ -428,7 +427,7 @@ func (c *Cached) ensurePhysicalVolumes(ctx context.Context) error {
 
 // ensureVolumeGroup creates LVM volume group if it doesn't exist
 func (c *Cached) ensureVolumeGroup(ctx context.Context) error {
-	ctx = logger.With(ctx, key.VolumeGroup.Field(c.lvmVg), key.DeviceGlob.Field(c.DataDeviceGlob))
+	ctx = logger.With(ctx, key.VolumeGroup.Field(c.lvmVg), key.DeviceGlob.Field(c.LVMDeviceGlob))
 	logger.Debug(ctx, "checking volume group")
 
 	err := exec(ctx, "vgdisplay", c.lvmVg)
@@ -497,13 +496,13 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 		return fmt.Errorf("failed to create lvm thin pool %s: %w", thinPool, err)
 	}
 
-	if c.RAMWritebackCacheSizeKB > 0 {
+	if c.LVMRAMWritebackCacheSizeKB > 0 {
 		if err := exec(ctx, "lvconvert", "--yes", "--type", "writecache", "--cachesettings", "high_watermark=75 low_watermark=60 writeback_jobs=4 block_size=4096", "--cachevol", c.lvmVg+"/cache", c.lvmVg+"/thinpool"); err != nil {
 			return fmt.Errorf("failed to create writeback cache for data lv %s: %w", c.lvmBaseLv, err)
 		}
 
 		// invoke lvconvert to move the thinpool metadata to the ram device cache_meta LV
-		// TOOD: get working, creates transaction id mismatch errors if enabled
+		// TODO: get working, creates transaction id mismatch errors if enabled
 		// if err := exec(ctx, "lvconvert", "--yes", "--thinpool", c.lvmVg+"/thinpool", "--poolmetadata", c.lvmVg+"/cache_meta"); err != nil {
 		// 	return fmt.Errorf("failed to move thinpool metadata to ram device cache_meta LV %s to %s: %w", c.lvmVg+"/thinpool", c.lvmVg+"/cache_meta", err)
 		// }
@@ -827,13 +826,13 @@ func ext4MountOptions() []string {
 // ensureRamPool creates a RAM device using dmsetup for use as a writeback cache
 func (c *Cached) ensureRamPool(ctx context.Context) error {
 	c.ramDevicePath = "/dev/ram0"
-	ctx = logger.With(ctx, key.Device.Field(c.ramDevicePath), key.Count.Field(c.RAMWritebackCacheSizeKB))
+	ctx = logger.With(ctx, key.Device.Field(c.ramDevicePath), key.Count.Field(c.LVMRAMWritebackCacheSizeKB))
 	logger.Info(ctx, "creating RAM device for writeback cache")
 
 	if _, err := os.Stat(c.ramDevicePath); err == nil {
 		logger.Info(ctx, "RAM device already exists")
 	} else {
-		if err := exec(ctx, "modprobe", "brd", "rd_nr=1", "rd_size="+strconv.Itoa(int(c.RAMWritebackCacheSizeKB))); err != nil {
+		if err := exec(ctx, "modprobe", "brd", "rd_nr=1", "rd_size="+strconv.Itoa(int(c.LVMRAMWritebackCacheSizeKB))); err != nil {
 			return fmt.Errorf("failed to create RAM device %s: %w", c.ramDevicePath, err)
 		}
 	}
@@ -854,8 +853,8 @@ func (c *Cached) ensureRamPool(ctx context.Context) error {
 		}
 	}
 
-	metaCacheSize := int64(float64(c.RAMWritebackCacheSizeKB) * 0.2)
-	cacheSize := int64(float64(c.RAMWritebackCacheSizeKB) * 0.79)
+	metaCacheSize := int64(float64(c.LVMRAMWritebackCacheSizeKB) * 0.2)
+	cacheSize := int64(float64(c.LVMRAMWritebackCacheSizeKB) * 0.79)
 
 	// Create an LV that will act as the writeback cache for the metadata, will create an LV like vg_dateilager_cached_ram_<driver_name>/cache_meta
 	if err := exec(ctx, "lvcreate", "--size", strconv.FormatInt(metaCacheSize, 10)+"kb", "--name", "cache_meta", "--setactivationskip=y", c.lvmVg); err != nil {

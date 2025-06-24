@@ -32,10 +32,10 @@ jobs:
           sudo truncate -s 5G /var/tmp/lvm-2.img
           device1=$(sudo losetup --find --show /var/tmp/lvm-1.img)
           device2=$(sudo losetup --find --show /var/tmp/lvm-2.img)
-          echo "DL_DATA_DEVICE_GLOB=$device1,$device2" >> $GITHUB_ENV
+          echo "DL_LVM_DEVICE_GLOB=$device1,$device2" >> $GITHUB_ENV
           echo "DL_LVM_VIRTUAL_SIZE=5G" >> $GITHUB_ENV
           echo "DL_LVM_FORMAT=${{ matrix.filesystem }}" >> $GITHUB_ENV
-          echo "DL_RAM_WRITEBACK_CACHE_SIZE_KB=4194304" >> $GITHUB_ENV
+          echo "DL_LVM_RAM_WRITEBACK_CACHE_SIZE_KB=4194304" >> $GITHUB_ENV
 
       - name: Checkout repository
         uses: actions/checkout@v3
