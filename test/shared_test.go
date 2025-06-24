@@ -21,8 +21,8 @@ import (
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
+	"github.com/gadget-inc/dateilager/internal/exec"
 	"github.com/gadget-inc/dateilager/internal/files"
-	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
@@ -37,7 +37,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
-	utilexec "k8s.io/utils/exec"
 )
 
 func init() {
@@ -337,9 +336,7 @@ var (
 // workspaceDir returns the root directory of the git repository.
 func workspaceDir(t testing.TB) string {
 	cachedWorkspaceDirOnce.Do(func() {
-		s, err := executor.Command("git", "rev-parse", "--show-toplevel").Output()
-		require.NoError(t, err, "git rev-parse --show-toplevel failed: %v", err)
-		cachedWorkspaceDir = strings.TrimSpace(string(s))
+		cachedWorkspaceDir = execOutput(t, "git", "rev-parse", "--show-toplevel")
 	})
 	return cachedWorkspaceDir
 }
@@ -444,7 +441,7 @@ func cachedStagingDir(t testing.TB) string {
 }`), 0o644)
 	require.NoError(t, err, "failed to write package.json")
 
-	cmd := executor.Command("npm", "install")
+	cmd := exec.Command(t.Context(), "npm", "install")
 	cmd.SetDir(path.Join(stagingDir, "dl_cache"))
 	require.NoError(t, cmd.Run(), "npm install failed")
 
@@ -1004,18 +1001,15 @@ func compareFileContents(info os.FileInfo, file1, file2 string) (bool, error) {
 	return bytes.Equal(hash1.Sum(nil), hash2.Sum(nil)), nil
 }
 
-var executor = utilexec.New()
-
 // exec executes a command
-func exec(t testing.TB, command string, args ...string) {
-	_ = execOutput(t, command, args...)
+func execRun(t testing.TB, command string, args ...string) {
+	err := exec.Run(t.Context(), command, args...)
+	require.NoError(t, err)
 }
 
 // execOutput executes a command and returns the output
 func execOutput(t testing.TB, command string, args ...string) string {
-	logger.Debug(t.Context(), "executing command", key.Command.Field(command), key.Args.Field(args))
-	cmd := executor.CommandContext(t.Context(), command, args...)
-	bs, err := cmd.CombinedOutput()
-	require.NoError(t, err, "failed to execute command %s %s: %v: %s", command, strings.Join(args, " "), err, string(bs))
-	return strings.TrimSpace(string(bs))
+	out, err := exec.Output(t.Context(), command, args...)
+	require.NoError(t, err)
+	return out
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/charlievieth/fastwalk"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/gadget-inc/dateilager/internal/exec"
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
@@ -26,7 +27,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	wrappers "google.golang.org/protobuf/types/known/wrapperspb"
-	utilexec "k8s.io/utils/exec"
 	"k8s.io/utils/mount"
 )
 
@@ -146,28 +146,28 @@ func (c *Cached) Unprepare(ctx context.Context) error {
 	logger.Info(ctx, "unpreparing cached storage", key.VolumeGroup.Field(c.lvmVg))
 
 	// Remove volume group if it exists
-	err := exec(ctx, "vgdisplay", c.lvmVg)
+	err := exec.Run(ctx, "vgdisplay", c.lvmVg)
 	if err != nil && !strings.Contains(err.Error(), "not found") {
 		return fmt.Errorf("failed to check lvm volume group %s: %w", c.lvmVg, err)
 	}
 
 	if err == nil {
 		logger.Info(ctx, "removing volume group", key.VolumeGroup.Field(c.lvmVg))
-		if err := exec(ctx, "vgremove", "-y", c.lvmVg); err != nil {
+		if err := exec.Run(ctx, "vgremove", "-y", c.lvmVg); err != nil {
 			return fmt.Errorf("failed to remove lvm volume group %s: %w", c.lvmVg, err)
 		}
 	}
 
 	// Remove each physical volume if it exists
 	for _, device := range c.DataDevices {
-		err = exec(ctx, "pvdisplay", device)
+		err = exec.Run(ctx, "pvdisplay", device)
 		if err != nil && !strings.Contains(err.Error(), "Failed to find physical volume") {
 			return fmt.Errorf("failed to check lvm physical volume %s: %w", device, err)
 		}
 
 		if err == nil {
 			logger.Info(ctx, "removing physical volume", key.Device.Field(device))
-			if err := exec(ctx, "pvremove", device); err != nil {
+			if err := exec.Run(ctx, "pvremove", device); err != nil {
 				return fmt.Errorf("failed to remove lvm physical volume %s: %w", device, err)
 			}
 		}
@@ -175,14 +175,14 @@ func (c *Cached) Unprepare(ctx context.Context) error {
 
 	// Remove RAM cache physical volume if it exists
 	if c.ramDevicePath != "" {
-		err = exec(ctx, "pvdisplay", c.ramDevicePath)
+		err = exec.Run(ctx, "pvdisplay", c.ramDevicePath)
 		if err != nil && !strings.Contains(err.Error(), "Failed to find physical volume") {
 			return fmt.Errorf("failed to check lvm physical volume %s: %w", c.ramDevicePath, err)
 		}
 
 		if err == nil {
 			logger.Info(ctx, "removing physical volume", key.Device.Field(c.ramDevicePath))
-			if err := exec(ctx, "pvremove", c.ramDevicePath); err != nil {
+			if err := exec.Run(ctx, "pvremove", c.ramDevicePath); err != nil {
 				return fmt.Errorf("failed to remove lvm physical volume %s: %w", c.ramDevicePath, err)
 			}
 		}
@@ -356,30 +356,7 @@ func (c *Cached) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 	}, nil
 }
 
-var (
-	executor = utilexec.New()
-	mounter  = mount.New("")
-)
-
-// exec executes a command
-func exec(ctx context.Context, command string, args ...string) error {
-	_, err := execOutput(ctx, command, args...)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// execOutput executes a command and returns the output
-func execOutput(ctx context.Context, command string, args ...string) (string, error) {
-	logger.Debug(ctx, "executing command", key.Command.Field(command), key.Args.Field(args))
-	cmd := executor.CommandContext(ctx, command, args...)
-	bs, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("failed to execute command %s %s: %w: %s", command, strings.Join(args, " "), err, string(bs))
-	}
-	return strings.TrimSpace(string(bs)), nil
-}
+var mounter = mount.New("")
 
 func (c *Cached) findDevices(_ context.Context) error {
 	globs := strings.Split(c.LVMDeviceGlob, ",")
@@ -407,7 +384,7 @@ func (c *Cached) ensurePhysicalVolumes(ctx context.Context) error {
 		ctx := logger.With(ctx, key.Device.Field(device))
 		logger.Debug(ctx, "checking physical volume")
 
-		err := exec(ctx, "pvdisplay", device)
+		err := exec.Run(ctx, "pvdisplay", device)
 		if err == nil {
 			logger.Info(ctx, "physical volume already exists")
 			continue
@@ -418,7 +395,7 @@ func (c *Cached) ensurePhysicalVolumes(ctx context.Context) error {
 		}
 
 		logger.Info(ctx, "creating physical volume")
-		if err := exec(ctx, "pvcreate", device); err != nil && !strings.Contains(err.Error(), "signal: killed") {
+		if err := exec.Run(ctx, "pvcreate", device); err != nil && !strings.Contains(err.Error(), "signal: killed") {
 			return fmt.Errorf("failed to create lvm physical volume %s: %w", device, err)
 		}
 	}
@@ -430,7 +407,7 @@ func (c *Cached) ensureVolumeGroup(ctx context.Context) error {
 	ctx = logger.With(ctx, key.VolumeGroup.Field(c.lvmVg), key.DeviceGlob.Field(c.LVMDeviceGlob))
 	logger.Debug(ctx, "checking volume group")
 
-	err := exec(ctx, "vgdisplay", c.lvmVg)
+	err := exec.Run(ctx, "vgdisplay", c.lvmVg)
 	if err == nil {
 		logger.Info(ctx, "volume group already exists")
 		return nil
@@ -442,7 +419,7 @@ func (c *Cached) ensureVolumeGroup(ctx context.Context) error {
 
 	logger.Info(ctx, "creating volume group")
 	args := append([]string{"vgcreate", c.lvmVg}, c.DataDevices...)
-	if err := exec(ctx, args[0], args[1:]...); err != nil {
+	if err := exec.Run(ctx, args[0], args[1:]...); err != nil {
 		return fmt.Errorf("failed to create lvm volume group %s: %w", c.lvmVg, err)
 	}
 
@@ -455,7 +432,7 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 	ctx = logger.With(ctx, key.ThinPool.Field(thinPool))
 	logger.Debug(ctx, "checking thin pool")
 
-	err := exec(ctx, "lvdisplay", thinPool)
+	err := exec.Run(ctx, "lvdisplay", thinPool)
 	if err == nil {
 		logger.Info(ctx, "thin pool already exists")
 		return nil
@@ -466,7 +443,7 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 	}
 
 	logger.Info(ctx, "creating thin pool")
-	if err := exec(ctx, "lvcreate", "--thin", c.lvmVg+"/thinpool",
+	if err := exec.Run(ctx, "lvcreate", "--thin", c.lvmVg+"/thinpool",
 		// Make the thin pool take up 95% of the volume group's space
 		"--extents=95%VG",
 
@@ -497,13 +474,13 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 	}
 
 	if c.LVMRAMWritebackCacheSizeKB > 0 {
-		if err := exec(ctx, "lvconvert", "--yes", "--type", "writecache", "--cachesettings", "high_watermark=75 low_watermark=60 writeback_jobs=4 block_size=4096", "--cachevol", c.lvmVg+"/cache", c.lvmVg+"/thinpool"); err != nil {
+		if err := exec.Run(ctx, "lvconvert", "--yes", "--type", "writecache", "--cachesettings", "high_watermark=75 low_watermark=60 writeback_jobs=4 block_size=4096", "--cachevol", c.lvmVg+"/cache", c.lvmVg+"/thinpool"); err != nil {
 			return fmt.Errorf("failed to create writeback cache for data lv %s: %w", c.lvmBaseLv, err)
 		}
 
 		// invoke lvconvert to move the thinpool metadata to the ram device cache_meta LV
 		// TODO: get working, creates transaction id mismatch errors if enabled
-		// if err := exec(ctx, "lvconvert", "--yes", "--thinpool", c.lvmVg+"/thinpool", "--poolmetadata", c.lvmVg+"/cache_meta"); err != nil {
+		// if err := exec.Do(ctx, "lvconvert", "--yes", "--thinpool", c.lvmVg+"/thinpool", "--poolmetadata", c.lvmVg+"/cache_meta"); err != nil {
 		// 	return fmt.Errorf("failed to move thinpool metadata to ram device cache_meta LV %s to %s: %w", c.lvmVg+"/thinpool", c.lvmVg+"/cache_meta", err)
 		// }
 
@@ -511,7 +488,7 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 	}
 
 	// activate the thinpool
-	if err := exec(ctx, "lvchange", "--activate", "y", c.lvmVg+"/thinpool"); err != nil {
+	if err := exec.Run(ctx, "lvchange", "--activate", "y", c.lvmVg+"/thinpool"); err != nil {
 		return fmt.Errorf("failed to activate thinpool %s: %w", c.lvmVg+"/thinpool", err)
 	}
 
@@ -520,13 +497,13 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 	}
 
 	// Refresh the thinpool to fix mismatched transaction ID issues
-	if err := exec(ctx, "pvscan", "--cache", "--activate", "ay"); err != nil {
+	if err := exec.Run(ctx, "pvscan", "--cache", "--activate", "ay"); err != nil {
 		return fmt.Errorf("failed to rescan pv cache: %w", err)
 	}
-	if err := exec(ctx, "lvchange", "--refresh", c.lvmVg); err != nil {
+	if err := exec.Run(ctx, "lvchange", "--refresh", c.lvmVg); err != nil {
 		return fmt.Errorf("failed to refresh vg %s: %w", c.lvmVg, err)
 	}
-	if err := exec(ctx, "lvchange", "--refresh", c.lvmVg+"/thinpool"); err != nil {
+	if err := exec.Run(ctx, "lvchange", "--refresh", c.lvmVg+"/thinpool"); err != nil {
 		return fmt.Errorf("failed to refresh thinpool %s: %w", c.lvmVg+"/thinpool", err)
 	}
 
@@ -538,7 +515,7 @@ func (c *Cached) ensureBaseVolume(ctx context.Context) error {
 	ctx = logger.With(ctx, key.LogicalVolume.Field(c.lvmBaseLv), key.VirtualSize.Field(c.LVMVirtualSize))
 	logger.Debug(ctx, "checking base volume")
 
-	err := exec(ctx, "lvdisplay", c.lvmBaseLv)
+	err := exec.Run(ctx, "lvdisplay", c.lvmBaseLv)
 	if err == nil {
 		logger.Info(ctx, "base volume already exists")
 		return nil
@@ -549,7 +526,7 @@ func (c *Cached) ensureBaseVolume(ctx context.Context) error {
 	}
 
 	logger.Info(ctx, "creating base volume")
-	if err := exec(ctx, "lvcreate", "--name=base", "--virtualsize="+c.LVMVirtualSize, "--thinpool="+c.lvmVg+"/thinpool"); err != nil {
+	if err := exec.Run(ctx, "lvcreate", "--name=base", "--virtualsize="+c.LVMVirtualSize, "--thinpool="+c.lvmVg+"/thinpool"); err != nil {
 		return fmt.Errorf("failed to create base volume %s: %w", c.lvmBaseLv, err)
 	}
 
@@ -578,7 +555,7 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 		baseDevicePath = "/dev/" + c.baseDevicePath
 	}
 
-	fsFormat, err := execOutput(ctx, "blkid", "-o", "value", "-s", "TYPE", baseDevicePath)
+	fsFormat, err := exec.Output(ctx, "blkid", "-o", "value", "-s", "TYPE", baseDevicePath)
 	if err != nil && !strings.Contains(err.Error(), "exit status 2") {
 		return fmt.Errorf("failed to get filesystem type of base volume %s: %w", baseDevicePath, err)
 	}
@@ -590,7 +567,7 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 		}
 
 		logger.Info(ctx, "base volume is not formatted as expected, formatting", zap.String("expected", c.LVMFormat), zap.String("actual", fsFormat))
-		if err := exec(ctx, "mkfs."+c.LVMFormat, formatOptions...); err != nil {
+		if err := exec.Run(ctx, "mkfs."+c.LVMFormat, formatOptions...); err != nil {
 			return fmt.Errorf("failed to format base volume %s: %w", baseDevicePath, err)
 		}
 	}
@@ -632,7 +609,7 @@ func (c *Cached) unmountBaseVolume(ctx context.Context) error {
 	}
 
 	// Trim filesystem before unmounting
-	if err := exec(ctx, "fstrim", "-v", c.StagingPath); err != nil {
+	if err := exec.Run(ctx, "fstrim", "-v", c.StagingPath); err != nil {
 		logger.Warn(ctx, "failed to trim filesystem", zap.Error(err))
 	}
 
@@ -649,7 +626,7 @@ func (c *Cached) createSnapshot(ctx context.Context, volumeID string) error {
 	ctx = logger.With(ctx, key.LogicalVolume.Field(snapshotLv))
 	logger.Debug(ctx, "checking snapshot")
 
-	err := exec(ctx, "lvdisplay", snapshotLv)
+	err := exec.Run(ctx, "lvdisplay", snapshotLv)
 	if err == nil {
 		logger.Info(ctx, "snapshot already exists")
 		return nil
@@ -661,7 +638,7 @@ func (c *Cached) createSnapshot(ctx context.Context, volumeID string) error {
 
 	logger.Info(ctx, "creating snapshot")
 	// Use the original LVM base volume for creating snapshots, not the cached device
-	if err := exec(ctx, "lvcreate", c.lvmBaseLv, "--name="+volumeID, "--snapshot", "--setactivationskip=n"); err != nil {
+	if err := exec.Run(ctx, "lvcreate", c.lvmBaseLv, "--name="+volumeID, "--snapshot", "--setactivationskip=n"); err != nil {
 		return fmt.Errorf("failed to create snapshot of base volume %s: %w", c.lvmBaseLv, err)
 	}
 
@@ -680,7 +657,7 @@ func (c *Cached) removeSnapshot(ctx context.Context, volumeID string) error {
 	ctx = logger.With(ctx, key.LogicalVolume.Field(snapshotLv))
 	logger.Debug(ctx, "checking snapshot for removal")
 
-	err := exec(ctx, "lvdisplay", snapshotLv)
+	err := exec.Run(ctx, "lvdisplay", snapshotLv)
 	if err != nil {
 		if strings.Contains(err.Error(), "Failed to find logical volume") {
 			logger.Info(ctx, "snapshot already removed")
@@ -690,7 +667,7 @@ func (c *Cached) removeSnapshot(ctx context.Context, volumeID string) error {
 	}
 
 	logger.Info(ctx, "removing snapshot")
-	if err := exec(ctx, "lvremove", "-y", snapshotLv); err != nil {
+	if err := exec.Run(ctx, "lvremove", "-y", snapshotLv); err != nil {
 		return fmt.Errorf("failed to remove snapshot %s: %w", snapshotLv, err)
 	}
 
@@ -700,7 +677,7 @@ func (c *Cached) removeSnapshot(ctx context.Context, volumeID string) error {
 // udevSettle triggers udev events and waits for device to appear
 func (c *Cached) udevSettle(ctx context.Context, devPath string) error {
 	// Trigger udev events for the device
-	if err := exec(ctx, "udevadm", "trigger", "--action=add", devPath); err != nil {
+	if err := exec.Run(ctx, "udevadm", "trigger", "--action=add", devPath); err != nil {
 		logger.Warn(ctx, "udevadm trigger failed", zap.Error(err))
 		// Continue anyway, the device might still be available
 	}
@@ -709,7 +686,7 @@ func (c *Cached) udevSettle(ctx context.Context, devPath string) error {
 	settleCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if err := exec(settleCtx, "udevadm", "settle", "--exit-if-exists="+devPath); err != nil {
+	if err := exec.Run(settleCtx, "udevadm", "settle", "--exit-if-exists="+devPath); err != nil {
 		logger.Warn(ctx, "udev settle failed", zap.Error(err))
 		// Fallback to polling
 		return waitForDevice(ctx, devPath, 5*time.Second)
@@ -832,23 +809,23 @@ func (c *Cached) ensureRamPool(ctx context.Context) error {
 	if _, err := os.Stat(c.ramDevicePath); err == nil {
 		logger.Info(ctx, "RAM device already exists")
 	} else {
-		if err := exec(ctx, "modprobe", "brd", "rd_nr=1", "rd_size="+strconv.Itoa(int(c.LVMRAMWritebackCacheSizeKB))); err != nil {
+		if err := exec.Run(ctx, "modprobe", "brd", "rd_nr=1", "rd_size="+strconv.Itoa(int(c.LVMRAMWritebackCacheSizeKB))); err != nil {
 			return fmt.Errorf("failed to create RAM device %s: %w", c.ramDevicePath, err)
 		}
 	}
 
 	// Initialize as PV and add to VG
-	if err := exec(ctx, "pvdisplay", c.ramDevicePath); err == nil {
+	if err := exec.Run(ctx, "pvdisplay", c.ramDevicePath); err == nil {
 		logger.Info(ctx, "RAM device already a PV")
 	} else {
-		if err := exec(ctx, "pvcreate", c.ramDevicePath); err != nil {
+		if err := exec.Run(ctx, "pvcreate", c.ramDevicePath); err != nil {
 			return fmt.Errorf("failed to pvcreate RAM device %s: %w", c.ramDevicePath, err)
 		}
 	}
-	if err := exec(ctx, "vgdisplay", c.lvmVg); err == nil {
+	if err := exec.Run(ctx, "vgdisplay", c.lvmVg); err == nil {
 		logger.Info(ctx, "RAM volume group already exists")
 	} else {
-		if err := exec(ctx, "vgextend", c.lvmVg, c.ramDevicePath); err != nil {
+		if err := exec.Run(ctx, "vgextend", c.lvmVg, c.ramDevicePath); err != nil {
 			return fmt.Errorf("failed to vgextend RAM device to VG %s: %w", c.lvmVg, err)
 		}
 	}
@@ -857,7 +834,7 @@ func (c *Cached) ensureRamPool(ctx context.Context) error {
 	cacheSize := int64(float64(c.LVMRAMWritebackCacheSizeKB) * 0.79)
 
 	// Create an LV that will act as the writeback cache for the metadata, will create an LV like vg_dateilager_cached_ram_<driver_name>/cache_meta
-	if err := exec(ctx, "lvcreate", "--size", strconv.FormatInt(metaCacheSize, 10)+"kb", "--name", "cache_meta", "--setactivationskip=y", c.lvmVg); err != nil {
+	if err := exec.Run(ctx, "lvcreate", "--size", strconv.FormatInt(metaCacheSize, 10)+"kb", "--name", "cache_meta", "--setactivationskip=y", c.lvmVg); err != nil {
 		if strings.Contains(err.Error(), "already exists in volume group") {
 			logger.Info(ctx, "metadata cache LV already exists")
 		} else {
@@ -866,7 +843,7 @@ func (c *Cached) ensureRamPool(ctx context.Context) error {
 	}
 
 	// Create an LV that will act as the writeback cache for the data, will create an LV like vg_dateilager_cached_ram_<driver_name>/cache
-	if err := exec(ctx, "lvcreate", "--size", strconv.FormatInt(cacheSize, 10)+"kb", "--name", "cache", "--setactivationskip=y", c.lvmVg); err != nil {
+	if err := exec.Run(ctx, "lvcreate", "--size", strconv.FormatInt(cacheSize, 10)+"kb", "--name", "cache", "--setactivationskip=y", c.lvmVg); err != nil {
 		if strings.Contains(err.Error(), "already exists in volume group") {
 			logger.Info(ctx, "data cache LV already exists")
 		} else {

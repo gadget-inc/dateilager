@@ -230,8 +230,8 @@ func BenchmarkDirOperations(b *testing.B) {
 				require.NoError(b, err, "failed to create target path")
 				defer os.RemoveAll(targetPath)
 
-				exec(b, "sudo", "mount", "-t", "overlay", "overlay", "-n", "--options", fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", stagingDir, upperDir, workDir), targetPath)
-				defer exec(b, "sudo", "umount", targetPath)
+				execRun(b, "sudo", "mount", "-t", "overlay", "overlay", "-n", "--options", fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", stagingDir, upperDir, workDir), targetPath)
+				defer execRun(b, "sudo", "umount", targetPath)
 
 				mkdirAll(b, cacheDir, 0o755)
 
@@ -268,27 +268,27 @@ func BenchmarkDirOperations(b *testing.B) {
 					format = "ext4"
 				}
 
-				exec(b, "sudo", "pvcreate", device)
-				defer exec(b, "sudo", "pvremove", device)
+				execRun(b, "sudo", "pvcreate", device)
+				defer execRun(b, "sudo", "pvremove", device)
 
-				exec(b, "sudo", "vgcreate", "vg_dateilager_cached", device)
-				defer exec(b, "sudo", "vgremove", "-y", "vg_dateilager_cached")
+				execRun(b, "sudo", "vgcreate", "vg_dateilager_cached", device)
+				defer execRun(b, "sudo", "vgremove", "-y", "vg_dateilager_cached")
 
-				exec(b, "sudo", "lvcreate", "vg_dateilager_cached", "--name=thinpool", "--extents=95%VG", "--thinpool=thinpool")
-				exec(b, "sudo", "lvcreate", "--name=base", "--virtualsize="+virtualSize, "--thinpool=vg_dateilager_cached/thinpool")
-				exec(b, "sudo", "mkfs."+format, "/dev/vg_dateilager_cached/base")
+				execRun(b, "sudo", "lvcreate", "vg_dateilager_cached", "--name=thinpool", "--extents=95%VG", "--thinpool=thinpool")
+				execRun(b, "sudo", "lvcreate", "--name=base", "--virtualsize="+virtualSize, "--thinpool=vg_dateilager_cached/thinpool")
+				execRun(b, "sudo", "mkfs."+format, "/dev/vg_dateilager_cached/base")
 
 				func() {
-					exec(b, "sudo", "mkdir", "-p", "/mnt/dateilager_cached_base")
-					defer exec(b, "sudo", "rmdir", "/mnt/dateilager_cached_base")
+					execRun(b, "sudo", "mkdir", "-p", "/mnt/dateilager_cached_base")
+					defer execRun(b, "sudo", "rmdir", "/mnt/dateilager_cached_base")
 
-					exec(b, "sudo", "mount", "/dev/vg_dateilager_cached/base", "/mnt/dateilager_cached_base")
-					defer exec(b, "sudo", "umount", "/mnt/dateilager_cached_base")
+					execRun(b, "sudo", "mount", "/dev/vg_dateilager_cached/base", "/mnt/dateilager_cached_base")
+					defer execRun(b, "sudo", "umount", "/mnt/dateilager_cached_base")
 
-					exec(b, "sudo", "cp", "-a", stagingDir+"/.", "/mnt/dateilager_cached_base")
+					execRun(b, "sudo", "cp", "-a", stagingDir+"/.", "/mnt/dateilager_cached_base")
 				}()
 
-				exec(b, "sudo", "lvcreate", "vg_dateilager_cached/base", "--name=pod-0", "--snapshot", "--setactivationskip=n")
+				execRun(b, "sudo", "lvcreate", "vg_dateilager_cached/base", "--name=pod-0", "--snapshot", "--setactivationskip=n")
 
 				tmpDir := emptyBenchDir(b)                               // tmp/bench/dateilager_bench_<random>
 				targetDir := path.Join(tmpDir, "gadget")                 // tmp/bench/dateilager_bench_<random>/gadget
@@ -300,8 +300,8 @@ func BenchmarkDirOperations(b *testing.B) {
 				require.NoError(b, err, "failed to create target path")
 				defer os.RemoveAll(targetDir)
 
-				exec(b, "sudo", "mount", "/dev/vg_dateilager_cached/pod-0", targetDir)
-				defer exec(b, "sudo", "umount", targetDir)
+				execRun(b, "sudo", "mount", "/dev/vg_dateilager_cached/pod-0", targetDir)
+				defer execRun(b, "sudo", "umount", targetDir)
 
 				b.ResetTimer()
 				for n := 0; n < b.N; n++ {
