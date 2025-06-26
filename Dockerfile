@@ -81,6 +81,4 @@ COPY entrypoint-cached.sh entrypoint-cached.sh
 RUN ./server --help
 RUN ./cached --help
 
-
-
 ENTRYPOINT ["./entrypoint.sh"]

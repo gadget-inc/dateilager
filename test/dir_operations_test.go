@@ -263,7 +263,7 @@ func BenchmarkDirOperations(b *testing.B) {
 					b.Skip("DL_LVM_VIRTUAL_SIZE is not set")
 				}
 
-				format := os.Getenv("DL_LVM_FORMAT")
+				format := os.Getenv("DL_LVM_BASE_DEVICE_FORMAT")
 				if format == "" {
 					format = "ext4"
 				}

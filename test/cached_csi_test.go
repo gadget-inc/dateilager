@@ -358,7 +358,7 @@ func TestCachedCSIDriverIdempotency(t *testing.T) {
 		fmt.Sprintf("objects/%v/pack/a/2", aHash): {content: "pack/a/2 v1", uid: uid, gid: gid},
 		fmt.Sprintf("objects/%v/pack/b/1", bHash): {content: "pack/b/1 v1", uid: uid, gid: gid},
 		fmt.Sprintf("objects/%v/pack/b/2", bHash): {content: "pack/b/2 v1", uid: uid, gid: gid},
-		"versions": {content: fmt.Sprintf("%v\n%v\n", version, version)}, // the versions file should contain two lines, one for each NodePublishVolume call
+		"versions": {content: fmt.Sprintf("%v\n", version)},
 	})
 
 	fileInfo, err := os.Stat(targetDir)

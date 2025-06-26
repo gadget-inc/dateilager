@@ -45,13 +45,14 @@ type Cached struct {
 	StagingPath                string
 	CacheUid                   int
 	CacheGid                   int
-	LVMDeviceGlob              string
-	LVMFormat                  string
+	LVMThinpoolDeviceGlob      string
+	LVMBaseDevice              string
+	LVMBaseDeviceFormat        string
 	LVMVirtualSize             string
 	LVMRAMWritebackCacheSizeKB int64
 	lvmVg                      string
 	lvmBaseLv                  string
-	lvmDevices                 []string
+	lvmThinpoolDevices         []string
 	ramDevicePath              string
 	currentVersion             atomic.Int64
 }
@@ -74,8 +75,9 @@ func New(client *client.Client, driverNameSuffix string) *Cached {
 		StagingPath:                "/var/lib/kubelet/dateilager_cached" + driverNameSuffixUnderscored,
 		CacheUid:                   NO_CHANGE_USER,
 		CacheGid:                   NO_CHANGE_USER,
-		LVMDeviceGlob:              os.Getenv("DL_LVM_DEVICE_GLOB"),
-		LVMFormat:                  os.Getenv("DL_LVM_FORMAT"),
+		LVMThinpoolDeviceGlob:      os.Getenv("DL_LVM_THINPOOL_DEVICE_GLOB"),
+		LVMBaseDevice:              os.Getenv("DL_LVM_BASE_DEVICE"),
+		LVMBaseDeviceFormat:        os.Getenv("DL_LVM_BASE_DEVICE_FORMAT"),
 		LVMVirtualSize:             os.Getenv("DL_LVM_VIRTUAL_SIZE"),
 		LVMRAMWritebackCacheSizeKB: lvmRamWritebackCacheSizeKB,
 		lvmVg:                      lvmVg,
@@ -83,65 +85,62 @@ func New(client *client.Client, driverNameSuffix string) *Cached {
 	}
 }
 
-// Fetch the cache into the staging dir
-func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
-	logger.Info(ctx, "preparing cache", key.CacheVersion.Field(cacheVersion))
-	ctx, span := telemetry.Start(ctx, "cached.prepare", trace.WithAttributes(key.CacheVersion.Attribute(cacheVersion)))
+func (c *Cached) PrepareBaseVolume(ctx context.Context, cacheVersion int64) error {
+	ctx, span := telemetry.Start(ctx, "cached.prepare-base-volume")
 	defer span.End()
 
 	start := time.Now()
-
 	var err error
-	if err = c.findDevices(ctx); err != nil {
-		return err
-	}
-
-	// TODO: don't need this since vgcreate/vgextend will create physical volumes if they don't exist
-	if err = c.ensurePhysicalVolumes(ctx); err != nil {
-		return err
-	}
-
-	if err = c.ensureVolumeGroup(ctx); err != nil {
-		return err
-	}
-
-	if c.LVMRAMWritebackCacheSizeKB > 0 {
-		if err = c.ensureRamPool(ctx); err != nil {
-			return err
-		}
-	}
-
-	if err = c.ensureThinPool(ctx); err != nil {
-		return err
-	}
-
-	if err = c.ensureBaseVolume(ctx); err != nil {
-		return err
-	}
-
-	// TODO: move into ensureBaseVolume
 	if err = c.mountAndFormatBaseVolume(ctx); err != nil {
 		return err
 	}
 
-	// TODO: move into ensureBaseVolume
 	defer func() {
 		err = errors.Join(err, c.unmountBaseVolume(ctx))
 	}()
 
-	// TODO: move into ensureBaseVolume
-	var version int64
-	var count uint32
-	version, count, err = c.Client.GetCache(ctx, filepath.Join(c.StagingPath, CACHE_PATH_SUFFIX), cacheVersion)
+	var cachedCount uint32
+	cacheVersion, cachedCount, err = c.Client.GetCache(ctx, filepath.Join(c.StagingPath, CACHE_PATH_SUFFIX), cacheVersion)
 	if err != nil {
 		return err
 	}
 
-	c.currentVersion.Store(version)
-	logger.Info(ctx, "cache prepared", key.DurationMS.Field(time.Since(start)), key.Version.Field(version), key.Count.Field(int64(count)))
-	span.SetAttributes(key.Count.Attribute(int64(count)))
+	c.currentVersion.Store(cacheVersion)
+	logger.Info(ctx, "prepared base volume", key.CacheVersion.Field(cacheVersion), key.CachedCount.Field(cachedCount), key.DurationMS.Field(time.Since(start)))
+	span.SetAttributes(key.CacheVersion.Attribute(cacheVersion), key.CachedCount.Attribute(cachedCount))
 
 	return err
+}
+
+// Fetch the cache into the staging dir
+func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
+	logger.Info(ctx, "preparing cached", key.CacheVersion.Field(cacheVersion))
+	ctx, span := telemetry.Start(ctx, "cached.prepare", trace.WithAttributes(key.CacheVersion.Attribute(cacheVersion)))
+	defer span.End()
+
+	if err := c.findThinpoolDevices(ctx); err != nil {
+		return err
+	}
+
+	if err := c.ensureVolumeGroup(ctx); err != nil {
+		return err
+	}
+
+	if c.LVMRAMWritebackCacheSizeKB > 0 {
+		if err := c.ensureRamPool(ctx); err != nil {
+			return err
+		}
+	}
+
+	if err := c.ensureThinPool(ctx); err != nil {
+		return err
+	}
+
+	if err := c.ensureBaseVolume(ctx, cacheVersion); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Unprepare removes the cached storage
@@ -162,7 +161,7 @@ func (c *Cached) Unprepare(ctx context.Context) error {
 	}
 
 	// Remove each physical volume if it exists
-	for _, device := range c.lvmDevices {
+	for _, device := range c.lvmThinpoolDevices {
 		err = exec.Run(ctx, "pvdisplay", device)
 		if err != nil && !strings.Contains(err.Error(), "Failed to find physical volume") {
 			return fmt.Errorf("failed to check lvm physical volume %s: %w", device, err)
@@ -263,13 +262,13 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		}
 
 		var mountOptions []string
-		if c.LVMFormat == EXT4 {
+		if c.LVMBaseDeviceFormat == EXT4 {
 			mountOptions = ext4MountOptions()
 		}
 
 		device := "/dev/" + c.lvmVg + "/" + volumeID
 		logger.Info(ctx, "mounting snapshot", key.Device.Field(device))
-		if err := mounter.Mount(device, targetPath, c.LVMFormat, mountOptions); err != nil {
+		if err := mounter.Mount(device, targetPath, c.LVMBaseDeviceFormat, mountOptions); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to mount snapshot %s to %s: %v", device, targetPath, err)
 		}
 	}
@@ -361,8 +360,8 @@ func (c *Cached) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 
 var mounter = mount.New("")
 
-func (c *Cached) findDevices(_ context.Context) error {
-	globs := strings.Split(c.LVMDeviceGlob, ",")
+func (c *Cached) findThinpoolDevices(_ context.Context) error {
+	globs := strings.Split(c.LVMThinpoolDeviceGlob, ",")
 	var allDevices []string
 
 	for _, glob := range globs {
@@ -375,40 +374,15 @@ func (c *Cached) findDevices(_ context.Context) error {
 	}
 
 	if len(allDevices) == 0 {
-		return fmt.Errorf("no lvm devices found for globs %s", c.LVMDeviceGlob)
+		return fmt.Errorf("no lvm devices found for globs %s", c.LVMThinpoolDeviceGlob)
 	}
-	c.lvmDevices = allDevices
+	c.lvmThinpoolDevices = allDevices
 	return nil
 }
 
-// ensurePhysicalVolumes creates LVM physical volumes if they don't exist for each data device
-func (c *Cached) ensurePhysicalVolumes(ctx context.Context) error {
-	for _, device := range c.lvmDevices {
-		ctx := logger.With(ctx, key.Device.Field(device))
-		logger.Debug(ctx, "checking physical volume")
-
-		err := exec.Run(ctx, "pvdisplay", device)
-		if err == nil {
-			logger.Info(ctx, "physical volume already exists")
-			continue
-		}
-
-		if !strings.Contains(err.Error(), "Failed to find physical volume") {
-			return fmt.Errorf("failed to check lvm physical volume %s: %w", device, err)
-		}
-
-		logger.Info(ctx, "creating physical volume")
-		if err := exec.Run(ctx, "pvcreate", device); err != nil && !strings.Contains(err.Error(), "signal: killed") {
-			return fmt.Errorf("failed to create lvm physical volume %s: %w", device, err)
-		}
-	}
-	return nil
-}
-
-// TODO: if base device, vgimportclone and vgextend, else vgcreate
 // ensureVolumeGroup creates LVM volume group if it doesn't exist
 func (c *Cached) ensureVolumeGroup(ctx context.Context) error {
-	ctx = logger.With(ctx, key.VolumeGroup.Field(c.lvmVg), key.DeviceGlob.Field(c.LVMDeviceGlob))
+	ctx = logger.With(ctx, key.VolumeGroup.Field(c.lvmVg), key.DeviceGlob.Field(c.LVMThinpoolDeviceGlob))
 	logger.Debug(ctx, "checking volume group")
 
 	err := exec.Run(ctx, "vgdisplay", c.lvmVg)
@@ -421,16 +395,26 @@ func (c *Cached) ensureVolumeGroup(ctx context.Context) error {
 		return fmt.Errorf("failed to check lvm volume group %s: %w", c.lvmVg, err)
 	}
 
-	logger.Info(ctx, "creating volume group")
-	if err := exec.Run(ctx, "vgcreate", append([]string{c.lvmVg}, c.lvmDevices...)...); err != nil {
-		return fmt.Errorf("failed to create lvm volume group %s: %w", c.lvmVg, err)
+	if c.LVMBaseDevice != "" {
+		logger.Info(ctx, "importing base device")
+		if err := exec.Run(ctx, "vgimportclone", "--basevgname="+c.lvmVg, c.LVMBaseDevice); err != nil {
+			return fmt.Errorf("failed to import base device %s: %w", c.LVMBaseDevice, err)
+		}
+
+		if err := exec.Run(ctx, "vgextend", append([]string{"--config=devices/allow_mixed_block_sizes=1", c.lvmVg}, c.lvmThinpoolDevices...)...); err != nil {
+			return fmt.Errorf("failed to extend volume group with devices: %w", err)
+		}
+	} else {
+		logger.Info(ctx, "creating volume group")
+		if err := exec.Run(ctx, "vgcreate", append([]string{c.lvmVg}, c.lvmThinpoolDevices...)...); err != nil {
+			return fmt.Errorf("failed to create lvm volume group %s: %w", c.lvmVg, err)
+		}
 	}
 
 	return nil
 }
 
-// TODO: pass PVs explicitly so the thin pool isn't created on the base device (if one exists)
-// ensureThinPool creates LVM thin pool if it doesn't exist
+// ensureThinPool creates the LVM thin pool if it doesn't exist
 func (c *Cached) ensureThinPool(ctx context.Context) error {
 	thinPool := c.lvmVg + "/thinpool"
 	ctx = logger.With(ctx, key.ThinPool.Field(thinPool))
@@ -446,17 +430,21 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 		return fmt.Errorf("failed to check lvm thin pool %s: %w", thinPool, err)
 	}
 
-	logger.Info(ctx, "creating thin pool")
-	if err := exec.Run(ctx, "lvcreate", "--thin", c.lvmVg+"/thinpool",
-		// Make the thin pool take up 95% of the volume group's space
-		"--extents=95%VG",
+	lvCreateArgs := []string{
+		// Create a thin pool
+		"--type", "thin-pool",
+
+		// Name the thin pool vg_dateilager_cached/thinpool
+		"--name", "thinpool",
+
+		// Make the thin pool take up all the space on the provided PVs
+		"--extents=100%PVS",
 
 		// Use minimum allowed chunk size for better small file efficiency
-		// 64k is the minimum, but still better than default (usually 64k or larger)
 		"--chunksize=64k",
 
-		// Use one stripe per data device to maximize performance
-		"--stripes="+strconv.Itoa(len(c.lvmDevices)),
+		// Use one stripe per thin pool device to maximize performance
+		"--stripes=" + strconv.Itoa(len(c.lvmThinpoolDevices)),
 
 		// Use a small stripe size for better IO performance on small files
 		"--stripesize=64k",
@@ -468,12 +456,18 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 		// Pass TRIM/discard commands through to underlying storage
 		"--discards=passdown",
 
-		// Skip wiping signatures for faster creation
-		"--wipesignatures=n",
-
-		// Don't activate the thinpool yet so we can muck with it for RAM writeback caching if needed
+		// Don't activate the thinpool yet so we can muck with it for writeback caching if needed
 		"--activate=n",
-	); err != nil {
+
+		// Pass the volume group the thin pool should be created in
+		c.lvmVg,
+	}
+
+	// explicitly pass the devices to use for the thin pool
+	lvCreateArgs = append(lvCreateArgs, c.lvmThinpoolDevices...)
+
+	logger.Info(ctx, "creating thin pool")
+	if err := exec.Run(ctx, "lvcreate", lvCreateArgs...); err != nil {
 		return fmt.Errorf("failed to create lvm thin pool %s: %w", thinPool, err)
 	}
 
@@ -514,10 +508,9 @@ func (c *Cached) ensureThinPool(ctx context.Context) error {
 	return nil
 }
 
-// TODO: if base device, assert that the base LV already exists, else create it
 // ensureBaseVolume creates base LVM volume if it doesn't exist
-func (c *Cached) ensureBaseVolume(ctx context.Context) error {
-	ctx = logger.With(ctx, key.LogicalVolume.Field(c.lvmBaseLv), key.VirtualSize.Field(c.LVMVirtualSize))
+func (c *Cached) ensureBaseVolume(ctx context.Context, cacheVersion int64) error {
+	ctx = logger.With(ctx, key.LogicalVolume.Field(c.lvmBaseLv), key.VirtualSize.Field(c.LVMVirtualSize), key.CacheVersion.Field(cacheVersion))
 	logger.Debug(ctx, "checking base volume")
 
 	err := exec.Run(ctx, "lvdisplay", c.lvmBaseLv)
@@ -530,6 +523,10 @@ func (c *Cached) ensureBaseVolume(ctx context.Context) error {
 		return fmt.Errorf("failed to check base volume %s: %w", c.lvmBaseLv, err)
 	}
 
+	if c.LVMBaseDevice != "" {
+		return fmt.Errorf("LVMBaseDevice is set, but base volume %s does not exist", c.lvmBaseLv)
+	}
+
 	logger.Info(ctx, "creating base volume")
 	if err := exec.Run(ctx, "lvcreate", "--name=base", "--virtualsize="+c.LVMVirtualSize, "--thinpool="+c.lvmVg+"/thinpool"); err != nil {
 		return fmt.Errorf("failed to create base volume %s: %w", c.lvmBaseLv, err)
@@ -539,7 +536,7 @@ func (c *Cached) ensureBaseVolume(ctx context.Context) error {
 		logger.Warn(ctx, "udev settle failed for base volume", zap.Error(err))
 	}
 
-	return nil
+	return c.PrepareBaseVolume(ctx, cacheVersion)
 }
 
 // mountAndFormatBaseVolume mounts and formats the base volume
@@ -554,37 +551,42 @@ func (c *Cached) mountAndFormatBaseVolume(ctx context.Context) error {
 		return nil
 	}
 
-	baseDevicePath := "/dev/" + c.lvmBaseLv
-
-	fsFormat, err := exec.Output(ctx, "blkid", "-o", "value", "-s", "TYPE", baseDevicePath)
-	if err != nil && !strings.Contains(err.Error(), "exit status 2") {
-		return fmt.Errorf("failed to get filesystem type of base volume %s: %w", baseDevicePath, err)
+	baseDevice := "/dev/" + c.lvmBaseLv
+	if c.LVMBaseDevice != "" {
+		baseDevice = c.LVMBaseDevice
 	}
 
-	if fsFormat != c.LVMFormat {
-		formatOptions := []string{baseDevicePath}
-		if c.LVMFormat == EXT4 {
+	ctx = logger.With(ctx, key.Device.Field(baseDevice), key.Path.Field(c.StagingPath))
+
+	fsFormat, err := exec.Output(ctx, "blkid", "-o", "value", "-s", "TYPE", baseDevice)
+	if err != nil && !strings.Contains(err.Error(), "exit status 2") {
+		return fmt.Errorf("failed to get filesystem type of base volume %s: %w", baseDevice, err)
+	}
+
+	if fsFormat != c.LVMBaseDeviceFormat {
+		formatOptions := []string{baseDevice}
+		if c.LVMBaseDeviceFormat == EXT4 {
 			formatOptions = append(formatOptions, ext4FormatOptions()...)
 		}
 
-		logger.Info(ctx, "base volume is not formatted as expected, formatting", zap.String("expected", c.LVMFormat), zap.String("actual", fsFormat))
-		if err := exec.Run(ctx, "mkfs."+c.LVMFormat, formatOptions...); err != nil {
-			return fmt.Errorf("failed to format base volume %s: %w", baseDevicePath, err)
+		logger.Info(ctx, "base volume is not formatted as expected, formatting", zap.String("expected", c.LVMBaseDeviceFormat), zap.String("actual", fsFormat))
+		if err := exec.Run(ctx, "mkfs."+c.LVMBaseDeviceFormat, formatOptions...); err != nil {
+			return fmt.Errorf("failed to format base volume %s: %w", baseDevice, err)
 		}
 	}
 
-	logger.Info(ctx, "mounting base volume", key.LogicalVolume.Field(c.lvmBaseLv), key.Path.Field(c.StagingPath))
+	logger.Info(ctx, "mounting base volume")
 	if err := os.MkdirAll(c.StagingPath, 0o775); err != nil {
 		return fmt.Errorf("failed to create staging directory %s: %w", c.StagingPath, err)
 	}
 
 	var mountOptions []string
-	if c.LVMFormat == EXT4 {
+	if c.LVMBaseDeviceFormat == EXT4 {
 		mountOptions = ext4MountOptions()
 	}
 
-	if err := mounter.Mount(baseDevicePath, c.StagingPath, c.LVMFormat, mountOptions); err != nil {
-		return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", baseDevicePath, c.StagingPath, err)
+	if err := mounter.Mount(baseDevice, c.StagingPath, c.LVMBaseDeviceFormat, mountOptions); err != nil {
+		return fmt.Errorf("failed to mount base volume %s to staging directory %s: %w", baseDevice, c.StagingPath, err)
 	}
 
 	// Clean up lost+found directory, it's not needed and confusing.
