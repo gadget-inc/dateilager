@@ -104,13 +104,12 @@ func NewCachedServerCommand() *cobra.Command {
 	flags.Int64Var(&cacheVersion, "cache-version", -1, "cache version to use")
 	flags.IntVar(&cacheUid, "cache-uid", -1, "uid for cache files")
 	flags.IntVar(&cacheGid, "cache-gid", -1, "gid for cache files")
-	flags.StringVar(&lvmThinpoolDeviceGlob, "lvm-thinpool-device-glob", "", "glob of lvm devices to use for thinpool")
-	flags.StringVar(&lvmBaseDevice, "lvm-base-device", "", "lvm base device to use for base volume")
-	flags.StringVar(&lvmBaseDeviceFormat, "lvm-base-device-format", "ext4", "lvm base device format to use for base volume")
+	flags.StringVar(&lvmThinpoolDeviceGlob, "lvm-thinpool-device-glob", os.Getenv("DL_LVM_THINPOOL_DEVICE_GLOB"), "glob of lvm devices to use for thinpool")
+	flags.StringVar(&lvmBaseDevice, "lvm-base-device", os.Getenv("DL_LVM_BASE_DEVICE"), "lvm base device to use for base volume")
+	flags.StringVar(&lvmBaseDeviceFormat, "lvm-base-device-format", firstNonEmpty(os.Getenv("DL_LVM_BASE_DEVICE_FORMAT"), "ext4"), "lvm base device format to use for base volume")
 
 	_ = cmd.MarkPersistentFlagRequired("csi-socket")
 	_ = cmd.MarkPersistentFlagRequired("staging-path")
-	_ = cmd.MarkPersistentFlagRequired("lvm-thinpool-device-glob")
 
 	return cmd
 }

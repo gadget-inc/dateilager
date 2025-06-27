@@ -103,3 +103,12 @@ func CachedExecute() {
 		logger.Fatal(ctx, "command failed", zap.Error(err))
 	}
 }
+
+func firstNonEmpty(ss ...string) string {
+	for _, s := range ss {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}

@@ -329,7 +329,11 @@ func (c *Cached) PrepareBaseDevice(ctx context.Context, cacheVersion int64) erro
 		return err
 	}
 
-	baseVg := "vg_dl_cache"
+	baseVg := os.Getenv("DL_LVM_BASE_VG")
+	if baseVg == "" {
+		baseVg = "vg_dl_cache"
+	}
+
 	baseLv := baseVg + "/base"
 	baseLvDevice := "/dev/" + baseLv
 
