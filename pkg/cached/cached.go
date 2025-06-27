@@ -357,6 +357,11 @@ func (c *Cached) PrepareBaseDevice(ctx context.Context, cacheVersion int64) erro
 
 	if strings.Contains(out, "read only") {
 		logger.Info(ctx, "base volume is read only, assuming the base volume has already been prepared")
+
+		// ensure the base volume is deactivated so that we can vgimportclone it later
+		if err := exec.Run(ctx, "lvchange", "--activate", "n", baseLv); err != nil {
+			return fmt.Errorf("failed to deactivate base volume %s: %w", baseLv, err)
+		}
 		return nil
 	}
 
