@@ -23,18 +23,16 @@ import (
 
 func NewCachedServerCommand() *cobra.Command {
 	var (
-		healthzPort                uint16
-		driverNameSuffix           string
-		stagingPath                string
-		csiSocket                  string
-		cacheVersion               int64
-		cacheUid                   int
-		cacheGid                   int
-		lvmThinpoolDeviceGlob      string
-		lvmBaseDevice              string
-		lvmBaseDeviceFormat        string
-		lvmVirtualSize             string
-		lvmRamWritebackCacheSizeKB int64
+		healthzPort           uint16
+		driverNameSuffix      string
+		stagingPath           string
+		csiSocket             string
+		cacheVersion          int64
+		cacheUid              int
+		cacheGid              int
+		lvmThinpoolDeviceGlob string
+		lvmBaseDevice         string
+		lvmBaseDeviceFormat   string
 	)
 
 	cmd := &cobra.Command{
@@ -52,8 +50,6 @@ func NewCachedServerCommand() *cobra.Command {
 			cd.LVMThinpoolDeviceGlob = lvmThinpoolDeviceGlob
 			cd.LVMBaseDevice = lvmBaseDevice
 			cd.LVMBaseDeviceFormat = lvmBaseDeviceFormat
-			cd.LVMVirtualSize = lvmVirtualSize
-			cd.LVMRAMWritebackCacheSizeKB = lvmRamWritebackCacheSizeKB
 
 			cachedServer := cached.NewServer(ctx)
 			cachedServer.RegisterCSI(cd)
@@ -111,8 +107,6 @@ func NewCachedServerCommand() *cobra.Command {
 	flags.StringVar(&lvmThinpoolDeviceGlob, "lvm-thinpool-device-glob", "", "glob of lvm devices to use for thinpool")
 	flags.StringVar(&lvmBaseDevice, "lvm-base-device", "", "lvm base device to use for base volume")
 	flags.StringVar(&lvmBaseDeviceFormat, "lvm-base-device-format", "ext4", "lvm base device format to use for base volume")
-	flags.StringVar(&lvmVirtualSize, "lvm-virtual-size", "", "lvm virtual size to use for base volume")
-	flags.Int64Var(&lvmRamWritebackCacheSizeKB, "lvm-ram-writeback-cache-size-kb", 0, "writeback cache size in KB")
 
 	_ = cmd.MarkPersistentFlagRequired("csi-socket")
 	_ = cmd.MarkPersistentFlagRequired("staging-path")

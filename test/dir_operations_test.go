@@ -249,9 +249,8 @@ func BenchmarkDirOperations(b *testing.B) {
 			})
 
 			b.Run("LVM", func(b *testing.B) {
-				if os.Getenv("DL_LVM_BENCH") != "true" {
-					b.Skip("DL_LVM_BENCH is not set")
-				}
+				// TODO: make this use the same code that cached uses
+				b.Skip("LVM benchmark is not supported yet")
 
 				device := os.Getenv("DL_LVM_DEVICE")
 				if device == "" {

@@ -32,7 +32,7 @@ func NewCachedPrepareCommand() *cobra.Command {
 			c.LVMBaseDevice = lvmBaseDevice
 			c.LVMBaseDeviceFormat = lvmBaseDeviceFormat
 
-			return c.PrepareBaseVolume(ctx, cacheVersion)
+			return c.PrepareBaseDevice(ctx, cacheVersion)
 		},
 	}
 
