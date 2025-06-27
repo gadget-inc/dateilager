@@ -417,15 +417,17 @@ func (c *Cached) PrepareBaseDevice(ctx context.Context, cacheVersion int64) erro
 	cacheRootDir := filepath.Join(c.StagingPath, CACHE_PATH_SUFFIX)
 	cacheVersions := client.ReadCacheVersionFile(cacheRootDir)
 
-	if (cacheVersion == -1 && len(cacheVersions) == 0) || !slices.Contains(cacheVersions, cacheVersion) {
-		// if the cache version is -1 and there are no versions in the versions file, or the cache version is not in the versions file, then we need to download the cache
+	if len(cacheVersions) == 0 || cacheVersion == -1 || !slices.Contains(cacheVersions, cacheVersion) {
+		logger.Info(ctx, "downloading cache", key.CacheVersion.Field(cacheVersion))
+		startTime := time.Now()
+
 		var cachedCount uint32
 		cacheVersion, cachedCount, err = c.Client.GetCache(ctx, cacheRootDir, cacheVersion)
 		if err != nil {
 			return err
 		}
 
-		logger.Info(ctx, "downloaded cache", key.CacheVersion.Field(cacheVersion), key.CachedCount.Field(cachedCount))
+		logger.Info(ctx, "downloaded cache", key.CacheVersion.Field(cacheVersion), key.CachedCount.Field(cachedCount), key.DurationMS.Field(time.Since(startTime)))
 
 		if c.CacheUid != NO_CHANGE_USER || c.CacheGid != NO_CHANGE_USER {
 			logger.Info(ctx, "setting ownership", zap.Int("uid", c.CacheUid), zap.Int("gid", c.CacheGid))
@@ -444,17 +446,26 @@ func (c *Cached) PrepareBaseDevice(ctx context.Context, cacheVersion int64) erro
 		}
 	}
 
+	logger.Info(ctx, "unmounting base volume", key.Path.Field(c.StagingPath), key.Device.Field(baseLvDevice))
 	if err := mounter.Unmount(c.StagingPath); err != nil {
 		logger.Error(ctx, "failed to unmount base volume", zap.Error(err))
 	}
 
+	logger.Info(ctx, "making base volume read-only", key.LogicalVolume.Field(baseLv))
 	if err := exec.Run(ctx, "lvchange", "--permission", "r", baseLv); err != nil {
 		return fmt.Errorf("failed to set permission on base volume %s: %w", baseLv, err)
 	}
 
+	logger.Info(ctx, "deactivating base volume", key.LogicalVolume.Field(baseLv))
 	if err := exec.Run(ctx, "lvchange", "--activate", "n", baseLv); err != nil {
 		return fmt.Errorf("failed to deactivate base volume %s: %w", baseLv, err)
 	}
+
+	logger.Info(ctx, "prepared base device",
+		key.VolumeGroup.Field(baseVg),
+		key.LogicalVolume.Field(baseLv),
+		key.Device.Field(baseLvDevice),
+	)
 
 	return nil
 }
@@ -726,8 +737,8 @@ func ext4FormatOptions() []string {
 		// 4 KiB logical blocks - better balance for small files on modern storage
 		"-b", "4096",
 
-		// One inode per 16 KiB of projected data. 256-byte inodes instead of 128, required for inline_data.
-		"-i", "16384", "-I", "256",
+		// One inode per 4 KiB of projected data. 256-byte inodes instead of 128, required for inline_data.
+		"-i", "4096", "-I", "256",
 
 		// Zero per-FS reserve since this is a dedicated node_modules volume
 		"-m", "0",
@@ -736,22 +747,24 @@ func ext4FormatOptions() []string {
 		"-G", "64",
 
 		// Optimized feature flags for write performance and small files
-		"-O", "extent,dir_index,sparse_super2,filetype,flex_bg,64bit,inline_data,^has_journal,^metadata_csum",
+		"-O", "extent,dir_index,sparse_super2,filetype,flex_bg,64bit,inline_data,^has_journal",
 
 		// Extended parameters optimized for NVMe and small files:
 		//   No stride/stripe-width for better flexibility
-		//   lazy_*_init=0 for predictable performance
+		//   lazy_itable_init=0 for predictable performance
 		//   nodiscard during format for faster creation
-		//   packed_meta_blocks for better metadata locality
-		"-E", "lazy_itable_init=0,lazy_journal_init=0,nodiscard,packed_meta_blocks=1,num_backup_sb=0",
+		"-E", "lazy_itable_init=0,nodiscard,num_backup_sb=0",
 	}
 }
 
 // ext4MountOptions returns mount options optimized for maximum write performance
 func ext4MountOptions() []string {
 	return []string{
+		// Continue on errors rather than remounting read-only
+		"errors=continue",
+
 		// Eliminate all timestamp updates for maximum performance
-		"noatime", "nodiratime", "lazytime",
+		"noatime", "lazytime",
 
 		// Disable write barriers - assumes battery-backed storage or acceptable data loss risk
 		"nobarrier",
@@ -764,10 +777,7 @@ func ext4MountOptions() []string {
 		"discard",
 
 		// Note: data=writeback and commit options are journal-related
-		// Since we disabled journaling (^has_journal), these are not needed
-
-		// Continue on errors rather than remounting read-only
-		"errors=continue",
+		// Since we disabled journaling (^has_journal), these are not needed and cause mount to fail
 	}
 }
 
