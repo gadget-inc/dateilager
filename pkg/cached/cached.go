@@ -338,8 +338,9 @@ func (c *Cached) PrepareBaseDevice(ctx context.Context, cacheVersion int64) erro
 			return err
 		}
 
-		// baseVg doesn't exist, but the base device is already in a volume group, assume we already imported the base device and the volume
-		// group is now named c.lvmVg
+		// baseVg doesn't exist, but the base device is already in a
+		// volume group, assume we already imported the base device and
+		// the volume group is now named c.lvmVg
 		baseVg = c.lvmVg
 		baseLv = baseVg + "/base"
 		baseLvDevice = "/dev/" + baseLv
@@ -354,7 +355,6 @@ func (c *Cached) PrepareBaseDevice(ctx context.Context, cacheVersion int64) erro
 		return fmt.Errorf("failed to display base volume %s: %w", baseLv, err)
 	}
 
-	// TODO: test this actually works
 	if strings.Contains(out, "NOT available") {
 		logger.Info(ctx, "base volume is NOT available, assuming the base volume has already been prepared")
 		return nil
@@ -736,7 +736,7 @@ func ext4FormatOptions() []string {
 		"-G", "64",
 
 		// Optimized feature flags for write performance and small files
-		"-O", "extent,dir_index,sparse_super2,filetype,flex_bg,64bit,inline_data,^metadata_csum",
+		"-O", "extent,dir_index,sparse_super2,filetype,flex_bg,64bit,inline_data,^has_journal,^metadata_csum",
 
 		// Extended parameters optimized for NVMe and small files:
 		//   No stride/stripe-width for better flexibility
@@ -756,14 +756,15 @@ func ext4MountOptions() []string {
 		// Disable write barriers - assumes battery-backed storage or acceptable data loss risk
 		"nobarrier",
 
+		// Disable delayed allocation - can help with small file workloads
+		// Forces immediate allocation which can reduce fragmentation for node_modules
+		"nodelalloc",
+
 		// Enable discard for SSD/NVMe TRIM support
 		"discard",
 
-		// Enable writeback for better performance
-		"data=writeback",
-
-		// Set commit interval to 60 seconds for better performance
-		"commit=60",
+		// Note: data=writeback and commit options are journal-related
+		// Since we disabled journaling (^has_journal), these are not needed
 
 		// Continue on errors rather than remounting read-only
 		"errors=continue",
