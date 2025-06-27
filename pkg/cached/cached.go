@@ -355,8 +355,8 @@ func (c *Cached) PrepareBaseDevice(ctx context.Context, cacheVersion int64) erro
 		return fmt.Errorf("failed to display base volume %s: %w", baseLv, err)
 	}
 
-	if strings.Contains(out, "NOT available") {
-		logger.Info(ctx, "base volume is NOT available, assuming the base volume has already been prepared")
+	if strings.Contains(out, "read only") {
+		logger.Info(ctx, "base volume is read only, assuming the base volume has already been prepared")
 		return nil
 	}
 
