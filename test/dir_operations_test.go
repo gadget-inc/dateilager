@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gadget-inc/dateilager/internal/files"
+	"github.com/gadget-inc/dateilager/internal/lvm"
 	"github.com/stretchr/testify/require"
 )
 
@@ -249,33 +250,31 @@ func BenchmarkDirOperations(b *testing.B) {
 			})
 
 			b.Run("LVM", func(b *testing.B) {
-				// TODO: make this use the same code that cached uses
-				b.Skip("LVM benchmark is not supported yet")
-
-				device := os.Getenv("DL_LVM_DEVICE")
-				if device == "" {
-					b.Skip("DL_LVM_DEVICE is not set")
+				baseDevice := os.Getenv("DL_BASE_PV")
+				if baseDevice == "" {
+					b.Skip("DL_BASE_PV is not set")
 				}
 
-				virtualSize := os.Getenv("DL_LVM_VIRTUAL_SIZE")
-				if virtualSize == "" {
-					b.Skip("DL_LVM_VIRTUAL_SIZE is not set")
+				baseDeviceFormat := os.Getenv("DL_BASE_LV_FORMAT")
+				if baseDeviceFormat == "" {
+					baseDeviceFormat = "ext4"
 				}
 
-				format := os.Getenv("DL_LVM_BASE_DEVICE_FORMAT")
-				if format == "" {
-					format = "ext4"
+				thinpoolDeviceGlobs := os.Getenv("DL_THINPOOL_PV_GLOBS")
+				if thinpoolDeviceGlobs == "" {
+					b.Skip("DL_THINPOOL_PV_GLOBS is not set")
 				}
 
-				execRun(b, "sudo", "pvcreate", device)
-				defer execRun(b, "sudo", "pvremove", device)
+				require.NoError(b, lvm.EnsurePV(b.Context(), baseDevice))
+				defer require.NoError(b, lvm.RemovePV(b.Context(), baseDevice))
 
-				execRun(b, "sudo", "vgcreate", "vg_dateilager_cached", device)
-				defer execRun(b, "sudo", "vgremove", "-y", "vg_dateilager_cached")
+				require.NoError(b, lvm.EnsureVG(b.Context(), "vg_dateilager_cached", baseDevice))
+				defer require.NoError(b, lvm.RemoveVG(b.Context(), "vg_dateilager_cached"))
 
-				execRun(b, "sudo", "lvcreate", "vg_dateilager_cached", "--name=thinpool", "--extents=95%VG", "--thinpool=thinpool")
-				execRun(b, "sudo", "lvcreate", "--name=base", "--virtualsize="+virtualSize, "--thinpool=vg_dateilager_cached/thinpool")
-				execRun(b, "sudo", "mkfs."+format, "/dev/vg_dateilager_cached/base")
+				require.NoError(b, lvm.EnsureLV(b.Context(), "vg_dateilager_cached/base", "--type", "linear", "--extents", "100%FREE", "--name", "base", "-y", "vg_dateilager_cached"))
+				defer require.NoError(b, lvm.RemoveLV(b.Context(), "vg_dateilager_cached/base"))
+
+				execRun(b, "sudo", "mkfs."+baseDeviceFormat, "/dev/vg_dateilager_cached/base")
 
 				func() {
 					execRun(b, "sudo", "mkdir", "-p", "/mnt/dateilager_cached_base")

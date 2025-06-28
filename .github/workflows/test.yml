@@ -36,9 +36,9 @@ jobs:
           thin1_device=$(sudo losetup --find --show /var/tmp/lvm-thin1.img)
           thin2_device=$(sudo losetup --find --show /var/tmp/lvm-thin2.img)
 
-          echo "DL_LVM_BASE_DEVICE=$base_device" >> $GITHUB_ENV
-          echo "DL_LVM_THINPOOL_DEVICE_GLOB=$thin1_device,$thin2_device" >> $GITHUB_ENV
-          echo "DL_LVM_BASE_DEVICE_FORMAT=${{ matrix.filesystem }}" >> $GITHUB_ENV
+          echo "DL_BASE_PV=$base_device" >> $GITHUB_ENV
+          echo "DL_BASE_LV_FORMAT=${{ matrix.filesystem }}" >> $GITHUB_ENV
+          echo "DL_THINPOOL_PV_GLOBS=$thin1_device,$thin2_device" >> $GITHUB_ENV
 
       - name: Checkout repository
         uses: actions/checkout@v3

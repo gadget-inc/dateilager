@@ -44,12 +44,12 @@ func NewCachedServerCommand() *cobra.Command {
 			ctx := cmd.Context()
 
 			cd := cached.New(client.FromContext(ctx), driverNameSuffix)
-			cd.StagingPath = stagingPath
+			cd.BaseLVMountPoint = stagingPath
 			cd.CacheUid = cacheUid
 			cd.CacheGid = cacheGid
-			cd.LVMThinpoolDeviceGlob = lvmThinpoolDeviceGlob
-			cd.LVMBaseDevice = lvmBaseDevice
-			cd.LVMBaseDeviceFormat = lvmBaseDeviceFormat
+			cd.ThinpoolPVGlobs = lvmThinpoolDeviceGlob
+			cd.BasePV = lvmBaseDevice
+			cd.BaseLVFormat = lvmBaseDeviceFormat
 
 			cachedServer := cached.NewServer(ctx)
 			cachedServer.RegisterCSI(cd)
@@ -104,9 +104,9 @@ func NewCachedServerCommand() *cobra.Command {
 	flags.Int64Var(&cacheVersion, "cache-version", -1, "cache version to use")
 	flags.IntVar(&cacheUid, "cache-uid", -1, "uid for cache files")
 	flags.IntVar(&cacheGid, "cache-gid", -1, "gid for cache files")
-	flags.StringVar(&lvmThinpoolDeviceGlob, "lvm-thinpool-device-glob", os.Getenv("DL_LVM_THINPOOL_DEVICE_GLOB"), "glob of lvm devices to use for thinpool")
-	flags.StringVar(&lvmBaseDevice, "lvm-base-device", os.Getenv("DL_LVM_BASE_DEVICE"), "lvm base device to use for base volume")
-	flags.StringVar(&lvmBaseDeviceFormat, "lvm-base-device-format", firstNonEmpty(os.Getenv("DL_LVM_BASE_DEVICE_FORMAT"), "ext4"), "lvm base device format to use for base volume")
+	flags.StringVar(&lvmThinpoolDeviceGlob, "lvm-thinpool-device-glob", os.Getenv("DL_THINPOOL_PV_GLOBS"), "glob of lvm devices to use for thinpool")
+	flags.StringVar(&lvmBaseDevice, "lvm-base-device", os.Getenv("DL_BASE_PV"), "lvm base device to use for base volume")
+	flags.StringVar(&lvmBaseDeviceFormat, "lvm-base-device-format", firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), "ext4"), "lvm base device format to use for base volume")
 
 	_ = cmd.MarkPersistentFlagRequired("csi-socket")
 	_ = cmd.MarkPersistentFlagRequired("staging-path")

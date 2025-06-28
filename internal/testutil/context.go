@@ -99,6 +99,6 @@ func (tc *TestCtx) FsApi() *api.Fs {
 
 func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string) *cached.Cached {
 	c := cached.New(cl, "")
-	c.StagingPath = stagingPath
+	c.BaseLVMountPoint = stagingPath
 	return c
 }

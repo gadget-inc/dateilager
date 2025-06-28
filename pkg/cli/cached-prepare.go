@@ -28,13 +28,13 @@ func NewCachedPrepareCommand() *cobra.Command {
 			ctx := cmd.Context()
 
 			c := cached.New(client.FromContext(ctx), "")
-			c.StagingPath = stagingPath
+			c.BaseLVMountPoint = stagingPath
 			c.CacheUid = cacheUid
 			c.CacheGid = cacheGid
-			c.LVMBaseDevice = lvmBaseDevice
-			c.LVMBaseDeviceFormat = lvmBaseDeviceFormat
+			c.BasePV = lvmBaseDevice
+			c.BaseLVFormat = lvmBaseDeviceFormat
 
-			return c.PrepareBaseDevice(ctx, cacheVersion)
+			return c.PrepareBasePV(ctx, cacheVersion)
 		},
 	}
 
@@ -44,8 +44,8 @@ func NewCachedPrepareCommand() *cobra.Command {
 	flags.Int64Var(&cacheVersion, "cache-version", -1, "cache version to use")
 	flags.IntVar(&cacheUid, "cache-uid", -1, "uid for cache files")
 	flags.IntVar(&cacheGid, "cache-gid", -1, "gid for cache files")
-	flags.StringVar(&lvmBaseDevice, "lvm-base-device", os.Getenv("DL_LVM_BASE_DEVICE"), "lvm base device to use")
-	flags.StringVar(&lvmBaseDeviceFormat, "lvm-base-device-format", firstNonEmpty(os.Getenv("DL_LVM_BASE_DEVICE_FORMAT"), "ext4"), "lvm base device format to use")
+	flags.StringVar(&lvmBaseDevice, "lvm-base-device", os.Getenv("DL_BASE_PV"), "lvm base device to use")
+	flags.StringVar(&lvmBaseDeviceFormat, "lvm-base-device-format", firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), "ext4"), "lvm base device format to use")
 
 	_ = cmd.MarkPersistentFlagRequired("staging-path")
 	_ = cmd.MarkPersistentFlagRequired("lvm-base-device")
