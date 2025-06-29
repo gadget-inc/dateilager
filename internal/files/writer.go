@@ -441,11 +441,11 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 // It attempts to create a reflink in the directory and returns true if successful.
 func HasReflinkSupport(dir string) bool {
 	useReflinks := os.Getenv("DL_USE_REFLINKS")
-	if useReflinks != "1" && useReflinks != "true" {
-		return false
-	}
 	if useReflinks == "always" {
 		return true
+	}
+	if useReflinks != "1" && useReflinks != "true" {
+		return false
 	}
 
 	srcFile := filepath.Join(dir, "reflink_test_src")
