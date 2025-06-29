@@ -58,7 +58,7 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/tmp
           export TMPDIR=$GITHUB_WORKSPACE/tmp
           echo "TMPDIR=$GITHUB_WORKSPACE/tmp" >> $GITHUB_ENV
-          echo "FORCE_REFLINKS=always" >> $GITHUB_ENV
+          echo "DL_USE_REFLINKS=always" >> $GITHUB_ENV
 
       - name: Run Go tests
         run: make test-integration

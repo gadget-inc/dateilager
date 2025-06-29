@@ -2,6 +2,7 @@ package files
 
 import (
 	"archive/tar"
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -439,11 +440,11 @@ func WriteTar(finalDir string, cacheObjectsDir string, reader *db.TarReader, pac
 // HasReflinkSupport checks if the given directory supports reflinks.
 // It attempts to create a reflink in the directory and returns true if successful.
 func HasReflinkSupport(dir string) bool {
-	forceReflinks := os.Getenv("FORCE_REFLINKS")
-	if forceReflinks == "never" {
+	useReflinks := os.Getenv("DL_USE_REFLINKS")
+	if useReflinks != "1" && useReflinks != "true" {
 		return false
 	}
-	if forceReflinks != "" {
+	if useReflinks == "always" {
 		return true
 	}
 
@@ -459,5 +460,20 @@ func HasReflinkSupport(dir string) bool {
 	}
 
 	// Try to create a reflink
-	return reflinkFile(srcFile, dstFile, 0o644) == nil
+	err = reflinkFile(srcFile, dstFile, 0o644)
+	if err != nil {
+		return false
+	}
+
+	// Ensure the files are the same
+	srcData, err := os.ReadFile(srcFile)
+	if err != nil {
+		return false
+	}
+	dstData, err := os.ReadFile(dstFile)
+	if err != nil {
+		return false
+	}
+
+	return bytes.Equal(srcData, dstData)
 }
