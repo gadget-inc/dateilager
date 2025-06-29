@@ -134,7 +134,7 @@ func RemoveLV(ctx context.Context, lvName string) error {
 	}
 
 	if err == nil {
-		logger.Info(ctx, "removing logical volume", key.LV.Field(lvName))
+		logger.Info(ctx, "removing logical volume")
 		if err := exec.Run(ctx, "lvremove", "-y", lvName); err != nil {
 			return fmt.Errorf("failed to remove logical volume %s: %w", lvName, err)
 		}

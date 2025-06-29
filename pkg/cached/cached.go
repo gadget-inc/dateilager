@@ -365,11 +365,15 @@ func (c *Cached) createThinpool(ctx context.Context) error {
 		return fmt.Errorf("failed to check lvm thin pool %s: %w", c.ThinpoolLV, err)
 	}
 
+	return lvm.EnsureLV(ctx, c.ThinpoolLV, LVCreateThinpoolArgs(c.VG, c.ThinpoolPVs)...)
+}
+
+func LVCreateThinpoolArgs(vg string, thinpoolPVs []string) []string {
 	lvCreateArgs := []string{
 		// Create a thin pool
 		"--type", "thin-pool",
 
-		// Name the thin pool vg_dateilager_cached/thinpool
+		// Name the thin pool vg/thinpool
 		"--name", "thinpool",
 
 		// Make the thin pool take up all the space on the provided PVs
@@ -379,7 +383,7 @@ func (c *Cached) createThinpool(ctx context.Context) error {
 		"--chunksize=64k",
 
 		// Use one stripe per thinpool device to maximize performance
-		"--stripes=" + strconv.Itoa(len(c.ThinpoolPVs)),
+		"--stripes=" + strconv.Itoa(len(thinpoolPVs)),
 
 		// Use a small stripe size for better IO performance on small files
 		"--stripesize=64k",
@@ -392,13 +396,11 @@ func (c *Cached) createThinpool(ctx context.Context) error {
 		"--discards=passdown",
 
 		// Pass the volume group the thin pool should be created in
-		c.VG,
+		vg,
 	}
 
-	// explicitly pass the devices to use for the thin pool
-	lvCreateArgs = append(lvCreateArgs, c.ThinpoolPVs...)
-
-	return lvm.EnsureLV(ctx, c.ThinpoolLV, lvCreateArgs...)
+	// ensure the thinpool only uses the provided PVs
+	return append(lvCreateArgs, thinpoolPVs...)
 }
 
 // EXT4FormatOptions returns the format options for ext4 filesystems optimized for node_modules

@@ -70,14 +70,14 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume Volume Capability must be provided")
 	}
 
-	lvName := c.VG + "/" + volumeID
-	lvDevice := "/dev/" + lvName
+	lv := c.VG + "/" + volumeID
+	lvDevice := "/dev/" + lv
 
-	ctx = logger.With(ctx, key.VolumeID.Field(volumeID), key.TargetPath.Field(targetPath), key.LV.Field(lvName), key.Device.Field(lvDevice))
-	trace.SpanFromContext(ctx).SetAttributes(key.VolumeID.Attribute(volumeID), key.TargetPath.Attribute(targetPath), key.LV.Attribute(lvName), key.Device.Attribute(lvDevice))
+	ctx = logger.With(ctx, key.VolumeID.Field(volumeID), key.TargetPath.Field(targetPath), key.LV.Field(lv), key.Device.Field(lvDevice))
+	trace.SpanFromContext(ctx).SetAttributes(key.VolumeID.Attribute(volumeID), key.TargetPath.Attribute(targetPath), key.LV.Attribute(lv), key.Device.Attribute(lvDevice))
 	logger.Info(ctx, "publishing volume")
 
-	if err := lvm.EnsureLV(ctx, lvName, "--type", "thin", "--thinpool", c.VG+"/thinpool", "--name", volumeID, "--setactivationskip=n", c.VG+"/base"); err != nil {
+	if err := lvm.EnsureLV(ctx, lv, "--type", "thin", "--thinpool", c.ThinpoolLV, "--name", volumeID, "--setactivationskip", "n", c.BaseLV); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create logical volume: %v", err)
 	}
 

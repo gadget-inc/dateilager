@@ -24,6 +24,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/exec"
 	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/logger"
+	"github.com/gadget-inc/dateilager/internal/lvm"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/gadget-inc/dateilager/pkg/api"
@@ -1012,4 +1013,34 @@ func execOutput(t testing.TB, command string, args ...string) string {
 	out, err := exec.Output(t.Context(), command, args...)
 	require.NoError(t, err)
 	return out
+}
+
+func ensurePV(t testing.TB, pv string) {
+	err := lvm.EnsurePV(t.Context(), pv)
+	require.NoError(t, err)
+}
+
+func removePV(t testing.TB, pv string) {
+	err := lvm.RemovePV(t.Context(), pv)
+	require.NoError(t, err)
+}
+
+func ensureVG(t testing.TB, vgName string, devices ...string) {
+	err := lvm.EnsureVG(t.Context(), vgName, devices...)
+	require.NoError(t, err)
+}
+
+func removeVG(t testing.TB, vgName string) {
+	err := lvm.RemoveVG(t.Context(), vgName)
+	require.NoError(t, err)
+}
+
+func ensureLV(t testing.TB, lvName string, lvCreateArgs ...string) {
+	err := lvm.EnsureLV(t.Context(), lvName, lvCreateArgs...)
+	require.NoError(t, err)
+}
+
+func removeLV(t testing.TB, lvName string) {
+	err := lvm.RemoveLV(t.Context(), lvName)
+	require.NoError(t, err)
 }
