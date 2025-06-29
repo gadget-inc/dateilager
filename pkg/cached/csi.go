@@ -49,7 +49,7 @@ func (c *Cached) NodeGetCapabilities(ctx context.Context, _ *csi.NodeGetCapabili
 // Usually, a CSI driver would return some interesting stuff about the node here for the controller to use to place volumes, but because we're only supporting node local volumes, we return something very basic
 func (c *Cached) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	return &csi.NodeGetInfoResponse{
-		NodeId:            firstNonEmptry(os.Getenv("NODE_ID"), os.Getenv("NODE_NAME"), os.Getenv("K8S_NODE_NAME"), "dev"),
+		NodeId:            firstNonEmpty(os.Getenv("NODE_ID"), os.Getenv("NODE_NAME"), os.Getenv("K8S_NODE_NAME"), "dev"),
 		MaxVolumesPerNode: 110,
 	}, nil
 }
@@ -91,9 +91,9 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			return nil, status.Errorf(codes.Internal, "failed to create target path %s: %v", targetPath, err)
 		}
 
-		logger.Info(ctx, "mounting logical volume")
+		logger.Info(ctx, "mounting lv")
 		if err := mounter.Mount(lvDevice, targetPath, c.BaseLVFormat, MountOptions(c.BaseLVFormat)); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to mount logical volume %s to %s: %v", lvDevice, targetPath, err)
+			return nil, status.Errorf(codes.Internal, "failed to mount lv %s to %s: %v", lvDevice, targetPath, err)
 		}
 	}
 
@@ -101,7 +101,7 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		return nil, status.Errorf(codes.Internal, "failed to change permissions of target path %s: %v", targetPath, err)
 	}
 
-	logger.Info(ctx, "mounted logical volume")
+	logger.Info(ctx, "published volume")
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
@@ -117,11 +117,11 @@ func (c *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 		return nil, status.Error(codes.InvalidArgument, "NodeUnpublishVolume Target Path must be provided")
 	}
 
-	lvName := c.VG + "/" + volumeID
-	lvDevice := "/dev/" + lvName
+	lv := c.VG + "/" + volumeID
+	lvDevice := "/dev/" + lv
 
-	ctx = logger.With(ctx, key.VolumeID.Field(volumeID), key.TargetPath.Field(targetPath), key.LV.Field(lvName), key.Device.Field(lvDevice))
-	trace.SpanFromContext(ctx).SetAttributes(key.VolumeID.Attribute(volumeID), key.TargetPath.Attribute(targetPath), key.LV.Attribute(lvName), key.Device.Attribute(lvDevice))
+	ctx = logger.With(ctx, key.VolumeID.Field(volumeID), key.TargetPath.Field(targetPath), key.LV.Field(lv), key.Device.Field(lvDevice))
+	trace.SpanFromContext(ctx).SetAttributes(key.VolumeID.Attribute(volumeID), key.TargetPath.Attribute(targetPath), key.LV.Attribute(lv), key.Device.Attribute(lvDevice))
 	logger.Info(ctx, "unpublishing volume")
 
 	notMounted, err := mounter.IsLikelyNotMountPoint(targetPath)
@@ -130,17 +130,17 @@ func (c *Cached) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	}
 
 	if !notMounted {
-		logger.Info(ctx, "unmounting target path")
+		logger.Info(ctx, "unmounting lv")
 		if err := mounter.Unmount(targetPath); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to unmount logical volume at %s: %v", targetPath, err)
+			return nil, status.Errorf(codes.Internal, "failed to unmount lv at %s: %v", targetPath, err)
 		}
 	}
 
-	if err := lvm.RemoveLV(ctx, lvName); err != nil {
-		logger.Warn(ctx, "failed to remove logical volume", zap.Error(err))
+	if err := lvm.RemoveLV(ctx, lv); err != nil {
+		logger.Warn(ctx, "failed to remove lv", zap.Error(err))
 	}
 
-	logger.Info(ctx, "removed logical volume")
+	logger.Info(ctx, "unpublished volume")
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 

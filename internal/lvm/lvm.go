@@ -15,7 +15,6 @@ import (
 
 func EnsurePV(ctx context.Context, pv string) error {
 	ctx = logger.With(ctx, key.PV.Field(pv))
-	logger.Debug(ctx, "checking physical volume")
 
 	err := exec.Run(ctx, "pvdisplay", pv)
 	if err == nil {
@@ -37,7 +36,6 @@ func EnsurePV(ctx context.Context, pv string) error {
 
 func RemovePV(ctx context.Context, pv string) error {
 	ctx = logger.With(ctx, key.PV.Field(pv))
-	logger.Debug(ctx, "checking physical volume for removal")
 
 	err := exec.Run(ctx, "pvdisplay", pv)
 	if err != nil && !strings.Contains(err.Error(), "Failed to find physical volume") {
@@ -56,11 +54,10 @@ func RemovePV(ctx context.Context, pv string) error {
 
 func EnsureVG(ctx context.Context, vg string, pvs ...string) error {
 	ctx = logger.With(ctx, key.VG.Field(vg), key.PVs.Field(pvs))
-	logger.Debug(ctx, "checking volume group")
 
 	err := exec.Run(ctx, "vgdisplay", vg)
 	if err == nil {
-		logger.Debug(ctx, "volume group already exists")
+		logger.Info(ctx, "volume group already exists")
 		return nil
 	}
 
@@ -78,7 +75,6 @@ func EnsureVG(ctx context.Context, vg string, pvs ...string) error {
 
 func RemoveVG(ctx context.Context, vg string) error {
 	ctx = logger.With(ctx, key.VG.Field(vg))
-	logger.Debug(ctx, "checking volume group for removal")
 
 	err := exec.Run(ctx, "vgdisplay", vg)
 	if err != nil && !strings.Contains(err.Error(), "not found") {
@@ -97,7 +93,6 @@ func RemoveVG(ctx context.Context, vg string) error {
 
 func EnsureLV(ctx context.Context, lv string, lvCreateArgs ...string) error {
 	ctx = logger.With(ctx, key.LV.Field(lv))
-	logger.Debug(ctx, "checking logical volume")
 
 	err := exec.Run(ctx, "lvdisplay", lv)
 	if err == nil {
@@ -125,7 +120,6 @@ func EnsureLV(ctx context.Context, lv string, lvCreateArgs ...string) error {
 
 func RemoveLV(ctx context.Context, lv string) error {
 	ctx = logger.With(ctx, key.LV.Field(lv))
-	logger.Debug(ctx, "checking logical volume for removal")
 
 	err := exec.Run(ctx, "lvdisplay", lv)
 	if err != nil && !strings.Contains(err.Error(), "Failed to find logical volume") && !strings.Contains(err.Error(), "not found") {

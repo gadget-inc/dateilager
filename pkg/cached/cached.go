@@ -59,8 +59,8 @@ func New(client *client.Client, nameSuffix string) *Cached {
 	thinpoolLV := vg + "/thinpool"
 
 	return &Cached{
-		BaseLV:           firstNonEmptry(os.Getenv("DL_BASE_LV"), baseLV),
-		BaseLVFormat:     firstNonEmptry(os.Getenv("DL_BASE_LV_FORMAT"), XFS),
+		BaseLV:           firstNonEmpty(os.Getenv("DL_BASE_LV"), baseLV),
+		BaseLVFormat:     firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), XFS),
 		BaseLVMountPoint: path.Join("/mnt", baseLV),
 		BasePV:           os.Getenv("DL_BASE_PV"),
 		CacheGid:         NO_CHANGE_USER,
@@ -97,13 +97,7 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 
 // Unprepare removes the cached storage
 func (c *Cached) Unprepare(ctx context.Context) error {
-	logger.Info(ctx, "unpreparing cached",
-		key.LV.Field(c.ThinpoolLV),
-		key.LV.Field(c.BaseLV),
-		key.VG.Field(c.VG),
-		key.PVs.Field(c.ThinpoolPVs),
-		key.PV.Field(c.BasePV),
-	)
+	logger.Info(ctx, "unpreparing cached")
 
 	if err := lvm.RemoveLV(ctx, c.ThinpoolLV); err != nil {
 		return err
@@ -164,7 +158,7 @@ func (c *Cached) PrepareBasePV(ctx context.Context, cacheVersion int64) error {
 		return err
 	}
 
-	vg := firstNonEmptry(os.Getenv("DL_CACHE_VG"), "vg_dl_cache")
+	vg := firstNonEmpty(os.Getenv("DL_CACHE_VG"), "vg_dl_cache")
 
 	if err := lvm.EnsureVG(ctx, vg, c.BasePV); err != nil {
 		if !strings.Contains(err.Error(), "already in volume group") {
@@ -206,14 +200,14 @@ func (c *Cached) PrepareBasePV(ctx context.Context, cacheVersion int64) error {
 
 	if notMounted {
 		logger.Debug(ctx, "checking if base lv is formatted", key.LV.Field(lv))
-		var baseLvDeviceFormat string
-		baseLvDeviceFormat, err = exec.Output(ctx, "blkid", "-o", "value", "-s", "TYPE", lvDevice)
+		var format string
+		format, err = exec.Output(ctx, "blkid", "-o", "value", "-s", "TYPE", lvDevice)
 		if err != nil && !strings.Contains(err.Error(), "exit status 2") {
 			return fmt.Errorf("failed to get filesystem type of base device %s: %w", lvDevice, err)
 		}
 
-		if baseLvDeviceFormat != c.BaseLVFormat {
-			logger.Info(ctx, "formatting base lv", key.LV.Field(lv), zap.String("expected", c.BaseLVFormat), zap.String("actual", baseLvDeviceFormat))
+		if format != c.BaseLVFormat {
+			logger.Info(ctx, "formatting base lv", key.LV.Field(lv), zap.String("expected", c.BaseLVFormat), zap.String("actual", format))
 			if err := exec.Run(ctx, "mkfs."+c.BaseLVFormat, FormatOptions(lvDevice, c.BaseLVFormat)...); err != nil {
 				return fmt.Errorf("failed to format base lv %s: %w", lvDevice, err)
 			}
@@ -489,8 +483,16 @@ func XFSFormatOptions(device string) []string {
 		// Force creation even if the target looks mounted or already formatted
 		"-f",
 
-		// Enable reflink support
+		// Enable reflink support (even if we don't use it)
 		"-m", "reflink=1",
+
+		// Ensure the sector size is always 4 KiB
+		//
+		// This is important so we can prepare the base lv on a device
+		// that uses 512 byte sectors (e.g. gcp hyperdisk-balanced) and
+		// later mount it on a device that only supports 4 KiB sectors
+		// (e.g. gcp local ssd)
+		"-s", "size=4k",
 	}
 }
 
@@ -498,8 +500,7 @@ func XFSMountOptions() []string {
 	return []string{}
 }
 
-// firstNonEmptry returns the firstNonEmptry non-empty string from the given slice
-func firstNonEmptry(ss ...string) string {
+func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if s != "" {
 			return s

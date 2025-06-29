@@ -254,102 +254,101 @@ func BenchmarkDirOperations(b *testing.B) {
 				}
 			})
 
-			b.Run("LVM", func(b *testing.B) {
-				basePV := os.Getenv("DL_BASE_PV")
-				if basePV == "" {
-					b.Skip("DL_BASE_PV is not set")
-				}
+			for _, baseLVFormat := range []string{cached.XFS, cached.EXT4} {
+				b.Run(baseLVFormat, func(b *testing.B) {
+					b.Run("lvm", func(b *testing.B) {
+						basePV := os.Getenv("DL_BASE_PV")
+						if basePV == "" {
+							b.Skip("DL_BASE_PV is not set")
+						}
 
-				baseLVFormat := os.Getenv("DL_BASE_LV_FORMAT")
-				if baseLVFormat == "" {
-					baseLVFormat = cached.XFS
-				}
+						thinpoolPVGlobs := os.Getenv("DL_THINPOOL_PV_GLOBS")
+						if thinpoolPVGlobs == "" {
+							b.Skip("DL_THINPOOL_PV_GLOBS is not set")
+						}
 
-				thinpoolPVGlobs := os.Getenv("DL_THINPOOL_PV_GLOBS")
-				if thinpoolPVGlobs == "" {
-					b.Skip("DL_THINPOOL_PV_GLOBS is not set")
-				}
+						var thinpoolPVs []string
+						for pv := range strings.SplitSeq(thinpoolPVGlobs, ",") {
+							devices, err := filepath.Glob(pv)
+							require.NoError(b, err)
+							thinpoolPVs = append(thinpoolPVs, devices...)
+						}
 
-				var thinpoolPVs []string
-				for pv := range strings.SplitSeq(thinpoolPVGlobs, ",") {
-					devices, err := filepath.Glob(pv)
-					require.NoError(b, err)
-					thinpoolPVs = append(thinpoolPVs, devices...)
-				}
+						ensurePV(b, basePV)
+						defer removePV(b, basePV)
 
-				ensurePV(b, basePV)
-				defer removePV(b, basePV)
+						vg := "vg_dl_cached_bench"
+						baseLV := vg + "/base"
+						baseLVDevice := "/dev/" + baseLV
+						thinpoolLV := vg + "/thinpool"
 
-				vg := "vg_dl_cached_bench"
-				baseLV := vg + "/base"
-				baseLVDevice := "/dev/" + baseLV
-				thinpoolLV := vg + "/thinpool"
+						ensureVG(b, vg, basePV)
+						defer removeVG(b, vg)
 
-				ensureVG(b, vg, basePV)
-				defer removeVG(b, vg)
+						ensureLV(b, baseLV, cached.LVCreateBaseArgs(vg, basePV)...)
+						defer removeLV(b, baseLV)
 
-				ensureLV(b, baseLV, cached.LVCreateBaseArgs(vg, basePV)...)
-				defer removeLV(b, baseLV)
+						formatOptions := cached.FormatOptions(baseLVDevice, baseLVFormat)
+						mountOptions := cached.MountOptions(baseLVFormat)
 
-				formatOptions := cached.FormatOptions(baseLVDevice, baseLVFormat)
-				mountOptions := cached.MountOptions(baseLVFormat)
+						execRun(b, "mkfs."+baseLVFormat, formatOptions...)
 
-				execRun(b, "mkfs."+baseLVFormat, formatOptions...)
+						tmpDir := emptyBenchDir(b) // tmp/bench/dateilager_bench_<random>
+						defer os.RemoveAll(tmpDir)
 
-				tmpDir := emptyBenchDir(b) // tmp/bench/dateilager_bench_<random>
-				defer os.RemoveAll(tmpDir)
+						func() {
+							baseLVMountPoint := path.Join(tmpDir, "mnt", baseLV)
+							require.NoError(b, os.MkdirAll(baseLVMountPoint, 0o775))
+							defer os.RemoveAll(baseLVMountPoint)
 
-				func() {
-					baseLVMountPoint := path.Join(tmpDir, "mnt", baseLV)
-					require.NoError(b, os.MkdirAll(baseLVMountPoint, 0o775))
-					defer os.RemoveAll(baseLVMountPoint)
+							require.NoError(b, mounter.Mount(baseLVDevice, baseLVMountPoint, baseLVFormat, mountOptions))
+							execRun(b, "cp", "-a", stagingDir+"/.", baseLVMountPoint)
 
-					require.NoError(b, mounter.Mount(baseLVDevice, baseLVMountPoint, baseLVFormat, mountOptions))
-					execRun(b, "cp", "-a", stagingDir+"/.", baseLVMountPoint)
+							require.NoError(b, mounter.Unmount(baseLVMountPoint))
+							execRun(b, "lvchange", "--permission", "r", baseLV)
+							execRun(b, "lvchange", "--activate", "n", baseLV)
+						}()
 
-					require.NoError(b, mounter.Unmount(baseLVMountPoint))
-					execRun(b, "lvchange", "--permission", "r", baseLV)
-					execRun(b, "lvchange", "--activate", "n", baseLV)
-				}()
+						execRun(b, "vgextend", append([]string{"--config=devices/allow_mixed_block_sizes=1", vg}, thinpoolPVs...)...)
 
-				execRun(b, "vgextend", append([]string{"--config=devices/allow_mixed_block_sizes=1", vg}, thinpoolPVs...)...)
+						ensureLV(b, thinpoolLV, cached.LVCreateThinpoolArgs(vg, thinpoolPVs)...)
+						defer removeLV(b, thinpoolLV)
 
-				ensureLV(b, thinpoolLV, cached.LVCreateThinpoolArgs(vg, thinpoolPVs)...)
-				defer removeLV(b, thinpoolLV)
+						execRun(b, "lvchange", "--activate", "n", baseLV)
 
-				execRun(b, "lvchange", "--activate", "n", baseLV)
+						volumeID := "csi-0" // e.g. csi-8987671b2736a86f94ac1054cfda8012690a6c3a11b6cf40d1fcb64550c44935
+						lv := vg + "/" + volumeID
+						lvDevice := "/dev/" + lv
 
-				volumeID := "csi-0" // e.g. csi-8987671b2736a86f94ac1054cfda8012690a6c3a11b6cf40d1fcb64550c44935
-				lv := vg + "/" + volumeID
-				lvDevice := "/dev/" + lv
+						ensureLV(b, lv, cached.LVCreateThinSnapshotArgs(baseLV, thinpoolLV, volumeID)...)
+						defer removeLV(b, lv)
 
-				ensureLV(b, lv, cached.LVCreateThinSnapshotArgs(baseLV, thinpoolLV, volumeID)...)
-				defer removeLV(b, lv)
+						targetDir := path.Join(tmpDir, "gadget")                 // tmp/bench/dateilager_bench_<random>/gadget
+						cacheDir := path.Join(targetDir, "dl_cache")             // tmp/bench/dateilager_bench_<random>/gadget/dl_cache
+						cachedNodeModules := path.Join(cacheDir, "node_modules") // tmp/bench/dateilager_bench_<random>/gadget/dl_cache/node_modules
 
-				targetDir := path.Join(tmpDir, "gadget")                 // tmp/bench/dateilager_bench_<random>/gadget
-				cacheDir := path.Join(targetDir, "dl_cache")             // tmp/bench/dateilager_bench_<random>/gadget/dl_cache
-				cachedNodeModules := path.Join(cacheDir, "node_modules") // tmp/bench/dateilager_bench_<random>/gadget/dl_cache/node_modules
+						require.NoError(b, os.MkdirAll(targetDir, 0o775))
+						defer os.RemoveAll(targetDir)
 
-				require.NoError(b, os.MkdirAll(targetDir, 0o775))
-				defer os.RemoveAll(targetDir)
+						require.NoError(b, mounter.Mount(lvDevice, targetDir, baseLVFormat, mountOptions))
+						defer func() {
+							require.NoError(b, mounter.Unmount(targetDir))
+						}()
 
-				require.NoError(b, mounter.Mount(lvDevice, targetDir, baseLVFormat, mountOptions))
-				defer func() {
-					require.NoError(b, mounter.Unmount(targetDir))
-				}()
+						b.ResetTimer()
+						for n := 0; b.Loop(); n++ {
+							targetNodeModules := path.Join(targetDir, fmt.Sprintf("app/%d/node_modules", n)) // tmp/bench/dateilager_bench_<random>/gadget/app/<n>/node_modules
+							err := op(cachedNodeModules, targetNodeModules)
+							b.StopTimer()
+							require.NoError(b, err, "%s failed", name)
 
-				b.ResetTimer()
-				for n := 0; b.Loop(); n++ {
-					targetNodeModules := path.Join(targetDir, fmt.Sprintf("app/%d/node_modules", n)) // tmp/bench/dateilager_bench_<random>/gadget/app/<n>/node_modules
-					err := op(cachedNodeModules, targetNodeModules)
-					b.StopTimer()
-					require.NoError(b, err, "%s failed", name)
-
-					err = CompareDirectories(cachedNodeModules, targetNodeModules)
-					require.NoError(b, err, "compareDirectories %s vs %s failed", cachedNodeModules, targetDir)
-					b.StartTimer()
-				}
-			})
+							err = CompareDirectories(cachedNodeModules, targetNodeModules)
+							require.NoError(b, err, "compareDirectories %s vs %s failed", cachedNodeModules, targetDir)
+							b.StartTimer()
+						}
+					})
+				})
+			}
 		})
 	}
 }
