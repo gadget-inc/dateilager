@@ -213,13 +213,8 @@ func (c *Cached) PrepareBasePV(ctx context.Context, cacheVersion int64) error {
 		}
 
 		if baseLvDeviceFormat != c.BaseLVFormat {
-			formatOptions := []string{lvDevice}
-			if c.BaseLVFormat == EXT4 {
-				formatOptions = append(formatOptions, EXT4FormatOptions()...)
-			}
-
 			logger.Info(ctx, "formatting base lv", key.LV.Field(lv), zap.String("expected", c.BaseLVFormat), zap.String("actual", baseLvDeviceFormat))
-			if err := exec.Run(ctx, "mkfs."+c.BaseLVFormat, formatOptions...); err != nil {
+			if err := exec.Run(ctx, "mkfs."+c.BaseLVFormat, FormatOptions(lvDevice, c.BaseLVFormat)...); err != nil {
 				return fmt.Errorf("failed to format base lv %s: %w", lvDevice, err)
 			}
 		}
@@ -228,13 +223,8 @@ func (c *Cached) PrepareBasePV(ctx context.Context, cacheVersion int64) error {
 			return fmt.Errorf("failed to mkdir %s: %w", c.BaseLVMountPoint, err)
 		}
 
-		var mountOptions []string
-		if c.BaseLVFormat == EXT4 {
-			mountOptions = EXT4MountOptions()
-		}
-
 		logger.Info(ctx, "mounting base lv", key.LV.Field(lv), key.Path.Field(c.BaseLVMountPoint))
-		if err := mounter.Mount(lvDevice, c.BaseLVMountPoint, c.BaseLVFormat, mountOptions); err != nil {
+		if err := mounter.Mount(lvDevice, c.BaseLVMountPoint, c.BaseLVFormat, MountOptions(c.BaseLVFormat)); err != nil {
 			return fmt.Errorf("failed to mount %s to %s: %w", lvDevice, c.BaseLVMountPoint, err)
 		}
 
@@ -413,9 +403,34 @@ func LVCreateThinSnapshotArgs(baseLv string, thinpoolLV string, lvName string) [
 	}
 }
 
+func FormatOptions(device, format string) []string {
+	switch format {
+	case EXT4:
+		return EXT4FormatOptions(device)
+	case XFS:
+		return XFSFormatOptions(device)
+	default:
+		return nil
+	}
+}
+
+func MountOptions(format string) []string {
+	switch format {
+	case EXT4:
+		return EXT4MountOptions()
+	case XFS:
+		return XFSMountOptions()
+	default:
+		return nil
+	}
+}
+
 // EXT4FormatOptions returns the format options for ext4 filesystems optimized for node_modules
-func EXT4FormatOptions() []string {
+func EXT4FormatOptions(device string) []string {
 	return []string{
+		// Pass the device to the format command
+		device,
+
 		// Force creation even if the target looks mounted or already formatted
 		"-F",
 
@@ -464,6 +479,23 @@ func EXT4MountOptions() []string {
 		// Note: data=writeback and commit options are journal-related
 		// Since we disabled journaling (^has_journal), these will cause mount to fail
 	}
+}
+
+func XFSFormatOptions(device string) []string {
+	return []string{
+		// Pass the device to the format command
+		device,
+
+		// Force creation even if the target looks mounted or already formatted
+		"-f",
+
+		// Enable reflink support
+		"-m", "reflink=1",
+	}
+}
+
+func XFSMountOptions() []string {
+	return []string{}
 }
 
 // firstNonEmptry returns the firstNonEmptry non-empty string from the given slice

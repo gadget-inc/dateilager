@@ -91,13 +91,8 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			return nil, status.Errorf(codes.Internal, "failed to create target path %s: %v", targetPath, err)
 		}
 
-		var mountOptions []string
-		if c.BaseLVFormat == EXT4 {
-			mountOptions = EXT4MountOptions()
-		}
-
 		logger.Info(ctx, "mounting logical volume")
-		if err := mounter.Mount(lvDevice, targetPath, c.BaseLVFormat, mountOptions); err != nil {
+		if err := mounter.Mount(lvDevice, targetPath, c.BaseLVFormat, MountOptions(c.BaseLVFormat)); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to mount logical volume %s to %s: %v", lvDevice, targetPath, err)
 		}
 	}

@@ -291,15 +291,8 @@ func BenchmarkDirOperations(b *testing.B) {
 				ensureLV(b, baseLV, cached.LVCreateBaseArgs(vg, basePV)...)
 				defer removeLV(b, baseLV)
 
-				formatOptions := []string{baseLVDevice}
-				if baseLVFormat == cached.EXT4 {
-					formatOptions = append(formatOptions, cached.EXT4FormatOptions()...)
-				}
-
-				var mountOptions []string
-				if baseLVFormat == cached.EXT4 {
-					mountOptions = cached.EXT4MountOptions()
-				}
+				formatOptions := cached.FormatOptions(baseLVDevice, baseLVFormat)
+				mountOptions := cached.MountOptions(baseLVFormat)
 
 				execRun(b, "mkfs."+baseLVFormat, formatOptions...)
 
