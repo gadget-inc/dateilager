@@ -1004,43 +1004,51 @@ func compareFileContents(info os.FileInfo, file1, file2 string) (bool, error) {
 
 // exec executes a command
 func execRun(t testing.TB, command string, args ...string) {
+	t.Helper()
 	err := exec.Run(t.Context(), command, args...)
 	require.NoError(t, err)
 }
 
 // execOutput executes a command and returns the output
 func execOutput(t testing.TB, command string, args ...string) string {
+	t.Helper()
 	out, err := exec.Output(t.Context(), command, args...)
 	require.NoError(t, err)
 	return out
 }
 
 func ensurePV(t testing.TB, pv string) {
+	t.Helper()
 	err := lvm.EnsurePV(t.Context(), pv)
 	require.NoError(t, err)
 }
 
 func removePV(t testing.TB, pv string) {
+	t.Helper()
 	err := lvm.RemovePV(t.Context(), pv)
 	require.NoError(t, err)
 }
 
 func ensureVG(t testing.TB, vgName string, devices ...string) {
+	t.Helper()
 	err := lvm.EnsureVG(t.Context(), vgName, devices...)
 	require.NoError(t, err)
 }
 
 func removeVG(t testing.TB, vgName string) {
+	t.Helper()
 	err := lvm.RemoveVG(t.Context(), vgName)
 	require.NoError(t, err)
 }
 
 func ensureLV(t testing.TB, lvName string, lvCreateArgs ...string) {
+	t.Helper()
 	err := lvm.EnsureLV(t.Context(), lvName, lvCreateArgs...)
 	require.NoError(t, err)
 }
 
 func removeLV(t testing.TB, lvName string) {
+	t.Helper()
 	err := lvm.RemoveLV(t.Context(), lvName)
 	require.NoError(t, err)
 }

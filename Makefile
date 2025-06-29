@@ -132,6 +132,7 @@ test-integration: migrate
 
 bench: bin/test-integration
 bench: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
+bench: export LOG_LEVEL = error
 bench: migrate
 	sudo -E env PATH="/usr/sbin:$$PATH" bin/test-integration -test.v -test.bench=. -test.benchtime=10x -test.run=^# $(BENCH_PROFILE)
 

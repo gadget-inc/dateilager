@@ -32,6 +32,7 @@ const (
 	CACHE_PATH_SUFFIX = "dl_cache"
 	NO_CHANGE_USER    = -1
 	EXT4              = "ext4"
+	XFS               = "xfs"
 )
 
 type Cached struct {
@@ -58,8 +59,8 @@ func New(client *client.Client, nameSuffix string) *Cached {
 	thinpoolLV := vg + "/thinpool"
 
 	return &Cached{
-		BaseLV:           first(os.Getenv("DL_BASE_LV"), baseLV),
-		BaseLVFormat:     os.Getenv("DL_BASE_LV_FORMAT"),
+		BaseLV:           firstNonEmptry(os.Getenv("DL_BASE_LV"), baseLV),
+		BaseLVFormat:     firstNonEmptry(os.Getenv("DL_BASE_LV_FORMAT"), XFS),
 		BaseLVMountPoint: path.Join("/mnt", baseLV),
 		BasePV:           os.Getenv("DL_BASE_PV"),
 		CacheGid:         NO_CHANGE_USER,
@@ -86,10 +87,6 @@ func (c *Cached) Prepare(ctx context.Context, cacheVersion int64) error {
 	}
 
 	if err := c.importBasePV(ctx); err != nil {
-		return err
-	}
-
-	if err := c.createThinpool(ctx); err != nil {
 		return err
 	}
 
@@ -167,23 +164,23 @@ func (c *Cached) PrepareBasePV(ctx context.Context, cacheVersion int64) error {
 		return err
 	}
 
-	vg := first(os.Getenv("DL_CACHE_VG"), "vg_dl_cache")
+	vg := firstNonEmptry(os.Getenv("DL_CACHE_VG"), "vg_dl_cache")
 
 	if err := lvm.EnsureVG(ctx, vg, c.BasePV); err != nil {
 		if !strings.Contains(err.Error(), "already in volume group") {
 			return err
 		}
 
-		// base physical volume is already in a volume group. Assume we
-		// vgimportclone'd the base physical volume and renamed the
-		// hardcoded cache volume group to c.VG
+		// base PV is already in a VG, so assume we already
+		// vgimportclone'd the base PV and renamed the hardcoded cache
+		// VG to c.VG
 		vg = c.VG
 	}
 
 	lv := vg + "/base"
 	lvDevice := "/dev/" + lv
 
-	if err := lvm.EnsureLV(ctx, lv, "--type", "linear", "--extents", "100%FREE", "--name", "base", "-y", vg); err != nil {
+	if err := lvm.EnsureLV(ctx, lv, LVCreateBaseArgs(vg, c.BasePV)...); err != nil {
 		return err
 	}
 
@@ -324,10 +321,9 @@ func (c *Cached) importBasePV(ctx context.Context) error {
 	ctx, span := telemetry.Start(ctx, "cached.import-base-pv")
 	defer span.End()
 
-	logger.Debug(ctx, "checking volume group")
 	err := exec.Run(ctx, "vgdisplay", c.VG)
 	if err == nil {
-		logger.Info(ctx, "volume group already exists")
+		logger.Info(ctx, "vg already exists")
 		return nil
 	}
 
@@ -345,27 +341,26 @@ func (c *Cached) importBasePV(ctx context.Context) error {
 		return fmt.Errorf("failed to extend volume group with devices: %w", err)
 	}
 
-	return nil
+	return lvm.EnsureLV(ctx, c.ThinpoolLV, LVCreateThinpoolArgs(c.VG, c.ThinpoolPVs)...)
 }
 
-// createThinpool creates the LVM thin pool if it doesn't exist
-func (c *Cached) createThinpool(ctx context.Context) error {
-	ctx = logger.With(ctx, key.LV.Field(c.ThinpoolLV))
-	ctx, span := telemetry.Start(ctx, "cached.create-thin-pool")
-	defer span.End()
+func LVCreateBaseArgs(vg string, basePV string) []string {
+	return []string{
+		// Create a linear LV
+		"--type", "linear",
 
-	logger.Debug(ctx, "checking thin pool lv")
-	err := exec.Run(ctx, "lvdisplay", c.ThinpoolLV)
-	if err == nil {
-		logger.Info(ctx, "thin pool already exists")
-		return nil
+		// Name the base LV vg/base
+		"--name", "base",
+
+		// Make the base LV take up all the space on the PV
+		"--extents", "100%PVS",
+
+		// Yes, do it even if the LV already has a filesystem
+		"-y",
+
+		// Pass the volume group the base LV should be created in
+		vg,
 	}
-
-	if !strings.Contains(err.Error(), "Failed to find logical volume") {
-		return fmt.Errorf("failed to check lvm thin pool %s: %w", c.ThinpoolLV, err)
-	}
-
-	return lvm.EnsureLV(ctx, c.ThinpoolLV, LVCreateThinpoolArgs(c.VG, c.ThinpoolPVs)...)
 }
 
 func LVCreateThinpoolArgs(vg string, thinpoolPVs []string) []string {
@@ -377,23 +372,19 @@ func LVCreateThinpoolArgs(vg string, thinpoolPVs []string) []string {
 		"--name", "thinpool",
 
 		// Make the thin pool take up all the space on the provided PVs
-		"--extents=100%PVS",
+		"--extents", "100%PVS",
 
 		// Use minimum allowed chunk size for better small file efficiency
-		"--chunksize=64k",
+		"--chunksize", "64k",
 
 		// Use one stripe per thinpool device to maximize performance
-		"--stripes=" + strconv.Itoa(len(thinpoolPVs)),
+		"--stripes", strconv.Itoa(len(thinpoolPVs)),
 
 		// Use a small stripe size for better IO performance on small files
-		"--stripesize=64k",
-
-		// Skip zeroing for faster creation and better write performance
-		// TODO: figure out data leakage risk
-		"--zero=n",
+		"--stripesize", "64k",
 
 		// Pass TRIM/discard commands through to underlying storage
-		"--discards=passdown",
+		"--discards", "passdown",
 
 		// Pass the volume group the thin pool should be created in
 		vg,
@@ -401,6 +392,25 @@ func LVCreateThinpoolArgs(vg string, thinpoolPVs []string) []string {
 
 	// ensure the thinpool only uses the provided PVs
 	return append(lvCreateArgs, thinpoolPVs...)
+}
+
+func LVCreateThinSnapshotArgs(baseLv string, thinpoolLV string, lvName string) []string {
+	return []string{
+		// Create a snapshot
+		"--snapshot",
+
+		// Use the thinpool to store the snapshot (i.e. make it a thin snapshot)
+		"--thinpool", thinpoolLV,
+
+		// Use the base lv as the external origin LV
+		baseLv,
+
+		// Name the snapshot
+		"--name", lvName,
+
+		// Don't skip activation, we want to use the snapshot immediately
+		"--setactivationskip", "n",
+	}
 }
 
 // EXT4FormatOptions returns the format options for ext4 filesystems optimized for node_modules
@@ -456,8 +466,8 @@ func EXT4MountOptions() []string {
 	}
 }
 
-// first returns the first non-empty string from the given slice
-func first(ss ...string) string {
+// firstNonEmptry returns the firstNonEmptry non-empty string from the given slice
+func firstNonEmptry(ss ...string) string {
 	for _, s := range ss {
 		if s != "" {
 			return s

@@ -201,7 +201,7 @@ func BenchmarkDirOperations(b *testing.B) {
 				defer os.RemoveAll(tmpDir)
 
 				b.ResetTimer()
-				for n := 0; n < b.N; n++ {
+				for n := 0; b.Loop(); n++ {
 					targetNodeModules := path.Join(tmpDir, fmt.Sprintf("app/%d/node_modules", n)) // tmp/bench/dateilager_bench_<random>/app/<n>/node_modules
 					err := op(cachedNodeModules, targetNodeModules)
 					b.StopTimer()
@@ -242,7 +242,7 @@ func BenchmarkDirOperations(b *testing.B) {
 				mkdirAll(b, cacheDir, 0o755)
 
 				b.ResetTimer()
-				for n := 0; n < b.N; n++ {
+				for n := 0; b.Loop(); n++ {
 					targetNodeModules := path.Join(targetPath, fmt.Sprintf("app/%d/node_modules", n)) // tmp/bench/dateilager_bench_<random>/gadget/app/<n>/node_modules
 					err := op(cachedNodeModules, targetNodeModules)
 					b.StopTimer()
@@ -262,7 +262,7 @@ func BenchmarkDirOperations(b *testing.B) {
 
 				baseLVFormat := os.Getenv("DL_BASE_LV_FORMAT")
 				if baseLVFormat == "" {
-					baseLVFormat = cached.EXT4
+					baseLVFormat = cached.XFS
 				}
 
 				thinpoolPVGlobs := os.Getenv("DL_THINPOOL_PV_GLOBS")
@@ -288,7 +288,7 @@ func BenchmarkDirOperations(b *testing.B) {
 				ensureVG(b, vg, basePV)
 				defer removeVG(b, vg)
 
-				ensureLV(b, baseLV, "--type", "linear", "--extents", "100%FREE", "--name", "base", "-y", vg)
+				ensureLV(b, baseLV, cached.LVCreateBaseArgs(vg, basePV)...)
 				defer removeLV(b, baseLV)
 
 				formatOptions := []string{baseLVDevice}
@@ -321,8 +321,8 @@ func BenchmarkDirOperations(b *testing.B) {
 
 				execRun(b, "vgextend", append([]string{"--config=devices/allow_mixed_block_sizes=1", vg}, thinpoolPVs...)...)
 
-				ensureLV(b, vg+"/thinpool", cached.LVCreateThinpoolArgs(vg, thinpoolPVs)...)
-				defer removeLV(b, vg+"/thinpool")
+				ensureLV(b, thinpoolLV, cached.LVCreateThinpoolArgs(vg, thinpoolPVs)...)
+				defer removeLV(b, thinpoolLV)
 
 				execRun(b, "lvchange", "--activate", "n", baseLV)
 
@@ -330,7 +330,7 @@ func BenchmarkDirOperations(b *testing.B) {
 				lv := vg + "/" + volumeID
 				lvDevice := "/dev/" + lv
 
-				ensureLV(b, lv, "--type", "thin", "--thinpool", thinpoolLV, "--name", volumeID, "--setactivationskip", "n", baseLV)
+				ensureLV(b, lv, cached.LVCreateThinSnapshotArgs(baseLV, thinpoolLV, volumeID)...)
 				defer removeLV(b, lv)
 
 				targetDir := path.Join(tmpDir, "gadget")                 // tmp/bench/dateilager_bench_<random>/gadget

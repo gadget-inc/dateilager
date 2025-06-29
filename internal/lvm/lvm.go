@@ -13,110 +13,109 @@ import (
 	"go.uber.org/zap"
 )
 
-func EnsurePV(ctx context.Context, device string) error {
-	ctx = logger.With(ctx, key.Device.Field(device))
+func EnsurePV(ctx context.Context, pv string) error {
+	ctx = logger.With(ctx, key.PV.Field(pv))
 	logger.Debug(ctx, "checking physical volume")
 
-	err := exec.Run(ctx, "pvdisplay", device)
+	err := exec.Run(ctx, "pvdisplay", pv)
 	if err == nil {
 		logger.Info(ctx, "physical volume already exists")
 		return nil
 	}
 
 	if !strings.Contains(err.Error(), "Failed to find physical volume") {
-		return fmt.Errorf("failed to check lvm physical volume %s: %w", device, err)
+		return fmt.Errorf("failed to check physical volume %s: %w", pv, err)
 	}
 
 	logger.Info(ctx, "creating physical volume")
-	if err := exec.Run(ctx, "pvcreate", device); err != nil && !strings.Contains(err.Error(), "signal: killed") {
-		return fmt.Errorf("failed to create lvm physical volume %s: %w", device, err)
+	if err := exec.Run(ctx, "pvcreate", pv); err != nil && !strings.Contains(err.Error(), "signal: killed") {
+		return fmt.Errorf("failed to create physical volume %s: %w", pv, err)
 	}
 
-	logger.Info(ctx, "physical volume created successfully")
 	return nil
 }
 
-func RemovePV(ctx context.Context, device string) error {
-	ctx = logger.With(ctx, key.Device.Field(device))
+func RemovePV(ctx context.Context, pv string) error {
+	ctx = logger.With(ctx, key.PV.Field(pv))
 	logger.Debug(ctx, "checking physical volume for removal")
 
-	err := exec.Run(ctx, "pvdisplay", device)
+	err := exec.Run(ctx, "pvdisplay", pv)
 	if err != nil && !strings.Contains(err.Error(), "Failed to find physical volume") {
-		return fmt.Errorf("failed to check lvm physical volume %s: %w", device, err)
+		return fmt.Errorf("failed to check physical volume %s: %w", pv, err)
 	}
 
 	if err == nil {
 		logger.Info(ctx, "removing physical volume")
-		if err := exec.Run(ctx, "pvremove", device); err != nil {
-			return fmt.Errorf("failed to remove physical volume %s: %w", device, err)
+		if err := exec.Run(ctx, "pvremove", pv); err != nil {
+			return fmt.Errorf("failed to remove physical volume %s: %w", pv, err)
 		}
 	}
 
 	return nil
 }
 
-func EnsureVG(ctx context.Context, vgName string, devices ...string) error {
-	ctx = logger.With(ctx, key.VG.Field(vgName), key.Device.Field(strings.Join(devices, ",")))
+func EnsureVG(ctx context.Context, vg string, pvs ...string) error {
+	ctx = logger.With(ctx, key.VG.Field(vg), key.PVs.Field(pvs))
 	logger.Debug(ctx, "checking volume group")
 
-	err := exec.Run(ctx, "vgdisplay", vgName)
+	err := exec.Run(ctx, "vgdisplay", vg)
 	if err == nil {
 		logger.Debug(ctx, "volume group already exists")
 		return nil
 	}
 
 	if !strings.Contains(err.Error(), "not found") {
-		return fmt.Errorf("failed to check lvm volume group %s: %w", vgName, err)
+		return fmt.Errorf("failed to check volume group %s: %w", vg, err)
 	}
 
 	logger.Info(ctx, "creating volume group")
-	if err := exec.Run(ctx, "vgcreate", append([]string{vgName}, devices...)...); err != nil {
-		return fmt.Errorf("failed to create lvm volume group %s: %w", vgName, err)
+	if err := exec.Run(ctx, "vgcreate", append([]string{vg}, pvs...)...); err != nil {
+		return fmt.Errorf("failed to create volume group %s: %w", vg, err)
 	}
 
 	return nil
 }
 
-func RemoveVG(ctx context.Context, vgName string) error {
-	ctx = logger.With(ctx, key.VG.Field(vgName))
+func RemoveVG(ctx context.Context, vg string) error {
+	ctx = logger.With(ctx, key.VG.Field(vg))
 	logger.Debug(ctx, "checking volume group for removal")
 
-	err := exec.Run(ctx, "vgdisplay", vgName)
+	err := exec.Run(ctx, "vgdisplay", vg)
 	if err != nil && !strings.Contains(err.Error(), "not found") {
-		return fmt.Errorf("failed to check lvm volume group %s: %w", vgName, err)
+		return fmt.Errorf("failed to check volume group %s: %w", vg, err)
 	}
 
 	if err == nil {
-		logger.Info(ctx, "removing volume group", key.VG.Field(vgName))
-		if err := exec.Run(ctx, "vgremove", "-y", vgName); err != nil {
-			return fmt.Errorf("failed to remove lvm volume group %s: %w", vgName, err)
+		logger.Info(ctx, "removing volume group")
+		if err := exec.Run(ctx, "vgremove", "-y", vg); err != nil {
+			return fmt.Errorf("failed to remove volume group %s: %w", vg, err)
 		}
 	}
 
 	return nil
 }
 
-func EnsureLV(ctx context.Context, lvName string, lvCreateArgs ...string) error {
-	ctx = logger.With(ctx, key.LV.Field(lvName))
+func EnsureLV(ctx context.Context, lv string, lvCreateArgs ...string) error {
+	ctx = logger.With(ctx, key.LV.Field(lv))
 	logger.Debug(ctx, "checking logical volume")
 
-	err := exec.Run(ctx, "lvdisplay", lvName)
+	err := exec.Run(ctx, "lvdisplay", lv)
 	if err == nil {
 		logger.Info(ctx, "logical volume already exists")
 		return nil
 	}
 
 	if !strings.Contains(err.Error(), "Failed to find logical volume") {
-		return fmt.Errorf("failed to check if logical volume %s exists: %w", lvName, err)
+		return fmt.Errorf("failed to check if logical volume %s exists: %w", lv, err)
 	}
 
 	logger.Info(ctx, "creating logical volume")
 	if err := exec.Run(ctx, "lvcreate", lvCreateArgs...); err != nil {
-		return fmt.Errorf("failed to create logical volume %s: %w", lvName, err)
+		return fmt.Errorf("failed to create logical volume %s: %w", lv, err)
 	}
 
 	// Wait for device to appear and settle udev
-	if err := udevSettle(ctx, "/dev/"+lvName); err != nil {
+	if err := udevSettle(ctx, "/dev/"+lv); err != nil {
 		// keep going, the device might still be available
 		logger.Warn(ctx, "udev settle failed for logical volume", zap.Error(err))
 	}
@@ -124,19 +123,19 @@ func EnsureLV(ctx context.Context, lvName string, lvCreateArgs ...string) error 
 	return nil
 }
 
-func RemoveLV(ctx context.Context, lvName string) error {
-	ctx = logger.With(ctx, key.LV.Field(lvName))
+func RemoveLV(ctx context.Context, lv string) error {
+	ctx = logger.With(ctx, key.LV.Field(lv))
 	logger.Debug(ctx, "checking logical volume for removal")
 
-	err := exec.Run(ctx, "lvdisplay", lvName)
+	err := exec.Run(ctx, "lvdisplay", lv)
 	if err != nil && !strings.Contains(err.Error(), "Failed to find logical volume") && !strings.Contains(err.Error(), "not found") {
-		return fmt.Errorf("failed to check if logical volume %s exists: %w", lvName, err)
+		return fmt.Errorf("failed to check if logical volume %s exists: %w", lv, err)
 	}
 
 	if err == nil {
 		logger.Info(ctx, "removing logical volume")
-		if err := exec.Run(ctx, "lvremove", "-y", lvName); err != nil {
-			return fmt.Errorf("failed to remove logical volume %s: %w", lvName, err)
+		if err := exec.Run(ctx, "lvremove", "-y", lv); err != nil {
+			return fmt.Errorf("failed to remove logical volume %s: %w", lv, err)
 		}
 	}
 
@@ -165,7 +164,7 @@ func udevSettle(ctx context.Context, device string) error {
 }
 
 // waitForDevice polls for device availability with timeout
-func waitForDevice(ctx context.Context, devicePath string, timeout time.Duration) error {
+func waitForDevice(ctx context.Context, device string, timeout time.Duration) error {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -175,12 +174,12 @@ func waitForDevice(ctx context.Context, devicePath string, timeout time.Duration
 	for {
 		select {
 		case <-ticker.C:
-			if _, err := os.Stat(devicePath); err == nil {
+			if _, err := os.Stat(device); err == nil {
 				logger.Debug(ctx, "device is available")
 				return nil
 			}
 		case <-timeoutCtx.Done():
-			return fmt.Errorf("device node did not appear in time: %s (timeout: %v)", devicePath, timeout)
+			return fmt.Errorf("device node did not appear in time: %s (timeout: %v)", device, timeout)
 		case <-ctx.Done():
 			return ctx.Err()
 		}

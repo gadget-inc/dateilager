@@ -23,16 +23,15 @@ import (
 
 func NewCachedServerCommand() *cobra.Command {
 	var (
-		healthzPort           uint16
-		driverNameSuffix      string
-		stagingPath           string
-		csiSocket             string
-		cacheVersion          int64
-		cacheUid              int
-		cacheGid              int
-		lvmThinpoolDeviceGlob string
-		lvmBaseDevice         string
-		lvmBaseDeviceFormat   string
+		healthzPort      uint16
+		driverNameSuffix string
+		csiSocket        string
+		cacheVersion     int64
+		cacheUid         int
+		cacheGid         int
+		thinpoolPVGlobs  string
+		basePV           string
+		baseLVFormat     string
 	)
 
 	cmd := &cobra.Command{
@@ -44,12 +43,11 @@ func NewCachedServerCommand() *cobra.Command {
 			ctx := cmd.Context()
 
 			cd := cached.New(client.FromContext(ctx), driverNameSuffix)
-			cd.BaseLVMountPoint = stagingPath
 			cd.CacheUid = cacheUid
 			cd.CacheGid = cacheGid
-			cd.ThinpoolPVGlobs = lvmThinpoolDeviceGlob
-			cd.BasePV = lvmBaseDevice
-			cd.BaseLVFormat = lvmBaseDeviceFormat
+			cd.ThinpoolPVGlobs = thinpoolPVGlobs
+			cd.BasePV = basePV
+			cd.BaseLVFormat = baseLVFormat
 
 			cachedServer := cached.NewServer(ctx)
 			cachedServer.RegisterCSI(cd)
@@ -65,7 +63,7 @@ func NewCachedServerCommand() *cobra.Command {
 
 			err := cd.Prepare(ctx, cacheVersion)
 			if err != nil {
-				return fmt.Errorf("failed to prepare cache daemon in %s: %w", stagingPath, err)
+				return fmt.Errorf("failed to prepare: %w", err)
 			}
 
 			group, ctx := errgroup.WithContext(ctx)
@@ -97,19 +95,17 @@ func NewCachedServerCommand() *cobra.Command {
 
 	flags := cmd.PersistentFlags()
 
-	flags.Uint16Var(&healthzPort, "healthz-port", 5053, "Healthz HTTP port")
+	flags.Int64Var(&cacheVersion, "cache-version", -1, "cache version to use")
+	flags.IntVar(&cacheGid, "cache-gid", -1, "gid for cache files")
+	flags.IntVar(&cacheUid, "cache-uid", -1, "uid for cache files")
+	flags.StringVar(&baseLVFormat, "base-lv-format", firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), cached.XFS), "lvm base logical volume format to use for base volume")
+	flags.StringVar(&basePV, "base-pv", os.Getenv("DL_BASE_PV"), "lvm base physical volume to use for base volume")
 	flags.StringVar(&csiSocket, "csi-socket", "", "path for running the Kubernetes CSI Driver interface")
 	flags.StringVar(&driverNameSuffix, "driver-name-suffix", "", "suffix for the driver name")
-	flags.StringVar(&stagingPath, "staging-path", "", "path for staging downloaded caches")
-	flags.Int64Var(&cacheVersion, "cache-version", -1, "cache version to use")
-	flags.IntVar(&cacheUid, "cache-uid", -1, "uid for cache files")
-	flags.IntVar(&cacheGid, "cache-gid", -1, "gid for cache files")
-	flags.StringVar(&lvmThinpoolDeviceGlob, "lvm-thinpool-device-glob", os.Getenv("DL_THINPOOL_PV_GLOBS"), "glob of lvm devices to use for thinpool")
-	flags.StringVar(&lvmBaseDevice, "lvm-base-device", os.Getenv("DL_BASE_PV"), "lvm base device to use for base volume")
-	flags.StringVar(&lvmBaseDeviceFormat, "lvm-base-device-format", firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), "ext4"), "lvm base device format to use for base volume")
+	flags.StringVar(&thinpoolPVGlobs, "thinpool-pv-globs", os.Getenv("DL_THINPOOL_PV_GLOBS"), "comma-separated globs of PVs to use for the thinpool")
+	flags.Uint16Var(&healthzPort, "healthz-port", 5053, "Healthz HTTP port")
 
 	_ = cmd.MarkPersistentFlagRequired("csi-socket")
-	_ = cmd.MarkPersistentFlagRequired("staging-path")
 
 	return cmd
 }

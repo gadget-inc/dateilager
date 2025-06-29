@@ -49,7 +49,7 @@ func (c *Cached) NodeGetCapabilities(ctx context.Context, _ *csi.NodeGetCapabili
 // Usually, a CSI driver would return some interesting stuff about the node here for the controller to use to place volumes, but because we're only supporting node local volumes, we return something very basic
 func (c *Cached) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	return &csi.NodeGetInfoResponse{
-		NodeId:            first(os.Getenv("NODE_ID"), os.Getenv("NODE_NAME"), os.Getenv("K8S_NODE_NAME"), "dev"),
+		NodeId:            firstNonEmptry(os.Getenv("NODE_ID"), os.Getenv("NODE_NAME"), os.Getenv("K8S_NODE_NAME"), "dev"),
 		MaxVolumesPerNode: 110,
 	}, nil
 }
@@ -77,8 +77,8 @@ func (c *Cached) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	trace.SpanFromContext(ctx).SetAttributes(key.VolumeID.Attribute(volumeID), key.TargetPath.Attribute(targetPath), key.LV.Attribute(lv), key.Device.Attribute(lvDevice))
 	logger.Info(ctx, "publishing volume")
 
-	if err := lvm.EnsureLV(ctx, lv, "--type", "thin", "--thinpool", c.ThinpoolLV, "--name", volumeID, "--setactivationskip", "n", c.BaseLV); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create logical volume: %v", err)
+	if err := lvm.EnsureLV(ctx, lv, LVCreateThinSnapshotArgs(c.BaseLV, c.ThinpoolLV, volumeID)...); err != nil {
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	notMounted, err := mounter.IsLikelyNotMountPoint(targetPath)
