@@ -38,7 +38,7 @@ func RemovePV(ctx context.Context, pv string) error {
 	ctx = logger.With(ctx, key.PV.Field(pv))
 
 	err := exec.Run(ctx, "pvdisplay", pv)
-	if err != nil && !strings.Contains(err.Error(), "Failed to find physical volume") {
+	if err != nil && !strings.Contains(err.Error(), "Failed to find physical volume") && !strings.Contains(err.Error(), "not found") {
 		return fmt.Errorf("failed to check physical volume %s: %w", pv, err)
 	}
 

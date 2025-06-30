@@ -1,22 +1,37 @@
 package test
 
 import (
+	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/pkg/cached"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/utils/mount"
 )
 
-var mounter = mount.New("")
+var (
+	mounter           = mount.New("")
+	randomFileContent = make([]byte, 1024*1024)
+)
 
 type dirOperation func(src, dst string) error
+
+func init() {
+	_, err := rand.Read(randomFileContent)
+	if err != nil {
+		panic(err)
+	}
+}
 
 func TestDirOperations(t *testing.T) {
 	operations := map[string]dirOperation{
@@ -281,6 +296,13 @@ func BenchmarkDirOperations(b *testing.B) {
 						baseLV := vg + "/base"
 						baseLVDevice := "/dev/" + baseLV
 						thinpoolLV := vg + "/thinpool"
+						thinpoolCacheLVSize := os.Getenv("DL_THINPOOL_CACHE_LV_SIZE")
+						thinpoolCachePV := "/dev/ram0"
+
+						if thinpoolCacheLVSize != "" {
+							defer removePV(b, thinpoolCachePV)
+							defer execRun(b, "modprobe", "-r", "brd")
+						}
 
 						ensureVG(b, vg, basePV)
 						defer removeVG(b, vg)
@@ -314,6 +336,18 @@ func BenchmarkDirOperations(b *testing.B) {
 						ensureLV(b, thinpoolLV, cached.LVCreateThinpoolArgs(vg, thinpoolPVs)...)
 						defer removeLV(b, thinpoolLV)
 
+						if thinpoolCacheLVSize != "" {
+							execRun(b, "modprobe", "brd", "rd_nr=1", "rd_size="+thinpoolCacheLVSize)
+							ensurePV(b, thinpoolCachePV)
+							execRun(b, "vgextend", vg, thinpoolCachePV)
+
+							thinpoolCacheLV := vg + "/thinpool_cache"
+							ensureLV(b, thinpoolCacheLV, cached.LVCreateThinpoolCacheArgs(vg, thinpoolCachePV)...)
+							defer removeLV(b, thinpoolCacheLV)
+
+							execRun(b, "lvconvert", cached.LVConvertThinpoolCacheArgs(thinpoolCacheLV, thinpoolLV)...)
+						}
+
 						execRun(b, "lvchange", "--activate", "n", baseLV)
 
 						volumeID := "csi-0" // e.g. csi-8987671b2736a86f94ac1054cfda8012690a6c3a11b6cf40d1fcb64550c44935
@@ -337,12 +371,16 @@ func BenchmarkDirOperations(b *testing.B) {
 
 						b.ResetTimer()
 						for n := 0; b.Loop(); n++ {
-							targetNodeModules := path.Join(targetDir, fmt.Sprintf("app/%d/node_modules", n)) // tmp/bench/dateilager_bench_<random>/gadget/app/<n>/node_modules
-							err := op(cachedNodeModules, targetNodeModules)
-							b.StopTimer()
-							require.NoError(b, err, "%s failed", name)
+							nodeModulesDir := path.Join(targetDir, fmt.Sprintf("app/%d/node_modules", n)) // tmp/bench/dateilager_bench_<random>/gadget/app/<n>/node_modules
+							srcDir := path.Join(targetDir, fmt.Sprintf("app/%d/src", n))                  // tmp/bench/dateilager_bench_<random>/gadget/app/<n>/src
 
-							err = CompareDirectories(cachedNodeModules, targetNodeModules)
+							err := op(cachedNodeModules, nodeModulesDir)
+							err = errors.Join(err, writeFilesOfVaryingSizes(b, srcDir, 1000))
+
+							b.StopTimer()
+							require.NoError(b, err)
+
+							err = CompareDirectories(cachedNodeModules, nodeModulesDir)
 							require.NoError(b, err, "compareDirectories %s vs %s failed", cachedNodeModules, targetDir)
 							b.StartTimer()
 						}
@@ -351,4 +389,59 @@ func BenchmarkDirOperations(b *testing.B) {
 			}
 		})
 	}
+}
+
+func writeFilesOfVaryingSizes(t testing.TB, dir string, count int) error {
+	err := os.MkdirAll(dir, 0o775)
+	if err != nil {
+		return err
+	}
+
+	variation := min(50, count)
+	minFileSize := 64
+	maxFileSize := len(randomFileContent)
+
+	g, ctx := errgroup.WithContext(t.Context())
+	workers := parallelWorkerCount()
+	jobs := make(chan int, workers)
+
+	for range workers {
+		g.Go(func() error {
+			for i := range jobs {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+
+				name := "file" + strconv.Itoa(i)
+				size := minFileSize + (i%variation)*(maxFileSize/variation)
+				start := (i * variation) % maxFileSize
+				end := min(start+size, maxFileSize)
+				if err := os.WriteFile(path.Join(dir, name), randomFileContent[start:end], 0o644); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+
+	for i := range count {
+		jobs <- i
+	}
+	close(jobs)
+
+	return g.Wait()
+}
+
+func parallelWorkerCount() int {
+	envCount := os.Getenv("DL_WRITE_WORKERS")
+	if envCount != "" {
+		count, err := strconv.Atoi(envCount)
+		if err == nil {
+			return count
+		}
+	}
+
+	return max(runtime.NumCPU()/2, 1)
 }
