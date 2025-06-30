@@ -37,14 +37,11 @@ func NewCachedPrepareCommand() *cobra.Command {
 	}
 
 	flags := cmd.PersistentFlags()
-
 	flags.Int64Var(&cacheVersion, "cache-version", -1, "cache version to use")
-	flags.IntVar(&cacheUid, "cache-uid", -1, "uid for cache files")
-	flags.IntVar(&cacheGid, "cache-gid", -1, "gid for cache files")
-	flags.StringVar(&basePV, "base-pv", os.Getenv("DL_BASE_PV"), "lvm base physical volume to use")
-	flags.StringVar(&baseLVFormat, "base-lv-format", firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), cached.XFS), "lvm base logical volume format to use")
-
-	_ = cmd.MarkPersistentFlagRequired("base-pv")
+	flags.IntVar(&cacheGid, "cache-gid", cached.NO_CHANGE_USER, "gid for cache files")
+	flags.IntVar(&cacheUid, "cache-uid", cached.NO_CHANGE_USER, "uid for cache files")
+	flags.StringVar(&baseLVFormat, "base-lv-format", firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), cached.XFS), "filesystem format to use for the base LV")
+	flags.StringVar(&basePV, "base-pv", os.Getenv("DL_BASE_PV"), "PV to use for the base LV")
 
 	return cmd
 }

@@ -71,8 +71,8 @@ func NewCachedCommand() *cobra.Command {
 	flags.AddGoFlag(flag.CommandLine.Lookup("log-level"))
 	flags.StringVar(&logEncoding, "log-encoding", "console", "Log encoding (console | json)")
 	flags.BoolVar(&enableTracing, "tracing", false, "Whether tracing is enabled")
-	flags.StringVar(&upstreamHost, "upstream-host", "", "Upstream server hostname")
-	flags.Uint16Var(&upstreamPort, "upstream-port", 5051, "Upstream server port")
+	flags.StringVar(&upstreamHost, "upstream-host", "", "Upstream dateilager server hostname")
+	flags.Uint16Var(&upstreamPort, "upstream-port", 5051, "Upstream dateilager server port")
 
 	_ = cmd.MarkFlagRequired("upstream-host")
 	_ = cmd.MarkFlagRequired("upstream-port")
