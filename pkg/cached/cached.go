@@ -60,7 +60,7 @@ func New(client *client.Client, nameSuffix string) *Cached {
 
 	return &Cached{
 		BaseLV:           firstNonEmpty(os.Getenv("DL_BASE_LV"), baseLV),
-		BaseLVFormat:     firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), XFS),
+		BaseLVFormat:     firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), EXT4),
 		BaseLVMountPoint: path.Join("/mnt", baseLV),
 		BasePV:           os.Getenv("DL_BASE_PV"),
 		CacheGid:         NO_CHANGE_USER,
@@ -149,7 +149,7 @@ func (c *Cached) findThinpoolPVs(ctx context.Context) error {
 
 var mounter = mount.New("")
 
-//nolint:gocyclo // we should try to break this one up, but ignoring for now
+//nolint:gocyclo // complexity is unavoidable here
 func (c *Cached) PrepareBasePV(ctx context.Context, cacheVersion int64) error {
 	ctx, span := telemetry.Start(ctx, "cached.prepare-base-pv")
 	defer span.End()
