@@ -271,6 +271,10 @@ func BenchmarkDirOperations(b *testing.B) {
 
 			for _, baseLVFormat := range []string{cached.XFS, cached.EXT4} {
 				b.Run(baseLVFormat, func(b *testing.B) {
+					if baseLVFormat == cached.EXT4 && name == "Reflink" {
+						b.Skip("ext4 doesn't support reflinks")
+					}
+
 					b.Run("lvm", func(b *testing.B) {
 						basePV := os.Getenv("DL_BASE_PV")
 						if basePV == "" {
