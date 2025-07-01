@@ -4,9 +4,10 @@
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs-02032da4.url = "github:NixOS/nixpkgs/02032da4af073d0f6110540c8677f16d4be0117f";
   };
 
-  outputs = { self, flake-utils, nixpkgs }:
+  outputs = { self, flake-utils, nixpkgs, nixpkgs-02032da4 }:
     (flake-utils.lib.eachSystem [
       "x86_64-linux"
       "x86_64-darwin"
@@ -16,6 +17,7 @@
       (system: nixpkgs.lib.fix (flake:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          pkgs-02032da4 = nixpkgs-02032da4.legacyPackages.${system};
 
           lib = pkgs.lib // {
             maintainers = pkgs.lib.maintainers // {
@@ -50,13 +52,13 @@
 
             go = pkgs.go_1_24;
 
-            nodejs = pkgs.nodejs-18_x;
+            nodejs = pkgs-02032da4.nodejs-18_x;
 
             postgresql = pkgs.postgresql_14;
 
             google-cloud-sdk = pkgs.google-cloud-sdk;
 
-            golangci-lint = pkgs.golangci-lint;
+            golangci-lint = pkgs-02032da4.golangci-lint;
 
             glibcLocales = pkgs.glibcLocales;
             ## DateiLager outputs
