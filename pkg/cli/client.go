@@ -45,9 +45,9 @@ func NewClientCommand() *cobra.Command {
 		Short:             "DateiLager client",
 		DisableAutoGenTag: true,
 		Version:           version.Version,
-		SilenceErrors:     true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			cmd.SilenceUsage = true // silence usage when an error occurs after flags have been parsed
+			cmd.SilenceErrors = true // silence cobra errors and usage after flags have been parsed and validated
+			cmd.SilenceUsage = true
 
 			err := logger.Init(environment.LoadOrProduction(), encoding, zap.NewAtomicLevelAt(*level))
 			if err != nil {

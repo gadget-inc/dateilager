@@ -31,9 +31,9 @@ func NewCachedCommand() *cobra.Command {
 		Short:             "DateiLager cache daemon",
 		DisableAutoGenTag: true,
 		Version:           version.Version,
-		SilenceErrors:     true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			cmd.SilenceUsage = true // silence usage when an error occurs after flags have been parsed
+			cmd.SilenceErrors = true // silence cobra errors and usage after flags have been parsed and validated
+			cmd.SilenceUsage = true
 
 			err := logger.Init(environment.LoadOrProduction(), logEncoding, zap.NewAtomicLevelAt(*logLevel))
 			if err != nil {
