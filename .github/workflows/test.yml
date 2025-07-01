@@ -39,7 +39,6 @@ jobs:
           echo "DL_BASE_PV=$base_device" >> $GITHUB_ENV
           echo "DL_BASE_LV_FORMAT=${{ matrix.filesystem }}" >> $GITHUB_ENV
           echo "DL_THINPOOL_PV_GLOBS=$thin1_device,$thin2_device" >> $GITHUB_ENV
-          echo "DL_THINPOOL_CACHE_LV_SIZE=4194304" >> $GITHUB_ENV
 
       - name: Checkout repository
         uses: actions/checkout@v3

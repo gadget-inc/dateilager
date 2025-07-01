@@ -2,7 +2,6 @@ package test
 
 import (
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -372,10 +371,10 @@ func BenchmarkDirOperations(b *testing.B) {
 						b.ResetTimer()
 						for n := 0; b.Loop(); n++ {
 							nodeModulesDir := path.Join(targetDir, fmt.Sprintf("app/%d/node_modules", n)) // tmp/bench/dateilager_bench_<random>/gadget/app/<n>/node_modules
-							srcDir := path.Join(targetDir, fmt.Sprintf("app/%d/src", n))                  // tmp/bench/dateilager_bench_<random>/gadget/app/<n>/src
+							// srcDir := path.Join(targetDir, fmt.Sprintf("app/%d/src", n))                  // tmp/bench/dateilager_bench_<random>/gadget/app/<n>/src
 
 							err := op(cachedNodeModules, nodeModulesDir)
-							err = errors.Join(err, writeFilesOfVaryingSizes(b, srcDir, 1000))
+							// err = errors.Join(err, writeFilesOfVaryingSizes(b, srcDir, 1000))
 
 							b.StopTimer()
 							require.NoError(b, err)
