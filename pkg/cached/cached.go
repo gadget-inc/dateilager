@@ -57,7 +57,7 @@ type Cached struct {
 }
 
 func New(client *client.Client, nameSuffix string) *Cached {
-	vg := "vg_dateilager_cached" + strings.ReplaceAll(nameSuffix, "-", "_")
+	vg := "vg_dateilager_cached_" + strings.ReplaceAll(nameSuffix, "-", "_")
 	baseLV := vg + "/base"
 	thinpoolLV := vg + "/thinpool"
 	thinpoolCacheLV := vg + "/thinpool_cache"
