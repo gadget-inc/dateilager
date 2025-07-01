@@ -443,5 +443,5 @@ func parallelWorkerCount() int {
 		}
 	}
 
-	return max(runtime.NumCPU()/2, 1)
+	return min(max(runtime.NumCPU()/2, 2), 8)
 }
