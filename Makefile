@@ -164,7 +164,7 @@ server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go development/serve
 cached: export DL_ENV=dev
 cached: export DL_TOKEN=$(DEV_SHARED_READER_TOKEN)
 cached:
-	go run cmd/cached/main.go --upstream-host $(GRPC_HOST) --upstream-port $(GRPC_PORT) --csi-socket $(CACHED_SOCKET) --staging-path tmp/cache-stage
+	go run cmd/cached/main.go --upstream-host $(GRPC_HOST) --upstream-port $(GRPC_PORT) --csi-socket $(CACHED_SOCKET)
 
 client-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
 client-update: export DL_SKIP_SSL_VERIFICATION=1

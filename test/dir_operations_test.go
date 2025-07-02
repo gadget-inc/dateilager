@@ -178,10 +178,10 @@ func TestDirOperations(t *testing.T) {
 			})
 
 			t.Run("NodeModules", func(t *testing.T) {
-				stagingDir := cachedStagingDir(t)                                   // tmp/dateilager_cached
-				cachedNodeModules := path.Join(stagingDir, "dl_cache/node_modules") // tmp/dateilager_cached/dl_cache/node_modules
-				tmpDir := emptyTmpDir(t)                                            // tmp/test/dateilager_test_<random>
-				targetNodeModules := path.Join(tmpDir, "node_modules")              // tmp/test/dateilager_test_<random>/node_modules
+				preparedDir := preparedCachedDir(t)                                  // tmp/dateilager_cached
+				cachedNodeModules := path.Join(preparedDir, "dl_cache/node_modules") // tmp/dateilager_cached/dl_cache/node_modules
+				tmpDir := emptyTmpDir(t)                                             // tmp/test/dateilager_test_<random>
+				targetNodeModules := path.Join(tmpDir, "node_modules")               // tmp/test/dateilager_test_<random>/node_modules
 				defer os.RemoveAll(tmpDir)
 
 				err := op(cachedNodeModules, targetNodeModules)
@@ -206,8 +206,8 @@ func BenchmarkDirOperations(b *testing.B) {
 	}
 	os.RemoveAll(tmpDir)
 
-	stagingDir := cachedStagingDir(b)                                   // tmp/dateilager_cached
-	cachedNodeModules := path.Join(stagingDir, "dl_cache/node_modules") // tmp/dateilager_cached/dl_cache/node_modules
+	preparedDir := preparedCachedDir(b)                                  // tmp/dateilager_cached
+	cachedNodeModules := path.Join(preparedDir, "dl_cache/node_modules") // tmp/dateilager_cached/dl_cache/node_modules
 
 	for name, op := range operations {
 		b.Run(name, func(b *testing.B) {
@@ -251,7 +251,7 @@ func BenchmarkDirOperations(b *testing.B) {
 				require.NoError(b, err, "failed to create target path")
 				defer os.RemoveAll(targetPath)
 
-				execRun(b, "mount", "-t", "overlay", "overlay", "-n", "--options", fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", stagingDir, upperDir, workDir), targetPath)
+				execRun(b, "mount", "-t", "overlay", "overlay", "-n", "--options", fmt.Sprintf("redirect_dir=on,volatile,lowerdir=%s,upperdir=%s,workdir=%s", preparedDir, upperDir, workDir), targetPath)
 				defer execRun(b, "umount", targetPath)
 
 				mkdirAll(b, cacheDir, 0o755)
@@ -328,7 +328,7 @@ func BenchmarkDirOperations(b *testing.B) {
 							defer os.RemoveAll(baseLVMountPoint)
 
 							require.NoError(b, mounter.Mount(baseLVDevice, baseLVMountPoint, baseLVFormat, mountOptions))
-							execRun(b, "cp", "-a", stagingDir+"/.", baseLVMountPoint)
+							execRun(b, "cp", "-a", preparedDir+"/.", baseLVMountPoint)
 
 							require.NoError(b, mounter.Unmount(baseLVMountPoint))
 							execRun(b, "lvchange", "--permission", "r", baseLV)

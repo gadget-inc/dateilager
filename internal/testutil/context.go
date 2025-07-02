@@ -9,8 +9,6 @@ import (
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/pkg/api"
-	"github.com/gadget-inc/dateilager/pkg/cached"
-	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -95,10 +93,4 @@ func (tc *TestCtx) FsApi() *api.Fs {
 		DbConn:        tc.Connector(),
 		ContentLookup: tc.ContentLookup(),
 	}
-}
-
-func (tc *TestCtx) CachedApi(cl *client.Client, stagingPath string) *cached.Cached {
-	c := cached.New(cl, "")
-	c.BaseLVMountPoint = stagingPath
-	return c
 }

@@ -145,10 +145,10 @@ func TestCachedCSIDriverMountsCacheAtSuffix(t *testing.T) {
 
 	targetDir := path.Join(tmpDir, "vol-target")
 
-	stagingDir := path.Join(tmpDir, "vol-staging-target")
+	stagingTargetDir := path.Join(tmpDir, "vol-staging-target")
 	_, err = cd.NodePublishVolume(tc.Context(), &csi.NodePublishVolumeRequest{
 		VolumeId:          "foobar",
-		StagingTargetPath: stagingDir,
+		StagingTargetPath: stagingTargetDir,
 		TargetPath:        targetDir,
 		VolumeCapability:  &csi.VolumeCapability{},
 		VolumeContext:     map[string]string{},
@@ -397,8 +397,9 @@ func createTestCachedServer(tc util.TestCtx, tmpDir string) (*cached.Cached, str
 		Grpc: grpcServer,
 	}
 
-	cached := tc.CachedApi(cl, path.Join(tmpDir, "cached", "staging"))
-	s.RegisterCSI(cached)
+	cd := cached.New(cl, "test")
+	cd.BaseLVMountPoint = path.Join(tmpDir, "mnt/base")
+	s.RegisterCSI(cd)
 
 	socket := path.Join(tmpDir, "csi.sock")
 	endpoint := "unix://" + socket
@@ -408,5 +409,5 @@ func createTestCachedServer(tc util.TestCtx, tmpDir string) (*cached.Cached, str
 		require.NoError(tc.T(), err, "CSI Server exited")
 	}()
 
-	return cached, endpoint, func() { closeClient(); s.Grpc.Stop() }
+	return cd, endpoint, func() { closeClient(); s.Grpc.Stop() }
 }

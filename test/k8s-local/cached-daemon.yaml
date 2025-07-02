@@ -11,7 +11,7 @@ spec:
       app: dateilager-csi-cached
   template:
     metadata:
-      name: datailager-csi-cached
+      name: dateilager-csi-cached
       labels:
         app: dateilager-csi-cached
     spec:
@@ -20,43 +20,87 @@ spec:
         - name: csi-cached
           image: dl-local:dev
           imagePullPolicy: IfNotPresent
+          terminationMessagePath: "/tmp/termination-log" # csi driver mounts the host's /dev so use /tmp instead
           securityContext:
-            privileged: true
-            runAsUser: 0
+            privileged: true # required for managing mount targets on the host
+            runAsUser: 0 # required for running root commands (e.g. mount, lvcreate, etc.)
           command:
-            [
-              "./cached",
-              "--log-level=info",
-              "--log-encoding=json",
-              "--csi-socket=unix:///csi/csi.sock",
-              "--upstream-host=host.internal",
-              "--upstream-port=5051",
-              "--tracing",
-              "--staging-path=/var/lib/kubelet/dateilager_cache",
-            ]
+            - ./entrypoint-cached.sh
+          args:
+            - --log-level=debug
+            - --log-encoding=console
+            - --upstream-host=host.internal
+            - --cache-uid=1005
+            - --cache-gid=1005
+            - --base-pv=/dev/loop0
+            - --thinpool-pv-globs=/dev/loop1,/dev/loop2
+            - --thinpool-cache-lv-size=2097152
+          ports:
+            - name: healthz-port
+              containerPort: 5053
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: healthz-port
+            periodSeconds: 1
+            failureThreshold: 120
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz-port
+            periodSeconds: 2
+            failureThreshold: 2
+            timeoutSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz-port
+            initialDelaySeconds: 12
+            periodSeconds: 2
+            failureThreshold: 2
+            timeoutSeconds: 2
           env:
             - name: DL_ENV
               value: "dev"
-            - name: "LOG_LEVEL"
-              value: "debug"
-            - name: DL_PGX_TRACING
-              value: "1"
             - name: DL_TOKEN
               value: "v2.public.eyJzdWIiOiJzaGFyZWQtcmVhZGVyIn1CxWdB02s9el0Wt7qReARZ-7JtIb4Zj3D4Oiji1yXHqj0orkpbcVlswVUiekECJC16d1NrHwD2FWSwRORZn8gK"
             - name: DL_SKIP_SSL_VERIFICATION
               value: "1"
-            - name: BUMP_TO_ROLL
-              value: "2"
-            - name: NODE_NAME
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: K8S_NAMESPACE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: K8S_NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: k8s.pod.name=$(K8S_POD_NAME),k8s.namespace.name=$(K8S_NAMESPACE_NAME),k8s.node.name=$(K8S_NODE_NAME)
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi/
-            - mountPath: "/var/lib/kubelet"
-              name: host-kubelet-dir
+            - name: host-kubelet-dir
+              mountPath: /var/lib/kubelet
               mountPropagation: "Bidirectional"
+            - name: host-dev-dir
+              mountPath: /dev
+            - name: host-lib-modules-dir
+              mountPath: /lib/modules
+              readOnly: true
+            - name: host-etc-udev-dir
+              mountPath: /etc/udev
+            - name: host-lib-udev-dir
+              mountPath: /lib/udev
+            - name: host-run-udev-dir
+              mountPath: /run/udev
+            - name: host-sys-dir
+              mountPath: /sys
         - name: csi-driver-registrar
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1
           args:
@@ -71,6 +115,13 @@ spec:
           ports:
             - containerPort: 9809
               name: healthz
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            periodSeconds: 1
+            failureThreshold: 125
+            timeoutSeconds: 1
           livenessProbe:
             httpGet:
               path: /healthz
@@ -92,3 +143,30 @@ spec:
         - name: host-kubelet-dir
           hostPath:
             path: /var/lib/kubelet
+            type: Directory
+        # the host dev directory so that the CSI driver can mount lvm devices
+        - name: host-dev-dir
+          hostPath:
+            path: /dev
+            type: Directory
+        # the host kernel modules so that the CSI driver can load them for lvm
+        - name: host-lib-modules-dir
+          hostPath:
+            path: /lib/modules
+            type: Directory
+        - name: host-etc-udev-dir
+          hostPath:
+            path: /etc/udev
+            type: Directory
+        - name: host-lib-udev-dir
+          hostPath:
+            path: /lib/udev
+            type: Directory
+        - name: host-run-udev-dir
+          hostPath:
+            path: /run/udev
+            type: Directory
+        - name: host-sys-dir
+          hostPath:
+            path: /sys
+            type: Directory

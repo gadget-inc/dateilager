@@ -360,25 +360,25 @@ func emptyBenchDir(b *testing.B) string {
 	return dir
 }
 
-// cachedStagingDir returns a directory similar to the staging directory used by the cached csi driver.
+// preparedCachedDir returns a directory similar to the prepared cache directory used by the cached csi driver.
 //
 // The directory contains a dl_cache directory with a large node_modules directory inside it.
 // The layout is as follows:
 //
 //	tmp/dateilager_cached/
 //	├── dl_cache/
+//	│   ├── node_modules/
+//	│   │   ├── react/
+//	│   │   ├── react-dom/
+//	│   │   └── ... (many more)
 //	│   ├── package.json
 //	│   └── package-lock.json
-//	│   └── node_modules/
-//	│       ├── react/
-//	│       ├── react-dom/
-//	│       └── ... (many more)
-func cachedStagingDir(t testing.TB) string {
+func preparedCachedDir(t testing.TB) string {
 	wd := workspaceDir(t)
-	stagingDir := path.Join(wd, "tmp/dateilager_cached")
-	mkdirAll(t, path.Join(stagingDir, "dl_cache"), 0o755)
+	preparedDir := path.Join(wd, "tmp/dateilager_cached")
+	mkdirAll(t, path.Join(preparedDir, "dl_cache"), 0o755)
 
-	err := os.WriteFile(path.Join(stagingDir, "dl_cache/package.json"), []byte(`{
+	err := os.WriteFile(path.Join(preparedDir, "dl_cache/package.json"), []byte(`{
   "name": "bigdir",
   "version": "1.0.0",
   "description": "A big directory",
@@ -443,10 +443,10 @@ func cachedStagingDir(t testing.TB) string {
 	require.NoError(t, err, "failed to write package.json")
 
 	cmd := exec.Command(t.Context(), "npm", "install")
-	cmd.SetDir(path.Join(stagingDir, "dl_cache"))
+	cmd.SetDir(path.Join(preparedDir, "dl_cache"))
 	require.NoError(t, cmd.Run(), "npm install failed")
 
-	return stagingDir
+	return preparedDir
 }
 
 func writeTmpFiles(t *testing.T, version int64, files map[string]string) string {
