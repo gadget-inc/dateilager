@@ -34,7 +34,7 @@ spec:
             - --cache-gid=1005
             - --base-pv=/dev/loop0
             - --thinpool-pv-globs=/dev/loop1,/dev/loop2
-            - --thinpool-cache-lv-size=2097152
+            - --thinpool-cache-lv-size-kib=2097152
           ports:
             - name: healthz-port
               containerPort: 5053
