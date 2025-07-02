@@ -22,7 +22,7 @@ import (
 
 // GetPluginInfo returns metadata of the plugin
 func (c *Cached) GetPluginInfo(ctx context.Context, _ *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
-	return &csi.GetPluginInfoResponse{Name: DRIVER_NAME + c.NameSuffix, VendorVersion: version.Version}, nil
+	return &csi.GetPluginInfoResponse{Name: c.DriverName, VendorVersion: version.Version}, nil
 }
 
 // GetPluginCapabilities returns available capabilities of the plugin

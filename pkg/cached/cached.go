@@ -28,11 +28,9 @@ import (
 )
 
 const (
-	DRIVER_NAME       = "dev.gadget.dateilager.cached"
-	CACHE_PATH_SUFFIX = "dl_cache"
-	NO_CHANGE_USER    = -1
-	EXT4              = "ext4"
-	XFS               = "xfs"
+	NO_CHANGE_USER = -1
+	EXT4           = "ext4"
+	XFS            = "xfs"
 )
 
 type Cached struct {
@@ -45,6 +43,7 @@ type Cached struct {
 	CacheGid            int
 	CacheUid            int
 	Client              *client.Client
+	DriverName          string
 	NameSuffix          string
 	ThinpoolCacheLV     string
 	ThinpoolCacheLVSize string
@@ -57,6 +56,11 @@ type Cached struct {
 }
 
 func New(client *client.Client, nameSuffix string) *Cached {
+	driverName := "dev.gadget.dateilager.cached"
+	if nameSuffix != "" {
+		driverName += "-" + strings.ReplaceAll(nameSuffix, "_", "-")
+	}
+
 	vg := "vg_dateilager_cached_" + strings.ReplaceAll(nameSuffix, "-", "_")
 	baseLV := vg + "/base"
 	thinpoolLV := vg + "/thinpool"
@@ -70,6 +74,7 @@ func New(client *client.Client, nameSuffix string) *Cached {
 		CacheGid:            NO_CHANGE_USER,
 		CacheUid:            NO_CHANGE_USER,
 		Client:              client,
+		DriverName:          driverName,
 		NameSuffix:          nameSuffix,
 		ThinpoolCacheLV:     thinpoolCacheLV,
 		ThinpoolCacheLVSize: os.Getenv("DL_THINPOOL_CACHE_LV_SIZE"),
@@ -260,7 +265,7 @@ func (c *Cached) PrepareBasePV(ctx context.Context, cacheVersion int64) error {
 		}
 	}
 
-	cacheRootDir := filepath.Join(c.BaseLVMountPoint, CACHE_PATH_SUFFIX)
+	cacheRootDir := filepath.Join(c.BaseLVMountPoint, "dl_cache")
 	cacheVersions := client.ReadCacheVersionFile(cacheRootDir)
 
 	if cacheVersion == -1 || !slices.Contains(cacheVersions, cacheVersion) {
