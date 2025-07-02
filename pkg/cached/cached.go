@@ -56,12 +56,8 @@ type Cached struct {
 }
 
 func New(client *client.Client, nameSuffix string) *Cached {
-	driverName := "dev.gadget.dateilager.cached"
-	if nameSuffix != "" {
-		driverName += "-" + strings.ReplaceAll(nameSuffix, "_", "-")
-	}
-
-	vg := "vg_dateilager_cached_" + strings.ReplaceAll(nameSuffix, "-", "_")
+	driverName := "dev.gadget.dateilager.cached" + strings.ReplaceAll(nameSuffix, "_", "-")
+	vg := "vg_dateilager_cached" + strings.ReplaceAll(nameSuffix, "-", "_")
 	baseLV := vg + "/base"
 	thinpoolLV := vg + "/thinpool"
 	thinpoolCacheLV := vg + "/thinpool_cache"
