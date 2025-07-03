@@ -344,12 +344,7 @@ func BenchmarkDirOperations(b *testing.B) {
 							execRun(b, "modprobe", "brd", "rd_nr=1", "rd_size="+thinpoolCacheLVSize)
 							ensurePV(b, thinpoolCachePV)
 							execRun(b, "vgextend", vg, thinpoolCachePV)
-
-							thinpoolCacheLV := vg + "/thinpool_cache"
-							ensureLV(b, thinpoolCacheLV, cached.LVCreateThinpoolCacheArgs(vg, thinpoolCachePV)...)
-							defer removeLV(b, thinpoolCacheLV)
-
-							execRun(b, "lvconvert", cached.LVConvertThinpoolCacheArgs(thinpoolCacheLV, thinpoolLV)...)
+							execRun(b, "lvconvert", cached.LVConvertThinpoolCacheArgs(thinpoolCachePV, thinpoolLV)...)
 						}
 
 						execRun(b, "lvchange", "--activate", "n", baseLV)

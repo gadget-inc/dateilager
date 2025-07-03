@@ -371,11 +371,7 @@ func (c *Cached) importBasePV(ctx context.Context) error {
 			return fmt.Errorf("failed to extend vg with ram disk: %w", err)
 		}
 
-		if err := lvm.EnsureLV(ctx, c.ThinpoolCacheLV, LVCreateThinpoolCacheArgs(c.VG, c.ThinpoolCachePV)...); err != nil {
-			return err
-		}
-
-		if err := exec.Run(ctx, "lvconvert", LVConvertThinpoolCacheArgs(c.ThinpoolCacheLV, c.ThinpoolLV)...); err != nil {
+		if err := exec.Run(ctx, "lvconvert", LVConvertThinpoolCacheArgs(c.ThinpoolCachePV, c.ThinpoolLV)...); err != nil {
 			return err
 		}
 	}
@@ -433,40 +429,21 @@ func LVCreateThinpoolArgs(vg string, thinpoolPVs []string) []string {
 	return append(lvCreateArgs, thinpoolPVs...)
 }
 
-func LVCreateThinpoolCacheArgs(vg string, thinpoolCachePV string) []string {
+func LVConvertThinpoolCacheArgs(thinpoolCachePV string, thinpoolLV string) []string {
 	return []string{
-		// Create a cache pool
-		"--type", "cache-pool",
+		// Add a writecache to the thinpool LV
+		"--type", "writecache",
 
-		// Name the cache pool vg/thinpool_cache
-		"--name", "thinpool_cache",
+		// Use the thinpool cache PV as the cache
+		"--cachedevice", thinpoolCachePV,
 
-		// Make the cache pool take up all the space on the provided PV
-		"--extents", "100%PVS",
-
-		// Pass the VG the cache pool should be created in
-		vg,
-
-		// Pass the cache pool PV
-		thinpoolCachePV,
-	}
-}
-
-func LVConvertThinpoolCacheArgs(thinpoolCacheLV string, thinpoolLV string) []string {
-	return []string{
-		// Add a cache to the thinpool LV
-		"--type", "cache",
-
-		// Use the thinpool cache LV as the cache
-		"--cachepool", thinpoolCacheLV,
-
-		// Use writeback instead of writethrough
-		"--cachemode", "writeback",
+		// Use a 4KiB block size to match the block size of the thinpool
+		"--cachesettings", "block_size=4096",
 
 		// Yes, do it no matter what
 		"-y",
 
-		// The thinpool LV to add a cache to
+		// The thinpool LV to add the writecache to
 		thinpoolLV,
 	}
 }
