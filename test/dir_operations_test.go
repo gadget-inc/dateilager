@@ -300,7 +300,7 @@ func BenchmarkDirOperations(b *testing.B) {
 						baseLV := vg + "/base"
 						baseLVDevice := "/dev/" + baseLV
 						thinpoolLV := vg + "/thinpool"
-						thinpoolCacheLVSize := os.Getenv("DL_THINPOOL_CACHE_LV_SIZE")
+						thinpoolCacheLVSize := os.Getenv("DL_THINPOOL_CACHE_LV_SIZE_KIB")
 						thinpoolCachePV := "/dev/ram0"
 
 						if thinpoolCacheLVSize != "" {
