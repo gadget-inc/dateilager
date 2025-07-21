@@ -299,6 +299,19 @@ DL_TOKEN='<your-token>' sudo -E env PATH="/usr/sbin:$PATH" bin/cached prepare \
     --cache-version='<your-cache-version>'
 ```
 
+Once the base PV is prepared, you can resize the base LV to have a specified amount of free space. This is useful because snapshots inherit the free space of the base LV.
+
+```bash
+# activate the base LV and make it writable
+sudo lvchange -ay -p rw vg_dl_cache/base
+
+# resize the base LV to have 12GB of free space
+sudo development/scripts/cached-resize.sh 12
+
+# deactivate the base LV and make it read-only
+sudo lvchange -an -p r vg_dl_cache/base
+```
+
 Once the base PV is prepared, you can create a GCP image using the prepared disk as the source.
 
 ## Release
