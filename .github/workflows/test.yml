@@ -10,7 +10,7 @@ defaults:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-l
     strategy:
       matrix:
         filesystem: [ext4, xfs]
@@ -20,11 +20,26 @@ jobs:
         run: |
           cd /
           sudo mkdir -p /mnt/xfs
-          sudo dd if=/dev/zero of=/mnt/xfs.img bs=2G count=10
+          sudo truncate -s 20G /mnt/xfs.img
           sudo mkfs.xfs -m reflink=1 /mnt/xfs.img
           sudo mount -o loop /mnt/xfs.img $GITHUB_WORKSPACE
           sudo chown $USER:$USER $GITHUB_WORKSPACE
           findmnt
+
+      - name: Setup LVM devices
+        run: |
+          sudo truncate -s 5G /var/tmp/lvm-base.img
+          sudo truncate -s 5G /var/tmp/lvm-thin1.img
+          sudo truncate -s 5G /var/tmp/lvm-thin2.img
+
+          base_device=$(sudo losetup --find --show /var/tmp/lvm-base.img)
+          thin1_device=$(sudo losetup --find --show /var/tmp/lvm-thin1.img)
+          thin2_device=$(sudo losetup --find --show /var/tmp/lvm-thin2.img)
+
+          echo "DL_BASE_PV=$base_device" >> $GITHUB_ENV
+          echo "DL_BASE_LV_FORMAT=${{ matrix.filesystem }}" >> $GITHUB_ENV
+          echo "DL_THINPOOL_PV_GLOBS=$thin1_device,$thin2_device" >> $GITHUB_ENV
+          echo "DL_THINPOOL_CACHE_LV_SIZE_KIB=2097152" >> $GITHUB_ENV
 
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -44,7 +59,7 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/tmp
           export TMPDIR=$GITHUB_WORKSPACE/tmp
           echo "TMPDIR=$GITHUB_WORKSPACE/tmp" >> $GITHUB_ENV
-          echo "FORCE_REFLINKS=always" >> $GITHUB_ENV
+          echo "DL_USE_REFLINKS=1" >> $GITHUB_ENV
 
       - name: Run Go tests
         run: make test-integration
@@ -53,6 +68,7 @@ jobs:
         run: make bench
         env:
           DL_OVERLAY_BENCH: true
+          DL_LVM_BENCH: true
 
   test-fuzz:
     runs-on: ubuntu-latest
@@ -65,9 +81,6 @@ jobs:
 
       - name: Start background services
         run: dev &
-
-      - name: Install js modules for HardLink tests
-        run: make install-js
 
       - name: Build Go binaries
         run: make build
@@ -127,7 +140,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.23.6"
+          go-version: "1.24.4"
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v5

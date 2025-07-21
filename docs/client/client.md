@@ -15,7 +15,7 @@ DateiLager client
 
 ### Environment variables
 
-You can make Dateilager always use reflink support from the underlying filesystem with the `FORCE_REFLINKS=true` environment variable. If you want to disable support for reflinks even if a filesystem supports them, you can also set `FORCE_REFLINKS=never`.
+You can make Dateilager use reflinks if the underlying filesystem supports them with the `DL_USE_REFLINKS=1` environment variable. If you want to always use reflinks no matter what, you can also set `DL_USE_REFLINKS=always`.
 
 ### SEE ALSO
 

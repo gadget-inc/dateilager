@@ -128,6 +128,10 @@ make client-rebuild to_version=3 dir=./rebuild
 ls -lah ./rebuild
 ```
 
+### Getting PASETO tokens locally
+
+You can sign PASETO tokens locally with this handy online tool: https://token.dev/paseto/. Ensure you use the V2 algorithm in the public mode, and copy the PASTEO public and private key from the `development` folder.
+
 ## Javascript Client
 
 Ensure a server is running with `make server`.
@@ -163,6 +167,152 @@ stream.send({
 const version = await stream.complete();
 console.log("[updateObject] version: " + version);
 ```
+
+## Developing Cached
+
+Dateilager has a CSI driver named cached (cache daemon) that is deployed as a Kubernetes DaemonSet. This driver is responsible for preparing a `dl_cache` and mounting it on Kubernetes pods so that future `dateilager-client rebuild` commands can use it.
+
+Cached uses [Logical Volume Manager (LVM)](https://www.man7.org/linux/man-pages/man8/lvm.8.html) to manage mounting the `dl_cache` volume on Kubernetes pods. LVM is only available on Linux, so cached can only be developed and deployed on Linux.
+
+Here are steps to setup a development environment on a GCP VM that can be used to develop cached. This guide assumes you want to use VSCode/Cursor's Remote-SSH feature.
+
+1. Create GCP VM running Debian with a 100GB boot disk so we have enough space to install nix and other dependencies.
+
+   If you want to run benchmarks, it's best to use the same configuration as your production Kubernetes nodes, e.g. `n2d-standard-16` with a 500GB `pd-balanced` disk for the base PV and local SSD(s) for the thinpool PVs.
+1. SSH into the VM so gcloud knows where about it.
+   ```
+   gcloud compute ssh --zone "us-central1-a" <your-vm-name> --project <your-project-id>
+   ```
+1. Setup SSH config so the VM shows up in VSCode/Cursor's Remote-SSH list.
+   ```
+   gcloud compute config-ssh
+   ```
+1. Run `Remote-SSH: Connect to Host...` in VSCode/Cursor to connect to the VM. Now you can run the rest of the commands using VSCode/Cursor's terminal.
+1. Install OS packages needed for development.
+   ```
+   sudo apt update
+   sudo apt install -y direnv git lvm2 sysstat xfsprogs
+   sudo modprobe -v xfs
+   ```
+1. Install Golang so VSCode/Cursor can use it to run the LSP server.
+   ```
+   wget https://go.dev/dl/go1.24.5.linux-amd64.tar.gz
+   rm -rf /usr/local/go
+   sudo tar -C /usr/local -xzf go1.24.5.linux-amd64.tar.gz
+   ```
+1. Install Nix.
+   ```
+   sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --daemon
+   ```
+1. Update `/etc/nix/nix.conf` to enable nix-command and flakes.
+   ```
+   cat <<EOF | sudo tee /etc/nix/nix.conf
+   build-users-group = nixbld
+   experimental-features = nix-command flakes
+   trusted-users = root $USER
+   EOF
+   ```
+1. Update `.bashrc` to setup Go for VSCode/Cursor's LSP server and Nix and direnv for interactive shells.
+
+   ```
+   # Add go to PATH so it's available to all shells (including remote-ssh)
+   sed -i '/^# If not running interactively, don'\''t do anything$/i export PATH=/usr/local/go/bin:$PATH' ~/.bashrc
+
+   # Setup Nix and direnv for interactive shells
+   cat << 'EOF' >> ~/.bashrc
+   if ! which nix; then
+      unset __ETC_PROFILE_NIX_SOURCED
+   fi
+
+   if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
+      . '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
+   fi
+
+   eval "$(direnv hook bash)"
+   EOF
+   ```
+
+1. Reinstall Remote Server to pick up the Go LSP server changes.
+   ```
+   Remote-SSH: Reinstall Remote Server and Reload Window
+   ```
+1. Clone the dateilager repo and setup direnv.
+   ```
+   mkdir -p ~/repos/dateilager
+   cd ~/repos/dateilager
+   git clone https://github.com/gadget-inc/dateilager.git .
+   direnv allow
+   ```
+1. If you didn't attach any disks to the VM, you can setup some loop devices to use for the base PV and thinpool PVs.
+
+   ```
+   mkdir -p tmp/img
+   truncate -s 5G tmp/img/lvm-base.img
+   truncate -s 5G tmp/img/lvm-thin1.img
+   truncate -s 5G tmp/img/lvm-thin2.img
+
+   sudo losetup --sector-size 4096 --direct-io=on --find --show tmp/img/lvm-base.img
+   sudo losetup --sector-size 4096 --direct-io=on --find --show tmp/img/lvm-thin1.img
+   sudo losetup --sector-size 4096 --direct-io=on --find --show tmp/img/lvm-thin2.img
+   ```
+
+1. Export these environment variables so cached knows where the base PV and thinpool PVs are.
+
+   ```
+   # Use loop devices
+   export DL_BASE_PV=/dev/loop0
+   export DL_THINPOOL_PV_GLOBS=/dev/loop1,/dev/loop2
+
+   # OR
+
+   # Use real devices
+   export DL_BASE_PV=/dev/disk/by-id/google-dl-testing
+   export DL_THINPOOL_PV_GLOBS=/dev/disk/by-id/google-local-nvme-ssd-*
+   ```
+
+That's it! You can now start developing cached.
+
+```bash
+# in one tab, run the background services (postgres)
+dev
+
+# in another tab, run integration tests that test the cached driver
+make test-integration
+```
+
+### Preparing the base PV for production
+
+Cached works best with a large `dl_cache`. When cached starts up, it will download the `dl_cache` and prepare the base PV if it's not already prepared. This is great for development and testing, but bad for production because the base PV takes longer to prepare the larger the `dl_cache` is.
+
+The best way to deploy cached to production is to prepare the base PV on a temporary disk and export it into a GCP image. The exported image can then be attached to Kubernetes nodes as a secondary boot disk so that the disk is immediately available for use when the node boots.
+
+To prepare the base PV for production, first setup a GCP VM using [the instructions above](#developing-cached) and ensure the GCP VM is configured with an additional disk that will be used as the base PV. Assuming the disk is named `dl-cache-base-pv`, you can prepare the base PV by running the following:
+
+```bash
+# ensure cached is built
+make bin/cached
+
+# prepare the base PV
+DL_TOKEN='<your-token>' sudo -E env PATH="/usr/sbin:$PATH" bin/cached prepare \
+    --base-pv=/dev/disk/by-id/google-dl-cache-base-pv \
+    --upstream-host='<your-upstream-host>' \
+    --cache-version='<your-cache-version>'
+```
+
+Once the base PV is prepared, you can resize the base LV to have a specified amount of free space. This is useful because snapshots inherit the free space of the base LV.
+
+```bash
+# activate the base LV and make it writable
+sudo lvchange -ay -p rw vg_dl_cache/base
+
+# resize the base LV to have 12GB of free space
+sudo development/scripts/cached-resize.sh 12
+
+# deactivate the base LV and make it read-only
+sudo lvchange -an -p r vg_dl_cache/base
+```
+
+Once the base PV is prepared, you can create a GCP image using the prepared disk as the source.
 
 ## Release
 
@@ -226,7 +376,3 @@ You can then test the pre-release in Gadget's repo using the `update-dateilager.
 ```bash
 bin/update-dateilager.ts v0.0.0-pre.<git-sha>
 ```
-
-### Getting PASETO tokens locally
-
-You can sign PASETO tokens locally with this handy online tool: https://token.dev/paseto/. Ensure you use the V2 algorithm in the public mode, and copy the PASTEO public and private key from the `development` folder.
