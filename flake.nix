@@ -3,10 +3,11 @@
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/02032da4af073d0f6110540c8677f16d4be0117f";
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   };
 
-  outputs = { self, flake-utils, nixpkgs }:
+  outputs = { self, flake-utils, nixpkgs, nixpkgs-unstable }:
     (flake-utils.lib.eachSystem [
       "x86_64-linux"
       "x86_64-darwin"
@@ -16,6 +17,7 @@
       (system: nixpkgs.lib.fix (flake:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          pkgs-unstable = nixpkgs-unstable.legacyPackages.${system};
 
           lib = pkgs.lib // {
             maintainers = pkgs.lib.maintainers // {
@@ -48,7 +50,7 @@
 
             ## Pinned packages from nixpkgs
 
-            go = pkgs.go;
+            go = pkgs-unstable.go_1_24;
 
             nodejs = pkgs.nodejs-18_x;
 

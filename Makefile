@@ -19,6 +19,7 @@ DEV_SHARED_READER_TOKEN ?= v2.public.eyJzdWIiOiJzaGFyZWQtcmVhZGVyIn1CxWdB02s9el0
 
 PKG_GO_FILES := $(shell find pkg/ -type f -name '*.go')
 INTERNAL_GO_FILES := $(shell find internal/ -type f -name '*.go')
+TEST_GO_FILES := $(shell find test/ -type f -name '*.go')
 PROTO_FILES := $(shell find internal/pb/ -type f -name '*.proto')
 
 MIGRATE_DIR := ./migrations
@@ -121,14 +122,19 @@ else
 	cd test && go test -run $(name)
 endif
 
-test-integration: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
-test-integration: export RUN_WITH_SUDO = true
-test-integration: migrate
-	cd test && go test -tags integration
+bin/test-integration: $(PKG_GO_FILES) $(INTERNAL_GO_FILES) $(TEST_GO_FILES) go.sum
+	CGO_ENABLED=0 go test ./test -tags integration -c -o $@
 
+test-integration: bin/test-integration
+test-integration: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
+test-integration: migrate
+	sudo -E env PATH="/usr/sbin:$$PATH" bin/test-integration -ginkgo.noisySkippings=false
+
+bench: bin/test-integration
 bench: export DB_URI = postgres://$(DB_USER):$(DB_PASS)@$(DB_HOST):5432/dl_tests
+bench: export LOG_LEVEL = error
 bench: migrate
-	cd test && go test -v -bench . -run=^# $(BENCH_PROFILE)
+	sudo -E env PATH="/usr/sbin:$$PATH" bin/test-integration -test.v -test.bench=. -test.benchtime=10x -test.run=^# $(BENCH_PROFILE)
 
 bench/cpu: export BENCH_PROFILE = -cpuprofile cpu.pprof
 bench/cpu: bench
@@ -158,7 +164,7 @@ server-profile: internal/pb/fs.pb.go internal/pb/fs_grpc.pb.go development/serve
 cached: export DL_ENV=dev
 cached: export DL_TOKEN=$(DEV_SHARED_READER_TOKEN)
 cached:
-	go run cmd/cached/main.go --upstream-host $(GRPC_HOST) --upstream-port $(GRPC_PORT) --csi-socket $(CACHED_SOCKET) --staging-path tmp/cache-stage
+	go run cmd/cached/main.go --upstream-host $(GRPC_HOST) --upstream-port $(GRPC_PORT) --csi-socket $(CACHED_SOCKET)
 
 client-update: export DL_TOKEN=$(DEV_TOKEN_PROJECT_1)
 client-update: export DL_SKIP_SSL_VERIFICATION=1
@@ -240,7 +246,7 @@ upload-prerelease-container-image:
 ifndef version_tag
 	docker build --platform linux/arm64,linux/amd64 --push -t us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:pre-$(GIT_COMMIT) .
 else
-	docker build --platform linux/arm64,linux/amd64 --push -t "us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:$(version_tag)"  -t "us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:v$(version_tag)" -t us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:pre-latest .
+	docker build --platform linux/arm64,linux/amd64 --push -t "us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:$(version_tag)" -t us-central1-docker.pkg.dev/gadget-core-production/core-production/dateilager:pre-latest .
 endif
 
 build-local-container:

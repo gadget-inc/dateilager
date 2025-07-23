@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"net"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -21,7 +20,11 @@ import (
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/environment"
+	"github.com/gadget-inc/dateilager/internal/exec"
 	"github.com/gadget-inc/dateilager/internal/files"
+	"github.com/gadget-inc/dateilager/internal/logger"
+	"github.com/gadget-inc/dateilager/internal/lvm"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/gadget-inc/dateilager/pkg/api"
@@ -30,10 +33,34 @@ import (
 	"github.com/klauspost/compress/s2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 )
+
+func init() {
+	encoding := os.Getenv("LOG_ENCODING")
+	if encoding == "" {
+		encoding = "console"
+	}
+
+	levelStr := os.Getenv("LOG_LEVEL")
+	if levelStr == "" {
+		levelStr = "info"
+	}
+
+	level, err := zapcore.ParseLevel(levelStr)
+	if err != nil {
+		panic(fmt.Sprintf("failed to parse log level: %v", err))
+	}
+
+	err = logger.Init(environment.Dev, encoding, zap.NewAtomicLevelAt(level))
+	if err != nil {
+		panic(fmt.Sprintf("failed to init logger: %v", err))
+	}
+}
 
 type Type int
 
@@ -310,9 +337,7 @@ var (
 // workspaceDir returns the root directory of the git repository.
 func workspaceDir(t testing.TB) string {
 	cachedWorkspaceDirOnce.Do(func() {
-		s, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
-		require.NoError(t, err, "git rev-parse --show-toplevel failed")
-		cachedWorkspaceDir = strings.TrimSpace(string(s))
+		cachedWorkspaceDir = execOutput(t, "git", "rev-parse", "--show-toplevel")
 	})
 	return cachedWorkspaceDir
 }
@@ -320,7 +345,7 @@ func workspaceDir(t testing.TB) string {
 // emptyTmpDir returns a temporary directory for testing. (e.g. tmp/test/dateilager_test_<random>)
 func emptyTmpDir(t testing.TB) string {
 	wd := workspaceDir(t)
-	mkdirAll(t, path.Join(wd, "tmp/test"), 0o755)
+	mkdirAll(t, path.Join(wd, "tmp/test"), 0o777)
 	dir, err := os.MkdirTemp(path.Join(wd, "tmp/test"), "dateilager_test_")
 	require.NoError(t, err, "failed to create tmp dir")
 	return dir
@@ -335,25 +360,25 @@ func emptyBenchDir(b *testing.B) string {
 	return dir
 }
 
-// cachedStagingDir returns a directory similar to the staging directory used by the cached csi driver.
+// preparedCachedDir returns a directory similar to the prepared cache directory used by the cached csi driver.
 //
 // The directory contains a dl_cache directory with a large node_modules directory inside it.
 // The layout is as follows:
 //
 //	tmp/dateilager_cached/
 //	├── dl_cache/
+//	│   ├── node_modules/
+//	│   │   ├── react/
+//	│   │   ├── react-dom/
+//	│   │   └── ... (many more)
 //	│   ├── package.json
 //	│   └── package-lock.json
-//	│   └── node_modules/
-//	│       ├── react/
-//	│       ├── react-dom/
-//	│       └── ... (many more)
-func cachedStagingDir(t testing.TB) string {
+func preparedCachedDir(t testing.TB) string {
 	wd := workspaceDir(t)
-	stagingDir := path.Join(wd, "tmp/dateilager_cached")
-	mkdirAll(t, path.Join(stagingDir, "dl_cache"), 0o755)
+	preparedDir := path.Join(wd, "tmp/dateilager_cached")
+	mkdirAll(t, path.Join(preparedDir, "dl_cache"), 0o755)
 
-	err := os.WriteFile(path.Join(stagingDir, "dl_cache/package.json"), []byte(`{
+	err := os.WriteFile(path.Join(preparedDir, "dl_cache/package.json"), []byte(`{
   "name": "bigdir",
   "version": "1.0.0",
   "description": "A big directory",
@@ -417,11 +442,11 @@ func cachedStagingDir(t testing.TB) string {
 }`), 0o644)
 	require.NoError(t, err, "failed to write package.json")
 
-	cmd := exec.Command("npm", "install")
-	cmd.Dir = path.Join(stagingDir, "dl_cache")
+	cmd := exec.Command(t.Context(), "npm", "install")
+	cmd.SetDir(path.Join(preparedDir, "dl_cache"))
 	require.NoError(t, cmd.Run(), "npm install failed")
 
-	return stagingDir
+	return preparedDir
 }
 
 func writeTmpFiles(t *testing.T, version int64, files map[string]string) string {
@@ -975,4 +1000,55 @@ func compareFileContents(info os.FileInfo, file1, file2 string) (bool, error) {
 	}
 
 	return bytes.Equal(hash1.Sum(nil), hash2.Sum(nil)), nil
+}
+
+// exec executes a command
+func execRun(t testing.TB, command string, args ...string) {
+	t.Helper()
+	err := exec.Run(t.Context(), command, args...)
+	require.NoError(t, err)
+}
+
+// execOutput executes a command and returns the output
+func execOutput(t testing.TB, command string, args ...string) string {
+	t.Helper()
+	out, err := exec.Output(t.Context(), command, args...)
+	require.NoError(t, err)
+	return out
+}
+
+func ensurePV(t testing.TB, pv string) {
+	t.Helper()
+	err := lvm.EnsurePV(t.Context(), pv)
+	require.NoError(t, err)
+}
+
+func removePV(t testing.TB, pv string) {
+	t.Helper()
+	err := lvm.RemovePV(t.Context(), pv)
+	require.NoError(t, err)
+}
+
+func ensureVG(t testing.TB, vgName string, devices ...string) {
+	t.Helper()
+	err := lvm.EnsureVG(t.Context(), vgName, devices...)
+	require.NoError(t, err)
+}
+
+func removeVG(t testing.TB, vgName string) {
+	t.Helper()
+	err := lvm.RemoveVG(t.Context(), vgName)
+	require.NoError(t, err)
+}
+
+func ensureLV(t testing.TB, lvName string, lvCreateArgs ...string) {
+	t.Helper()
+	err := lvm.EnsureLV(t.Context(), lvName, lvCreateArgs...)
+	require.NoError(t, err)
+}
+
+func removeLV(t testing.TB, lvName string) {
+	t.Helper()
+	err := lvm.RemoveLV(t.Context(), lvName)
+	require.NoError(t, err)
 }
