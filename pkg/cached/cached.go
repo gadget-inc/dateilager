@@ -36,6 +36,7 @@ const (
 type Cached struct {
 	csi.UnimplementedIdentityServer
 	csi.UnimplementedNodeServer
+	BaseCachePV            string
 	BaseLV                 string
 	BaseLVFormat           string
 	BaseLVMountPoint       string
@@ -45,7 +46,6 @@ type Cached struct {
 	Client                 *client.Client
 	DriverName             string
 	NameSuffix             string
-	ThinpoolCacheLV        string
 	ThinpoolCacheLVSizeKib string
 	ThinpoolCachePV        string
 	ThinpoolLV             string
@@ -60,9 +60,9 @@ func New(client *client.Client, nameSuffix string) *Cached {
 	vg := "vg_dateilager_cached" + strings.ReplaceAll(nameSuffix, "-", "_")
 	baseLV := vg + "/base"
 	thinpoolLV := vg + "/thinpool"
-	thinpoolCacheLV := vg + "/thinpool_cache"
 
 	return &Cached{
+		BaseCachePV:            os.Getenv("DL_BASE_CACHE_PV"),
 		BaseLV:                 firstNonEmpty(os.Getenv("DL_BASE_LV"), baseLV),
 		BaseLVFormat:           firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), EXT4),
 		BaseLVMountPoint:       path.Join("/mnt", baseLV),
@@ -72,7 +72,6 @@ func New(client *client.Client, nameSuffix string) *Cached {
 		Client:                 client,
 		DriverName:             driverName,
 		NameSuffix:             nameSuffix,
-		ThinpoolCacheLV:        thinpoolCacheLV,
 		ThinpoolCacheLVSizeKib: os.Getenv("DL_THINPOOL_CACHE_LV_SIZE_KIB"),
 		ThinpoolCachePV:        firstNonEmpty(os.Getenv("DL_THINPOOL_CACHE_PV"), "/dev/ram0"),
 		ThinpoolLV:             thinpoolLV,
@@ -113,12 +112,6 @@ func (c *Cached) Unprepare(ctx context.Context) error {
 
 	if err := lvm.RemoveLV(ctx, c.BaseLV); err != nil {
 		return err
-	}
-
-	if c.ThinpoolCacheLVSizeKib != "" {
-		if err := lvm.RemoveLV(ctx, c.ThinpoolCacheLV); err != nil {
-			return err
-		}
 	}
 
 	if err := lvm.RemoveVG(ctx, c.VG); err != nil {
@@ -344,6 +337,21 @@ func (c *Cached) importBasePV(ctx context.Context) error {
 		return fmt.Errorf("failed to import base pv %s: %w", c.BasePV, err)
 	}
 
+	if c.BaseCachePV != "" {
+		logger.Info(ctx, "adding cache to base lv", key.PV.Field(c.BaseCachePV))
+		if err := lvm.EnsurePV(ctx, c.BaseCachePV); err != nil {
+			return err
+		}
+
+		if err := exec.Run(ctx, "vgextend", c.VG, c.BaseCachePV); err != nil {
+			return fmt.Errorf("failed to extend vg with base cache pv: %w", err)
+		}
+
+		if err := exec.Run(ctx, "lvconvert", LVConvertBaseCacheArgs(c.BaseCachePV, c.BaseLV)...); err != nil {
+			return err
+		}
+	}
+
 	logger.Info(ctx, "extending vg with thinpool pvs", key.DeviceGlobs.Field(c.ThinpoolPVGlobs), key.PVs.Field(c.ThinpoolPVs))
 	if err := exec.Run(ctx, "vgextend", append([]string{"--config=devices/allow_mixed_block_sizes=1", c.VG}, c.ThinpoolPVs...)...); err != nil {
 		return fmt.Errorf("failed to extend vg with thinpool pvs: %w", err)
@@ -354,6 +362,7 @@ func (c *Cached) importBasePV(ctx context.Context) error {
 	}
 
 	if c.ThinpoolCacheLVSizeKib != "" {
+		logger.Info(ctx, "adding writecache to thinpool lv", key.PV.Field(c.ThinpoolCachePV))
 		if _, err := os.Stat(c.ThinpoolCachePV); err == nil {
 			logger.Info(ctx, "ram disk already exists", key.Device.Field(c.ThinpoolCachePV))
 		} else {
@@ -395,6 +404,25 @@ func LVCreateBaseArgs(vg string, basePV string) []string {
 
 		// Pass the volume group the base LV should be created in
 		vg,
+	}
+}
+
+func LVConvertBaseCacheArgs(baseCachePV string, baseLV string) []string {
+	return []string{
+		// Add a cache to the base LV
+		"--type", "cache",
+
+		// Use the base cache PV as the cache
+		"--cachedevice", baseCachePV,
+
+		// Use a 64KiB chunk size to match the chunk size of the thinpool
+		"--chunksize", "64k",
+
+		// Yes, do it no matter what
+		"-y",
+
+		// The base LV to add the cache to
+		baseLV,
 	}
 }
 

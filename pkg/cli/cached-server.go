@@ -23,6 +23,7 @@ import (
 
 func NewCachedServerCommand() *cobra.Command {
 	var (
+		baseCachePV            string
 		baseLVFormat           string
 		basePV                 string
 		cacheGid               int
@@ -44,6 +45,7 @@ func NewCachedServerCommand() *cobra.Command {
 			ctx := cmd.Context()
 
 			cd := cached.New(client.FromContext(ctx), nameSuffix)
+			cd.BaseCachePV = baseCachePV
 			cd.BaseLVFormat = baseLVFormat
 			cd.BasePV = basePV
 			cd.CacheGid = cacheGid
@@ -99,6 +101,7 @@ func NewCachedServerCommand() *cobra.Command {
 	flags.Int64Var(&cacheVersion, "cache-version", -1, "cache version to prepare")
 	flags.IntVar(&cacheGid, "cache-gid", cached.NO_CHANGE_USER, "gid for cache files")
 	flags.IntVar(&cacheUid, "cache-uid", cached.NO_CHANGE_USER, "uid for cache files")
+	flags.StringVar(&baseCachePV, "base-cache-pv", os.Getenv("DL_BASE_CACHE_PV"), "PV to use for the base cache LV")
 	flags.StringVar(&baseLVFormat, "base-lv-format", firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), cached.EXT4), "filesystem format to use for the base LV")
 	flags.StringVar(&basePV, "base-pv", os.Getenv("DL_BASE_PV"), "PV to use for the base LV")
 	flags.StringVar(&csiSocket, "csi-socket", firstNonEmpty(os.Getenv("DL_CSI_SOCKET"), "unix:///csi/csi.sock"), "path for running the Kubernetes CSI Driver interface")
