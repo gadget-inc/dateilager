@@ -34,13 +34,13 @@ jobs:
           sudo truncate -s 5G /var/tmp/lvm-thin2.img
 
           base_device=$(sudo losetup --find --show /var/tmp/lvm-base.img)
-          base_cache_device=$(sudo losetup --find --show /var/tmp/lvm-base-cache.img)
+          read_through_base_device=$(sudo losetup --find --show /var/tmp/lvm-read-through-base.img)
           thin1_device=$(sudo losetup --find --show /var/tmp/lvm-thin1.img)
           thin2_device=$(sudo losetup --find --show /var/tmp/lvm-thin2.img)
 
           echo "DL_BASE_PV=$base_device" >> $GITHUB_ENV
           echo "DL_BASE_LV_FORMAT=${{ matrix.filesystem }}" >> $GITHUB_ENV
-          echo "DL_BASE_CACHE_PV=$base_cache_device" >> $GITHUB_ENV
+          echo "DL_READ_THROUGH_BASE_PV=$read_through_base_device" >> $GITHUB_ENV
           echo "DL_THINPOOL_PV_GLOBS=$thin1_device,$thin2_device" >> $GITHUB_ENV
           echo "DL_THINPOOL_CACHE_LV_SIZE_KIB=2097152" >> $GITHUB_ENV
 

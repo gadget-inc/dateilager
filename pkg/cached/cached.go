@@ -36,7 +36,7 @@ const (
 type Cached struct {
 	csi.UnimplementedIdentityServer
 	csi.UnimplementedNodeServer
-	BaseCachePV            string
+	ReadThroughBasePV      string
 	BaseLV                 string
 	BaseLVFormat           string
 	BaseLVMountPoint       string
@@ -62,7 +62,7 @@ func New(client *client.Client, nameSuffix string) *Cached {
 	thinpoolLV := vg + "/thinpool"
 
 	return &Cached{
-		BaseCachePV:            os.Getenv("DL_BASE_CACHE_PV"),
+		ReadThroughBasePV:      os.Getenv("DL_READ_THROUGH_BASE_PV"),
 		BaseLV:                 firstNonEmpty(os.Getenv("DL_BASE_LV"), baseLV),
 		BaseLVFormat:           firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), EXT4),
 		BaseLVMountPoint:       path.Join("/mnt", baseLV),
@@ -337,17 +337,17 @@ func (c *Cached) importBasePV(ctx context.Context) error {
 		return fmt.Errorf("failed to import base pv %s: %w", c.BasePV, err)
 	}
 
-	if c.BaseCachePV != "" {
-		logger.Info(ctx, "adding cache to base lv", key.PV.Field(c.BaseCachePV))
-		if err := lvm.EnsurePV(ctx, c.BaseCachePV); err != nil {
+	if c.ReadThroughBasePV != "" {
+		logger.Info(ctx, "adding read through cache to base lv", key.PV.Field(c.ReadThroughBasePV))
+		if err := lvm.EnsurePV(ctx, c.ReadThroughBasePV); err != nil {
 			return err
 		}
 
-		if err := exec.Run(ctx, "vgextend", c.VG, c.BaseCachePV); err != nil {
-			return fmt.Errorf("failed to extend vg with base cache pv: %w", err)
+		if err := exec.Run(ctx, "vgextend", c.VG, c.ReadThroughBasePV); err != nil {
+			return fmt.Errorf("failed to extend vg with read through base pv: %w", err)
 		}
 
-		if err := exec.Run(ctx, "lvconvert", LVConvertBaseCacheArgs(c.BaseCachePV, c.BaseLV)...); err != nil {
+		if err := exec.Run(ctx, "lvconvert", LVConvertReadThroughBasePVArgs(c.ReadThroughBasePV, c.BaseLV)...); err != nil {
 			return err
 		}
 	}
@@ -407,13 +407,13 @@ func LVCreateBaseArgs(vg string, basePV string) []string {
 	}
 }
 
-func LVConvertBaseCacheArgs(baseCachePV string, baseLV string) []string {
+func LVConvertReadThroughBasePVArgs(readThroughBasePV string, baseLV string) []string {
 	return []string{
 		// Add a cache to the base LV
 		"--type", "cache",
 
-		// Use the base cache PV as the cache
-		"--cachedevice", baseCachePV,
+		// Use the read through base PV as the cache
+		"--cachedevice", readThroughBasePV,
 
 		// Use a 64KiB chunk size to match the chunk size of the thinpool
 		"--chunksize", "64k",

@@ -299,7 +299,7 @@ func BenchmarkDirOperations(b *testing.B) {
 						vg := "vg_dl_cached_bench"
 						baseLV := vg + "/base"
 						baseLVDevice := "/dev/" + baseLV
-						baseCachePV := os.Getenv("DL_BASE_CACHE_PV")
+						readThroughBasePV := os.Getenv("DL_READ_THROUGH_BASE_PV")
 						thinpoolLV := vg + "/thinpool"
 						thinpoolCacheLVSize := os.Getenv("DL_THINPOOL_CACHE_LV_SIZE_KIB")
 						thinpoolCachePV := "/dev/ram0"
@@ -336,10 +336,10 @@ func BenchmarkDirOperations(b *testing.B) {
 							execRun(b, "lvchange", "--activate", "n", baseLV)
 						}()
 
-						if baseCachePV != "" {
-							ensurePV(b, baseCachePV)
-							execRun(b, "vgextend", vg, baseCachePV)
-							execRun(b, "lvconvert", cached.LVConvertBaseCacheArgs(baseCachePV, baseLV)...)
+						if readThroughBasePV != "" {
+							ensurePV(b, readThroughBasePV)
+							execRun(b, "vgextend", vg, readThroughBasePV)
+							execRun(b, "lvconvert", cached.LVConvertReadThroughBasePVArgs(readThroughBasePV, baseLV)...)
 						}
 
 						execRun(b, "vgextend", append([]string{"--config=devices/allow_mixed_block_sizes=1", vg}, thinpoolPVs...)...)
