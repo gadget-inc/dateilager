@@ -29,7 +29,7 @@ jobs:
       - name: Setup LVM devices
         run: |
           sudo truncate -s 5G /var/tmp/lvm-base.img
-          sudo truncate -s 5G /var/tmp/lvm-base-cache.img
+          sudo truncate -s 5G /var/tmp/lvm-read-through-base.img
           sudo truncate -s 5G /var/tmp/lvm-thin1.img
           sudo truncate -s 5G /var/tmp/lvm-thin2.img
 
