@@ -23,17 +23,17 @@ import (
 
 func NewCachedServerCommand() *cobra.Command {
 	var (
-		readThroughBasePV      string
-		baseLVFormat           string
-		basePV                 string
-		cacheGid               int
-		cacheUid               int
-		cacheVersion           int64
-		csiSocket              string
-		healthzPort            uint16
-		nameSuffix             string
-		thinpoolCacheLVSizeKib string
-		thinpoolPVGlobs        string
+		readThroughBasePV          string
+		baseLVFormat               string
+		basePV                     string
+		cacheGid                   int
+		cacheUid                   int
+		cacheVersion               int64
+		csiSocket                  string
+		healthzPort                uint16
+		nameSuffix                 string
+		writeBackThinpoolPVSizeKib string
+		thinpoolPVGlobs            string
 	)
 
 	cmd := &cobra.Command{
@@ -50,7 +50,7 @@ func NewCachedServerCommand() *cobra.Command {
 			cd.BasePV = basePV
 			cd.CacheGid = cacheGid
 			cd.CacheUid = cacheUid
-			cd.ThinpoolCacheLVSizeKib = thinpoolCacheLVSizeKib
+			cd.WriteBackThinpoolPVSizeKib = writeBackThinpoolPVSizeKib
 			cd.ThinpoolPVGlobs = thinpoolPVGlobs
 
 			cachedServer := cached.NewServer(ctx)
@@ -106,7 +106,7 @@ func NewCachedServerCommand() *cobra.Command {
 	flags.StringVar(&basePV, "base-pv", os.Getenv("DL_BASE_PV"), "PV to use for the base LV")
 	flags.StringVar(&csiSocket, "csi-socket", firstNonEmpty(os.Getenv("DL_CSI_SOCKET"), "unix:///csi/csi.sock"), "path for running the Kubernetes CSI Driver interface")
 	flags.StringVar(&nameSuffix, "name-suffix", "", "hyphenated suffix to use for naming the driver and its components")
-	flags.StringVar(&thinpoolCacheLVSizeKib, "thinpool-cache-lv-size-kib", os.Getenv("DL_THINPOOL_CACHE_LV_SIZE_KIB"), "size of the thinpool cache LV in KiB")
+	flags.StringVar(&writeBackThinpoolPVSizeKib, "write-back-thinpool-pv-size-kib", os.Getenv("DL_WRITE_BACK_THINPOOL_PV_SIZE_KIB"), "size of the write back thinpool PV in KiB")
 	flags.StringVar(&thinpoolPVGlobs, "thinpool-pv-globs", os.Getenv("DL_THINPOOL_PV_GLOBS"), "comma-separated globs of PVs to use for the thinpool")
 	flags.Uint16Var(&healthzPort, "healthz-port", 5053, "healthz HTTP port")
 

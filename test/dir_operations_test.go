@@ -301,11 +301,11 @@ func BenchmarkDirOperations(b *testing.B) {
 						baseLVDevice := "/dev/" + baseLV
 						readThroughBasePV := os.Getenv("DL_READ_THROUGH_BASE_PV")
 						thinpoolLV := vg + "/thinpool"
-						thinpoolCacheLVSize := os.Getenv("DL_THINPOOL_CACHE_LV_SIZE_KIB")
-						thinpoolCachePV := "/dev/ram0"
+						writeBackThinpoolPVSizeKIB := os.Getenv("DL_WRITE_BACK_THINPOOL_PV_SIZE_KIB")
+						writeBackThinpoolPV := "/dev/ram0"
 
-						if thinpoolCacheLVSize != "" {
-							defer removePV(b, thinpoolCachePV)
+						if writeBackThinpoolPVSizeKIB != "" {
+							defer removePV(b, writeBackThinpoolPV)
 							defer execRun(b, "modprobe", "-r", "brd")
 						}
 
@@ -347,11 +347,11 @@ func BenchmarkDirOperations(b *testing.B) {
 						ensureLV(b, thinpoolLV, cached.LVCreateThinpoolArgs(vg, thinpoolPVs)...)
 						defer removeLV(b, thinpoolLV)
 
-						if thinpoolCacheLVSize != "" {
-							execRun(b, "modprobe", "brd", "rd_nr=1", "rd_size="+thinpoolCacheLVSize)
-							ensurePV(b, thinpoolCachePV)
-							execRun(b, "vgextend", vg, thinpoolCachePV)
-							execRun(b, "lvconvert", cached.LVConvertThinpoolCacheArgs(thinpoolCachePV, thinpoolLV)...)
+						if writeBackThinpoolPVSizeKIB != "" {
+							execRun(b, "modprobe", "brd", "rd_nr=1", "rd_size="+writeBackThinpoolPVSizeKIB)
+							ensurePV(b, writeBackThinpoolPV)
+							execRun(b, "vgextend", vg, writeBackThinpoolPV)
+							execRun(b, "lvconvert", cached.LVConvertWriteBackThinpoolPVArgs(writeBackThinpoolPV, thinpoolLV)...)
 						}
 
 						execRun(b, "lvchange", "--activate", "n", baseLV)
