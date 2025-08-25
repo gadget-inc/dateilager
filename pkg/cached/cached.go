@@ -46,6 +46,7 @@ type Cached struct {
 	DriverName                 string
 	NameSuffix                 string
 	ReadThroughBasePV          string
+	ReadThroughBasePVChunkSize string
 	ThinpoolLV                 string
 	ThinpoolPVGlobs            string
 	ThinpoolPVs                []string
@@ -63,6 +64,7 @@ func New(client *client.Client, nameSuffix string) *Cached {
 
 	return &Cached{
 		ReadThroughBasePV:          os.Getenv("DL_READ_THROUGH_BASE_PV"),
+		ReadThroughBasePVChunkSize: firstNonEmpty(os.Getenv("DL_READ_THROUGH_BASE_PV_CHUNK_SIZE"), "512k"),
 		BaseLV:                     firstNonEmpty(os.Getenv("DL_BASE_LV"), baseLV),
 		BaseLVFormat:               firstNonEmpty(os.Getenv("DL_BASE_LV_FORMAT"), EXT4),
 		BaseLVMountPoint:           path.Join("/mnt", baseLV),
@@ -347,7 +349,7 @@ func (c *Cached) importBasePV(ctx context.Context) error {
 			return fmt.Errorf("failed to extend vg with read through base pv: %w", err)
 		}
 
-		if err := exec.Run(ctx, "lvconvert", LVConvertReadThroughBasePVArgs(c.ReadThroughBasePV, c.BaseLV)...); err != nil {
+		if err := exec.Run(ctx, "lvconvert", LVConvertReadThroughBasePVArgs(c.ReadThroughBasePV, c.ReadThroughBasePVChunkSize, c.BaseLV)...); err != nil {
 			return err
 		}
 	}
@@ -407,7 +409,7 @@ func LVCreateBaseArgs(vg string, basePV string) []string {
 	}
 }
 
-func LVConvertReadThroughBasePVArgs(readThroughBasePV string, baseLV string) []string {
+func LVConvertReadThroughBasePVArgs(readThroughBasePV string, readThroughBasePVChunkSize string, baseLV string) []string {
 	return []string{
 		// Add a cache to the base LV
 		"--type", "cache",
@@ -415,8 +417,8 @@ func LVConvertReadThroughBasePVArgs(readThroughBasePV string, baseLV string) []s
 		// Use the read through base PV as the cache
 		"--cachedevice", readThroughBasePV,
 
-		// Use a 64KiB chunk size to match the chunk size of the thinpool
-		"--chunksize", "64k",
+		// Use the provided chunk size
+		"--chunksize", readThroughBasePVChunkSize,
 
 		// Yes, do it no matter what
 		"-y",

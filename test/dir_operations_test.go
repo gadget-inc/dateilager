@@ -337,9 +337,14 @@ func BenchmarkDirOperations(b *testing.B) {
 						}()
 
 						if readThroughBasePV != "" {
+							readThroughBasePVChunkSize := "512k"
+							if chunkSize := os.Getenv("DL_READ_THROUGH_BASE_PV_CHUNK_SIZE"); chunkSize != "" {
+								readThroughBasePVChunkSize = chunkSize
+							}
+
 							ensurePV(b, readThroughBasePV)
 							execRun(b, "vgextend", vg, readThroughBasePV)
-							execRun(b, "lvconvert", cached.LVConvertReadThroughBasePVArgs(readThroughBasePV, baseLV)...)
+							execRun(b, "lvconvert", cached.LVConvertReadThroughBasePVArgs(readThroughBasePV, readThroughBasePVChunkSize, baseLV)...)
 						}
 
 						execRun(b, "vgextend", append([]string{"--config=devices/allow_mixed_block_sizes=1", vg}, thinpoolPVs...)...)
