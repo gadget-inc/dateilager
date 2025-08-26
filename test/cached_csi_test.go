@@ -397,7 +397,7 @@ func createTestCachedServer(tc util.TestCtx, tmpDir string) (*cached.Cached, str
 		Grpc: grpcServer,
 	}
 
-	cd := cached.New(cl, "test")
+	cd := cached.New(cl, "-test")
 	cd.BaseLVMountPoint = path.Join(tmpDir, "mnt/base")
 	s.RegisterCSI(cd)
 
