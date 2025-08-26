@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -91,6 +92,44 @@ func RemoveVG(ctx context.Context, vg string) error {
 	return nil
 }
 
+func EnsureVGImportCloned(ctx context.Context, vg string, pv string) error {
+	ctx = logger.With(ctx, key.VG.Field(vg), key.PV.Field(pv))
+
+	err := exec.Run(ctx, "vgdisplay", vg)
+	if err == nil {
+		logger.Info(ctx, "volume group already exists")
+		return nil
+	}
+
+	if !strings.Contains(err.Error(), "not found") {
+		return fmt.Errorf("failed to check volume group %s: %w", vg, err)
+	}
+
+	logger.Info(ctx, "importing volume group")
+	if err := exec.Run(ctx, "vgimportclone", "-n", vg, pv); err != nil {
+		return fmt.Errorf("failed to import volume group %s: %w", vg, err)
+	}
+
+	return nil
+}
+
+func EnsureVGExtend(ctx context.Context, vg string, pvs ...string) error {
+	ctx = logger.With(ctx, key.VG.Field(vg), key.PVs.Field(pvs))
+
+	err := exec.Run(ctx, "vgextend", append([]string{"--config=devices/allow_mixed_block_sizes=1", vg}, pvs...)...)
+	if err == nil {
+		logger.Info(ctx, "extended volume group")
+		return nil
+	}
+
+	if strings.Contains(err.Error(), "already in volume group") {
+		logger.Info(ctx, "volume group already extended")
+		return nil
+	}
+
+	return fmt.Errorf("failed to extend volume group %s: %w", vg, err)
+}
+
 func EnsureLV(ctx context.Context, lv string, lvCreateArgs ...string) error {
 	ctx = logger.With(ctx, key.LV.Field(lv))
 
@@ -134,6 +173,38 @@ func RemoveLV(ctx context.Context, lv string) error {
 	}
 
 	return nil
+}
+
+func EnsureLVConvertCache(ctx context.Context, lv string, lvConvertArgs ...string) error {
+	ctx = logger.With(ctx, key.LV.Field(lv))
+
+	out, err := exec.Output(ctx, "lvs", lv, "--options", "modules", "--noheadings")
+	if err != nil {
+		return fmt.Errorf("failed to get logical volume %s modules: %w", lv, err)
+	}
+
+	if slices.Contains(strings.Split(out, ","), "cache") {
+		logger.Info(ctx, "logical volume already has cache module")
+		return nil
+	}
+
+	return exec.Run(ctx, "lvconvert", lvConvertArgs...)
+}
+
+func EnsureLVConvertWriteCache(ctx context.Context, lv string, lvConvertArgs ...string) error {
+	ctx = logger.With(ctx, key.LV.Field(lv))
+
+	out, err := exec.Output(ctx, "lvs", lv, "--options", "modules", "--noheadings")
+	if err != nil {
+		return fmt.Errorf("failed to get logical volume %s modules: %w", lv, err)
+	}
+
+	if slices.Contains(strings.Split(out, ","), "writecache") {
+		logger.Info(ctx, "logical volume already has writecache module")
+		return nil
+	}
+
+	return exec.Run(ctx, "lvconvert", lvConvertArgs...)
 }
 
 // udevSettle triggers udev events and waits for device to appear

@@ -324,19 +324,8 @@ func (c *Cached) importBasePV(ctx context.Context) error {
 	ctx, span := telemetry.Start(ctx, "cached.import-base-pv")
 	defer span.End()
 
-	err := exec.Run(ctx, "vgdisplay", c.VG)
-	if err == nil {
-		logger.Info(ctx, "vg already exists")
-		return nil
-	}
-
-	if !strings.Contains(err.Error(), "not found") {
-		return fmt.Errorf("failed to check vg %s: %w", c.VG, err)
-	}
-
-	logger.Info(ctx, "importing base pv")
-	if err := exec.Run(ctx, "vgimportclone", "-n", c.VG, c.BasePV); err != nil {
-		return fmt.Errorf("failed to import base pv %s: %w", c.BasePV, err)
+	if err := lvm.EnsureVGImportCloned(ctx, c.VG, c.BasePV); err != nil {
+		return err
 	}
 
 	if c.ReadThroughBasePV != "" {
@@ -345,18 +334,17 @@ func (c *Cached) importBasePV(ctx context.Context) error {
 			return err
 		}
 
-		if err := exec.Run(ctx, "vgextend", c.VG, c.ReadThroughBasePV); err != nil {
-			return fmt.Errorf("failed to extend vg with read through base pv: %w", err)
+		if err := lvm.EnsureVGExtend(ctx, c.VG, c.ReadThroughBasePV); err != nil {
+			return err
 		}
 
-		if err := exec.Run(ctx, "lvconvert", LVConvertReadThroughBasePVArgs(c.ReadThroughBasePV, c.ReadThroughBasePVChunkSize, c.BaseLV)...); err != nil {
+		if err := lvm.EnsureLVConvertCache(ctx, c.BaseLV, LVConvertReadThroughBasePVArgs(c.ReadThroughBasePV, c.ReadThroughBasePVChunkSize, c.BaseLV)...); err != nil {
 			return err
 		}
 	}
 
-	logger.Info(ctx, "extending vg with thinpool pvs", key.DeviceGlobs.Field(c.ThinpoolPVGlobs), key.PVs.Field(c.ThinpoolPVs))
-	if err := exec.Run(ctx, "vgextend", append([]string{"--config=devices/allow_mixed_block_sizes=1", c.VG}, c.ThinpoolPVs...)...); err != nil {
-		return fmt.Errorf("failed to extend vg with thinpool pvs: %w", err)
+	if err := lvm.EnsureVGExtend(ctx, c.VG, c.ThinpoolPVs...); err != nil {
+		return err
 	}
 
 	if err := lvm.EnsureLV(ctx, c.ThinpoolLV, LVCreateThinpoolArgs(c.VG, c.ThinpoolPVs)...); err != nil {
@@ -378,11 +366,11 @@ func (c *Cached) importBasePV(ctx context.Context) error {
 			return err
 		}
 
-		if err := exec.Run(ctx, "vgextend", c.VG, c.WriteBackThinpoolPV); err != nil {
-			return fmt.Errorf("failed to extend vg with ram disk: %w", err)
+		if err := lvm.EnsureVGExtend(ctx, c.VG, c.WriteBackThinpoolPV); err != nil {
+			return err
 		}
 
-		if err := exec.Run(ctx, "lvconvert", LVConvertWriteBackThinpoolPVArgs(c.WriteBackThinpoolPV, c.ThinpoolLV)...); err != nil {
+		if err := lvm.EnsureLVConvertWriteCache(ctx, c.ThinpoolLV, LVConvertWriteBackThinpoolPVArgs(c.WriteBackThinpoolPV, c.ThinpoolLV)...); err != nil {
 			return err
 		}
 	}
