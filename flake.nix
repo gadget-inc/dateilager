@@ -54,7 +54,7 @@
 
             nodejs = pkgs.nodejs-18_x;
 
-            postgresql = pkgs.postgresql_14;
+            postgresql = pkgs.postgresql_16;
 
             google-cloud-sdk = pkgs.google-cloud-sdk;
 
