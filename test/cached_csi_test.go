@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/lvm"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
 	"github.com/gadget-inc/dateilager/pkg/cached"
 	"github.com/kubernetes-csi/csi-test/pkg/sanity"
@@ -113,6 +115,15 @@ func TestCachedCSIDriverMountsCache(t *testing.T) {
 	cacheFileInfo, err := os.Stat(path.Join(targetDir, "dl_cache", fmt.Sprintf("objects/%v/pack/a/1", aHash)))
 	require.NoError(t, err)
 	require.Equal(t, formatFileMode(os.FileMode(0o755)), formatFileMode(cacheFileInfo.Mode()&os.ModePerm))
+
+	// check that the thinpool metrics are correct
+	lv, err := lvm.LVS(tc.Context(), cd.ThinpoolLV)
+	require.NoError(t, err)
+	require.Equal(t, strings.Split(cd.ThinpoolLV, "/")[1], lv.Name)
+	require.Equal(t, strings.Split(cd.ThinpoolLV, "/")[0], lv.VGName)
+	require.NotEmpty(t, lv.Size)
+	require.Greater(t, lv.DataPercent, 0.0)
+	require.Greater(t, lv.MetadataPercent, 0.0)
 
 	_, err = cd.NodeUnpublishVolume(tc.Context(), &csi.NodeUnpublishVolumeRequest{
 		VolumeId:   "foobar",

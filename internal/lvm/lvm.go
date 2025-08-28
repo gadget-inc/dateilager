@@ -2,6 +2,7 @@ package lvm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"slices"
@@ -13,6 +14,38 @@ import (
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"go.uber.org/zap"
 )
+
+type Report struct {
+	LV []LV `json:"lv"`
+}
+
+type LV struct {
+	Name            string  `json:"lv_name"`
+	VGName          string  `json:"vg_name"`
+	Size            string  `json:"lv_size"`
+	DataPercent     float64 `json:"data_percent,string"`
+	MetadataPercent float64 `json:"metadata_percent,string"`
+}
+
+func LVS(ctx context.Context, lv string) (LV, error) {
+	out, err := exec.Output(ctx, "lvs", "--select", "lv_full_name="+lv, "--options", "lv_name,vg_name,lv_size,data_percent,metadata_percent", "--reportformat", "json")
+	if err != nil {
+		return LV{}, fmt.Errorf("failed to get logical volume report for %s: %w", lv, err)
+	}
+
+	var output struct {
+		Report []Report `json:"report"`
+	}
+	if err := json.Unmarshal([]byte(out), &output); err != nil {
+		return LV{}, fmt.Errorf("failed to unmarshal logical volume report for %s: %w", lv, err)
+	}
+
+	if len(output.Report) == 0 || len(output.Report[0].LV) == 0 {
+		return LV{}, fmt.Errorf("no logical volume found for %s", lv)
+	}
+
+	return output.Report[0].LV[0], nil
+}
 
 func EnsurePV(ctx context.Context, pv string) error {
 	ctx = logger.With(ctx, key.PV.Field(pv))

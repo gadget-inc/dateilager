@@ -10,9 +10,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/logger"
+	"github.com/gadget-inc/dateilager/internal/lvm"
 	"github.com/gadget-inc/dateilager/pkg/cached"
 	"github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/gadget-inc/dateilager/pkg/version"
@@ -93,6 +95,29 @@ func NewCachedServerCommand() *cobra.Command {
 					return err
 				}
 				return nil
+			})
+
+			group.Go(func() error {
+				for {
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-time.After(5 * time.Second):
+						lv, err := lvm.LVS(ctx, cd.ThinpoolLV)
+						if err != nil {
+							logger.Error(ctx, "failed to get thinpool metrics", zap.Error(err))
+							continue
+						}
+
+						logger.Info(ctx, "thinpool metrics",
+							zap.String("lv", lv.Name),
+							zap.String("vg", lv.VGName),
+							zap.String("size", lv.Size),
+							zap.Float64("data_percent", lv.DataPercent),
+							zap.Float64("metadata_percent", lv.MetadataPercent),
+						)
+					}
+				}
 			})
 
 			return group.Wait()
