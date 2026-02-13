@@ -1,6 +1,6 @@
 module github.com/gadget-inc/dateilager
 
-go 1.24.4
+go 1.26
 
 require (
 	github.com/charlievieth/fastwalk v1.0.9

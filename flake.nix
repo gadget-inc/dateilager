@@ -50,9 +50,9 @@
 
             ## Pinned packages from nixpkgs
 
-            go = pkgs-unstable.go_1_24;
+            go = pkgs-unstable.go_1_26;
 
-            nodejs = pkgs.nodejs-18_x;
+            nodejs = pkgs-unstable.nodejs_24;
 
             postgresql = pkgs.postgresql_14;
 
