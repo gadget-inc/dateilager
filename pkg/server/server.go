@@ -5,15 +5,14 @@ import (
 	"crypto/ed25519"
 	"crypto/tls"
 	"fmt"
-	"math"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
@@ -50,30 +49,20 @@ var (
 )
 
 func init() {
-	if v := os.Getenv("DL_MAX_MESSAGE_SIZE_MB"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			MAX_MESSAGE_SIZE = n * MB
-		}
+	if n, ok := environment.EnvInt("DL_MAX_MESSAGE_SIZE_MB", MB); ok {
+		MAX_MESSAGE_SIZE = n
 	}
-	if v := os.Getenv("DL_BUFFER_SIZE_KB"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			BUFFER_SIZE = n * KB
-		}
+	if n, ok := environment.EnvInt("DL_BUFFER_SIZE_KB", KB); ok {
+		BUFFER_SIZE = n
 	}
-	if v := os.Getenv("DL_INITIAL_WINDOW_SIZE_MB"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n*MB <= math.MaxInt32 {
-			INITIAL_WINDOW_SIZE = int32(n * MB)
-		}
+	if n, ok := environment.EnvInt32("DL_INITIAL_WINDOW_SIZE_MB", MB); ok {
+		INITIAL_WINDOW_SIZE = n
 	}
-	if v := os.Getenv("DL_INITIAL_CONN_WINDOW_SIZE_MB"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n*MB <= math.MaxInt32 {
-			INITIAL_CONN_WINDOW_SIZE = int32(n * MB)
-		}
+	if n, ok := environment.EnvInt32("DL_INITIAL_CONN_WINDOW_SIZE_MB", MB); ok {
+		INITIAL_CONN_WINDOW_SIZE = n
 	}
-	if v := os.Getenv("DL_MAX_POOL_SIZE"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n <= math.MaxInt32 {
-			MAX_POOL_SIZE = int32(n)
-		}
+	if n, ok := environment.EnvInt32("DL_MAX_POOL_SIZE", 1); ok {
+		MAX_POOL_SIZE = n
 	}
 }
 

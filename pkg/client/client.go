@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/pb"
@@ -44,25 +45,17 @@ var (
 )
 
 func init() {
-	if v := os.Getenv("DL_MAX_MESSAGE_SIZE_MB"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			MAX_MESSAGE_SIZE = n * MB
-		}
+	if n, ok := environment.EnvInt("DL_MAX_MESSAGE_SIZE_MB", MB); ok {
+		MAX_MESSAGE_SIZE = n
 	}
-	if v := os.Getenv("DL_BUFFER_SIZE_KB"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			BUFFER_SIZE = n * KB
-		}
+	if n, ok := environment.EnvInt("DL_BUFFER_SIZE_KB", KB); ok {
+		BUFFER_SIZE = n
 	}
-	if v := os.Getenv("DL_INITIAL_WINDOW_SIZE_MB"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			INITIAL_WINDOW_SIZE = int32(n * MB)
-		}
+	if n, ok := environment.EnvInt32("DL_INITIAL_WINDOW_SIZE_MB", MB); ok {
+		INITIAL_WINDOW_SIZE = n
 	}
-	if v := os.Getenv("DL_INITIAL_CONN_WINDOW_SIZE_MB"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			INITIAL_CONN_WINDOW_SIZE = int32(n * MB)
-		}
+	if n, ok := environment.EnvInt32("DL_INITIAL_CONN_WINDOW_SIZE_MB", MB); ok {
+		INITIAL_CONN_WINDOW_SIZE = n
 	}
 }
 
