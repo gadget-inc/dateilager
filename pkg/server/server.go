@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,14 +36,45 @@ import (
 )
 
 const (
-	KB                       = 1024
-	MB                       = KB * KB
-	BUFFER_SIZE              = 28 * KB
-	INITIAL_WINDOW_SIZE      = 1 * MB
-	INITIAL_CONN_WINDOW_SIZE = 2 * INITIAL_WINDOW_SIZE
-	MAX_MESSAGE_SIZE         = 400 * MB
-	MAX_POOL_SIZE            = 60
+	KB = 1024
+	MB = KB * KB
 )
+
+var (
+	BUFFER_SIZE              = 28 * KB
+	INITIAL_WINDOW_SIZE      = int32(1 * MB)
+	INITIAL_CONN_WINDOW_SIZE = int32(2 * MB)
+	MAX_POOL_SIZE            = int32(60)
+	MAX_MESSAGE_SIZE         = 400 * MB
+)
+
+func init() {
+	if v := os.Getenv("DL_MAX_MESSAGE_SIZE_MB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			MAX_MESSAGE_SIZE = n * MB
+		}
+	}
+	if v := os.Getenv("DL_BUFFER_SIZE_KB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			BUFFER_SIZE = n * KB
+		}
+	}
+	if v := os.Getenv("DL_INITIAL_WINDOW_SIZE_MB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			INITIAL_WINDOW_SIZE = int32(n * MB)
+		}
+	}
+	if v := os.Getenv("DL_INITIAL_CONN_WINDOW_SIZE_MB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			INITIAL_CONN_WINDOW_SIZE = int32(n * MB)
+		}
+	}
+	if v := os.Getenv("DL_MAX_POOL_SIZE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			MAX_POOL_SIZE = int32(n)
+		}
+	}
+}
 
 type DbPoolConnector struct {
 	pool       *pgxpool.Pool
