@@ -37,7 +37,7 @@ const (
 	BUFFER_SIZE              = 64 * KB
 	INITIAL_WINDOW_SIZE      = 1 * MB
 	INITIAL_CONN_WINDOW_SIZE = 2 * INITIAL_WINDOW_SIZE
-	MAX_MESSAGE_SIZE         = 300 * MB
+	MAX_MESSAGE_SIZE         = 400 * MB
 )
 
 type VersionRange struct {
