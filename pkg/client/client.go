@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/files"
 	"github.com/gadget-inc/dateilager/internal/key"
 	"github.com/gadget-inc/dateilager/internal/pb"
@@ -32,13 +33,31 @@ import (
 )
 
 const (
-	KB                       = 1024
-	MB                       = KB * KB
-	BUFFER_SIZE              = 64 * KB
-	INITIAL_WINDOW_SIZE      = 1 * MB
-	INITIAL_CONN_WINDOW_SIZE = 2 * INITIAL_WINDOW_SIZE
-	MAX_MESSAGE_SIZE         = 300 * MB
+	KB = 1024
+	MB = KB * KB
 )
+
+var (
+	BUFFER_SIZE              = 64 * KB
+	INITIAL_WINDOW_SIZE      = int32(1 * MB)
+	INITIAL_CONN_WINDOW_SIZE = int32(2 * MB)
+	MAX_MESSAGE_SIZE         = 400 * MB
+)
+
+func init() {
+	if n, ok := environment.EnvInt("DL_MAX_MESSAGE_SIZE_MB", MB); ok {
+		MAX_MESSAGE_SIZE = n
+	}
+	if n, ok := environment.EnvInt("DL_BUFFER_SIZE_KB", KB); ok {
+		BUFFER_SIZE = n
+	}
+	if n, ok := environment.EnvInt32("DL_INITIAL_WINDOW_SIZE_MB", MB); ok {
+		INITIAL_WINDOW_SIZE = n
+	}
+	if n, ok := environment.EnvInt32("DL_INITIAL_CONN_WINDOW_SIZE_MB", MB); ok {
+		INITIAL_CONN_WINDOW_SIZE = n
+	}
+}
 
 type VersionRange struct {
 	From *int64

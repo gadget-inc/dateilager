@@ -12,6 +12,7 @@ import (
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
+	"github.com/gadget-inc/dateilager/internal/environment"
 	"github.com/gadget-inc/dateilager/internal/logger"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	"github.com/gadget-inc/dateilager/internal/telemetry"
@@ -35,14 +36,35 @@ import (
 )
 
 const (
-	KB                       = 1024
-	MB                       = KB * KB
-	BUFFER_SIZE              = 28 * KB
-	INITIAL_WINDOW_SIZE      = 1 * MB
-	INITIAL_CONN_WINDOW_SIZE = 2 * INITIAL_WINDOW_SIZE
-	MAX_MESSAGE_SIZE         = 300 * MB
-	MAX_POOL_SIZE            = 60
+	KB = 1024
+	MB = KB * KB
 )
+
+var (
+	BUFFER_SIZE              = 28 * KB
+	INITIAL_WINDOW_SIZE      = int32(1 * MB)
+	INITIAL_CONN_WINDOW_SIZE = int32(2 * MB)
+	MAX_POOL_SIZE            = int32(60)
+	MAX_MESSAGE_SIZE         = 400 * MB
+)
+
+func init() {
+	if n, ok := environment.EnvInt("DL_MAX_MESSAGE_SIZE_MB", MB); ok {
+		MAX_MESSAGE_SIZE = n
+	}
+	if n, ok := environment.EnvInt("DL_BUFFER_SIZE_KB", KB); ok {
+		BUFFER_SIZE = n
+	}
+	if n, ok := environment.EnvInt32("DL_INITIAL_WINDOW_SIZE_MB", MB); ok {
+		INITIAL_WINDOW_SIZE = n
+	}
+	if n, ok := environment.EnvInt32("DL_INITIAL_CONN_WINDOW_SIZE_MB", MB); ok {
+		INITIAL_CONN_WINDOW_SIZE = n
+	}
+	if n, ok := environment.EnvInt32("DL_MAX_POOL_SIZE", 1); ok {
+		MAX_POOL_SIZE = n
+	}
+}
 
 type DbPoolConnector struct {
 	pool       *pgxpool.Pool
