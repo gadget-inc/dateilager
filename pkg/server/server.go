@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/tls"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"strconv"
@@ -60,17 +61,17 @@ func init() {
 		}
 	}
 	if v := os.Getenv("DL_INITIAL_WINDOW_SIZE_MB"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
+		if n, err := strconv.Atoi(v); err == nil && n*MB <= math.MaxInt32 {
 			INITIAL_WINDOW_SIZE = int32(n * MB)
 		}
 	}
 	if v := os.Getenv("DL_INITIAL_CONN_WINDOW_SIZE_MB"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
+		if n, err := strconv.Atoi(v); err == nil && n*MB <= math.MaxInt32 {
 			INITIAL_CONN_WINDOW_SIZE = int32(n * MB)
 		}
 	}
 	if v := os.Getenv("DL_MAX_POOL_SIZE"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
+		if n, err := strconv.Atoi(v); err == nil && n <= math.MaxInt32 {
 			MAX_POOL_SIZE = int32(n)
 		}
 	}
