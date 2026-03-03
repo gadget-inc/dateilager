@@ -65,7 +65,7 @@ func UpdateObjects(ctx context.Context, tx pgx.Tx, conn DbConnector, encoder *Co
 	tableName := fmt.Sprintf("__update_%d_%d", project, version)
 	_, err := tx.Exec(ctx, fmt.Sprintf(`
 		CREATE TEMPORARY TABLE
-			%s (hash hash, bytes bytea, path text, mode bigint, size bigint)
+			"%s" (hash hash, bytes bytea, path text, mode bigint, size bigint)
 		ON COMMIT DROP
 	`, tableName))
 	if err != nil {
@@ -83,7 +83,7 @@ func UpdateObjects(ctx context.Context, tx pgx.Tx, conn DbConnector, encoder *Co
 		SELECT
 			hash, bytes
 		FROM
-			%s
+			"%s"
 		ON CONFLICT
 			DO NOTHING
 	`, tableName))
@@ -104,7 +104,7 @@ func UpdateObjects(ctx context.Context, tx pgx.Tx, conn DbConnector, encoder *Co
 			size,
 			false as packed
 		FROM
-			%s
+			"%s"
 		ON CONFLICT
 	       DO NOTHING
 		RETURNING

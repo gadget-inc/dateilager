@@ -123,7 +123,7 @@ func TestNegativeProjectIDWithDirectDBInsert(t *testing.T) {
 	fs := tc.FsApi()
 
 	stream := &mockGetServer{ctx: tc.Context()}
-	err := fs.Get(&pb.GetRequest{Project: -50}, stream)
+	err := fs.Get(prefixQuery(-50, nil, "/"), stream)
 	require.NoError(t, err, "fs.Get")
 
 	verifyStreamResults(t, stream.results, map[string]expectedObject{
