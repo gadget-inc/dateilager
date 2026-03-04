@@ -34,7 +34,7 @@ func TestClientNewProjectEmptyPackPattern(t *testing.T) {
 	// If the objects were marked as packed they would be returned as more than 1 TAR
 	assert.Equal(t, 1, len(stream.results), "expected 1 TAR files")
 
-	verifyTarResults(t, stream.results, map[string]expectedObject{
+	verifyTarResults(t, collectBytes(stream.results), map[string]expectedObject{
 		"a": {content: "a v1"},
 		"b": {content: "b v1"},
 		"c": {content: "c v1"},

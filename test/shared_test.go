@@ -578,7 +578,14 @@ func createTestGRPCServer(tc util.TestCtx) (*bufconn.Listener, *grpc.Server, fun
 
 	getConn := func() *grpc.ClientConn {
 		//nolint:staticcheck, nolintlint // Using DialContext until we're ready to migrate to NewClient
-		conn, err := grpc.DialContext(tc.Context(), "bufnet", grpc.WithContextDialer(dialer), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.DialContext(tc.Context(), "bufnet",
+			grpc.WithContextDialer(dialer),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithDefaultCallOptions(
+				grpc.MaxCallRecvMsgSize(client.MAX_MESSAGE_SIZE),
+				grpc.MaxCallSendMsgSize(client.MAX_MESSAGE_SIZE),
+			),
+		)
 		require.NoError(tc.T(), err, "Failed to dial bufnet")
 		return conn
 	}
@@ -654,7 +661,7 @@ func (m *mockGetServer) Send(resp *pb.GetResponse) error {
 type mockGetCompressServer struct {
 	grpc.ServerStream
 	ctx     context.Context
-	results [][]byte
+	results []*pb.GetCompressResponse
 }
 
 func (m *mockGetCompressServer) Context() context.Context {
@@ -662,7 +669,7 @@ func (m *mockGetCompressServer) Context() context.Context {
 }
 
 func (m *mockGetCompressServer) Send(resp *pb.GetCompressResponse) error {
-	m.results = append(m.results, resp.Bytes)
+	m.results = append(m.results, resp)
 	return nil
 }
 
@@ -837,6 +844,14 @@ func verifyTarResults(t *testing.T, results [][]byte, expected map[string]expect
 	}
 
 	assert.Equal(t, len(expected), count, "expected %d objects in tar results, got %d", len(expected), count)
+}
+
+func collectBytes(results []*pb.GetCompressResponse) [][]byte {
+	out := make([][]byte, len(results))
+	for i, r := range results {
+		out[i] = r.Bytes
+	}
+	return out
 }
 
 // Use debugProjects(tc) and debugObjects(tc) within a failing test to log the state of the DB
