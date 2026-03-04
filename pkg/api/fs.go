@@ -20,6 +20,11 @@ import (
 
 var ErrMultipleProjectsPerUpdate = errors.New("multiple objects in one update")
 
+// PackedObjectChunkSize is the maximum size in bytes for a single
+// GetCompressResponse message when streaming packed objects. Packed
+// objects larger than this are split across multiple messages.
+const PackedObjectChunkSize = 4 * 1024 * 1024
+
 func requireAdminAuth(ctx context.Context) error {
 	ctxAuth := ctx.Value(auth.AuthCtxKey).(auth.Auth)
 
@@ -404,12 +409,7 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 				return status.Errorf(codes.Internal, "FS get next tar: %v", err)
 			}
 
-			err = stream.Send(&pb.GetCompressResponse{
-				Version:  vrange.To,
-				Format:   pb.GetCompressResponse_S2_TAR,
-				Bytes:    tar,
-				PackPath: packPath,
-			})
+			err = sendPacked(stream, vrange.To, tar, packPath, PackedObjectChunkSize)
 			if err != nil {
 				return status.Errorf(codes.Internal, "FS send GetCompressResponse: %v", err)
 			}
@@ -417,6 +417,36 @@ func (f *Fs) GetCompress(req *pb.GetCompressRequest, stream pb.Fs_GetCompressSer
 	}
 
 	return nil
+}
+
+func sendPacked(stream pb.Fs_GetCompressServer, version int64, tar []byte, packPath *string, chunkSize int) error {
+	if packPath != nil && len(tar) > chunkSize {
+		for off := 0; off < len(tar); off += chunkSize {
+			end := off + chunkSize
+			continued := true
+			if end >= len(tar) {
+				end = len(tar)
+				continued = false
+			}
+			if err := stream.Send(&pb.GetCompressResponse{
+				Version:   version,
+				Format:    pb.GetCompressResponse_S2_TAR,
+				Bytes:     tar[off:end],
+				PackPath:  packPath,
+				Continued: continued,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return stream.Send(&pb.GetCompressResponse{
+		Version:  version,
+		Format:   pb.GetCompressResponse_S2_TAR,
+		Bytes:    tar,
+		PackPath: packPath,
+	})
 }
 
 func (f *Fs) GetUnary(ctx context.Context, req *pb.GetUnaryRequest) (*pb.GetUnaryResponse, error) {

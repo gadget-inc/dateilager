@@ -2,6 +2,7 @@ package test
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -572,4 +573,108 @@ func TestRebuildWithSubpaths(t *testing.T) {
 		"pack/sub/c/1": {content: "pack/sub/c/1 v1"},
 		"pack/sub/c/2": {content: "pack/sub/c/2 v1"},
 	})
+}
+
+func TestRebuildWithChunkedPackedObjects(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	// Create a project with a pack pattern matching "pack/.*/"
+	writeProject(tc, 1, 1, "pack/.*/")
+
+	// Build 10 files each ~512KB of random hex (incompressible) to exceed the 4 MiB chunk threshold
+	objects := make(map[string]expectedObject)
+	expectedFiles := make(map[string]expectedFile)
+	for j := 0; j < 10; j++ {
+		path := fmt.Sprintf("pack/big/%d", j)
+		raw := make([]byte, 256*1024)
+		_, err := rand.Read(raw)
+		require.NoError(t, err, "generate random bytes")
+		content := hex.EncodeToString(raw) // 512KB hex string, incompressible
+		objects[path] = expectedObject{content: content}
+		expectedFiles[path] = expectedFile{content: content}
+	}
+
+	writePackedObjects(tc, 1, 1, nil, "pack/big", objects)
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   10,
+	}, nil)
+
+	verifyDir(t, tmpDir, 1, expectedFiles)
+}
+
+func TestRebuildWithSmallPackedObjects(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "pack/.*/")
+
+	objects := map[string]expectedObject{
+		"pack/small/a": {content: "hello"},
+		"pack/small/b": {content: "world"},
+		"pack/small/c": {content: "foo"},
+	}
+	writePackedObjects(tc, 1, 1, nil, "pack/small", objects)
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   3,
+	}, nil)
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"pack/small/a": {content: "hello"},
+		"pack/small/b": {content: "world"},
+		"pack/small/c": {content: "foo"},
+	})
+}
+
+func TestRebuildFirstResponseContinued(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	// Only a single large packed object in the project, so the very first
+	// stream.Recv() in Rebuild (the pre-goroutine recv at line 413) returns
+	// a response with Continued == true.
+	writeProject(tc, 1, 1, "pack/.*/")
+
+	objects := make(map[string]expectedObject)
+	expectedFiles := make(map[string]expectedFile)
+	for j := 0; j < 10; j++ {
+		path := fmt.Sprintf("pack/only/%d", j)
+		raw := make([]byte, 256*1024)
+		_, err := rand.Read(raw)
+		require.NoError(t, err, "generate random bytes")
+		content := hex.EncodeToString(raw)
+		objects[path] = expectedObject{content: content}
+		expectedFiles[path] = expectedFile{content: content}
+	}
+
+	writePackedObjects(tc, 1, 1, nil, "pack/only", objects)
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   10,
+	}, nil)
+
+	verifyDir(t, tmpDir, 1, expectedFiles)
 }
