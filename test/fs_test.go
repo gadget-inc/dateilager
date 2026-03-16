@@ -10,6 +10,7 @@ import (
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
+	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -561,6 +562,52 @@ func TestGetCompressSmallPackedObjectNotChunked(t *testing.T) {
 
 	require.Equal(t, 1, len(packResponses), "expected exactly one response for small packed object")
 	assert.False(t, packResponses[0].Continued, "small packed object should have Continued == false")
+}
+
+func TestGetCompressPackedObjectAtExactChunkBoundary(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "pack/")
+
+	// Insert a packed object whose stored bytes are exactly PackedObjectChunkSize.
+	// The chunking condition is len(tar) > chunkSize, so at exactly the boundary
+	// the object must be sent as a single message with Continued == false.
+	rawBytes := make([]byte, api.PackedObjectChunkSize)
+	_, err := rand.Read(rawBytes)
+	require.NoError(t, err, "generate random bytes")
+
+	conn := tc.Connect()
+	packPath := "pack/"
+	hash := db.HashContent(rawBytes)
+	_, err = conn.Exec(tc.Context(), `
+		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
+		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
+	`, int64(1), int64(1), nil, packPath, hash.H1, hash.H2, int64(0), len(rawBytes), true)
+	require.NoError(t, err, "insert object")
+
+	_, err = conn.Exec(tc.Context(), `
+		INSERT INTO dl.contents (hash, bytes)
+		VALUES (($1, $2), $3)
+		ON CONFLICT DO NOTHING
+	`, hash.H1, hash.H2, rawBytes)
+	require.NoError(t, err, "insert contents")
+
+	fs := tc.FsApi()
+	stream := &mockGetCompressServer{ctx: tc.Context()}
+	err = fs.GetCompress(buildCompressRequest(1, nil, nil, nil, ""), stream)
+	require.NoError(t, err, "fs.GetCompress")
+
+	var packResponses []*pb.GetCompressResponse
+	for _, r := range stream.results {
+		if r.PackPath != nil && *r.PackPath == packPath {
+			packResponses = append(packResponses, r)
+		}
+	}
+
+	require.Equal(t, 1, len(packResponses), "packed object at exact chunk boundary should be a single response")
+	assert.Equal(t, api.PackedObjectChunkSize, len(packResponses[0].Bytes), "response should contain all bytes")
+	assert.False(t, packResponses[0].Continued, "packed object at exact chunk boundary should have Continued == false")
 }
 
 func TestGetCompressWithCacheVersions(t *testing.T) {
