@@ -363,6 +363,35 @@ func (t *rebuildResultTracker) result() RebuildResult {
 	}
 }
 
+// recvFullResponse reassembles a chunked GetCompressResponse. When the given
+// response has Continued == true, it reads additional messages from the stream,
+// concatenating their Bytes fields until a message with Continued == false is
+// received (or EOF). The returned response contains the fully concatenated
+// Bytes and Continued == false.
+func recvFullResponse(response *pb.GetCompressResponse, stream pb.Fs_GetCompressClient) (*pb.GetCompressResponse, error) {
+	if !response.Continued {
+		return response, nil
+	}
+
+	var pendingBytes []byte
+	for response.Continued {
+		pendingBytes = append(pendingBytes, response.Bytes...)
+		var err error
+		response, err = stream.Recv()
+		if err == io.EOF {
+			// Last chunk arrived as Continued=true with no terminator -- treat as complete
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("receive fs.GetCompress (chunk): %w", err)
+		}
+	}
+	if len(pendingBytes) > 0 {
+		response.Bytes = append(pendingBytes, response.Bytes...)
+	}
+	return response, nil
+}
+
 func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVersion *int64, dir string, ignores []string, subpaths []string, cacheDir string, matcher *files.FileMatcher, summarize bool) (RebuildResult, error) {
 	ctx, span := telemetry.Start(ctx, "client.rebuild", trace.WithAttributes(
 		key.Project.Attribute(project),
@@ -418,6 +447,12 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		return emptyResult(fromVersion), fmt.Errorf("receive fs.GetCompress: %w", err)
 	}
 
+	// Reassemble chunked responses for the initial recv
+	response, err = recvFullResponse(response, stream)
+	if err != nil {
+		return emptyResult(fromVersion), err
+	}
+
 	err = ensureMetadataDir(dir)
 	if err != nil {
 		return emptyResult(fromVersion), err
@@ -435,7 +470,14 @@ func (c *Client) Rebuild(ctx context.Context, project int64, prefix string, toVe
 		defer close(tarChan)
 
 		for {
-			err := tracker.checkVersion(response.Version)
+			// Reassemble chunked responses before forwarding to workers
+			response, err = recvFullResponse(response, stream)
+			if err != nil {
+				cancel()
+				return err
+			}
+
+			err = tracker.checkVersion(response.Version)
 			if err != nil {
 				return err
 			}

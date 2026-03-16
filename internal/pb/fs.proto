@@ -112,6 +112,7 @@ message GetCompressResponse {
     Format format = 2;
     bytes bytes = 3;
     optional string pack_path = 4;
+    bool continued = 5;
 }
 
 message GetUnaryRequest {

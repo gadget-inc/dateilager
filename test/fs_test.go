@@ -1,12 +1,16 @@
 package test
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"testing"
 
 	"github.com/gadget-inc/dateilager/internal/auth"
 	"github.com/gadget-inc/dateilager/internal/db"
 	"github.com/gadget-inc/dateilager/internal/pb"
 	util "github.com/gadget-inc/dateilager/internal/testutil"
+	"github.com/gadget-inc/dateilager/pkg/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -355,7 +359,7 @@ func TestGetCompress(t *testing.T) {
 
 	assert.Equal(t, 1, len(stream.results), "expected 1 TAR files")
 
-	verifyTarResults(t, stream.results, map[string]expectedObject{
+	verifyTarResults(t, collectBytes(stream.results), map[string]expectedObject{
 		"/a": {content: "v3"},
 	})
 }
@@ -378,7 +382,7 @@ func TestGetCompressWithIgnorePattern(t *testing.T) {
 
 	assert.Equal(t, 1, len(stream.results), "expected 1 TAR files")
 
-	verifyTarResults(t, stream.results, map[string]expectedObject{
+	verifyTarResults(t, collectBytes(stream.results), map[string]expectedObject{
 		"/a/b/c": {content: "a/b/c v1"},
 		"/a/b/d": {content: "a/b/d v1"},
 	})
@@ -475,11 +479,135 @@ func TestGetCompressReturnsPackedObjectsWithoutRepacking(t *testing.T) {
 
 	assert.Equal(t, 2, len(stream.results), "expected 2 TAR files")
 
-	verifyTarResults(t, stream.results, map[string]expectedObject{
+	verifyTarResults(t, collectBytes(stream.results), map[string]expectedObject{
 		"pack/a": {content: "pack/a v1"},
 		"pack/b": {content: "pack/b v1"},
 		"c":      {content: "c v2"},
 	})
+}
+
+func TestGetCompressChunksLargePackedObject(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "pack/")
+
+	// Create a packed object large enough to exceed PackedObjectChunkSize (4 MiB)
+	// after S2 compression. We use random bytes (hex-encoded to stay printable)
+	// so S2 cannot compress them significantly.
+	objects := make(map[string]expectedObject)
+	for j := 0; j < 20; j++ {
+		raw := make([]byte, 256*1024)
+		_, err := rand.Read(raw)
+		require.NoError(t, err, "generate random content")
+		objects[fmt.Sprintf("pack/%02d", j)] = expectedObject{
+			content: hex.EncodeToString(raw),
+		}
+	}
+	writePackedObjects(tc, 1, 1, nil, "pack/", objects)
+
+	fs := tc.FsApi()
+	stream := &mockGetCompressServer{ctx: tc.Context()}
+	err := fs.GetCompress(buildCompressRequest(1, nil, nil, nil, ""), stream)
+	require.NoError(t, err, "fs.GetCompress")
+
+	// Collect only responses for the pack path
+	packPath := "pack/"
+	var packResponses []*pb.GetCompressResponse
+	for _, r := range stream.results {
+		if r.PackPath != nil && *r.PackPath == packPath {
+			packResponses = append(packResponses, r)
+		}
+	}
+
+	require.Greater(t, len(packResponses), 1, "expected multiple chunks for large packed object")
+
+	// All but the last should have Continued == true
+	for i, r := range packResponses[:len(packResponses)-1] {
+		assert.True(t, r.Continued, "chunk %d should have Continued == true", i)
+	}
+	// Last should have Continued == false
+	assert.False(t, packResponses[len(packResponses)-1].Continued, "last chunk should have Continued == false")
+
+	// Concatenated bytes should equal the full TAR blob
+	var combined []byte
+	for _, r := range packResponses {
+		combined = append(combined, r.Bytes...)
+	}
+
+	// Verify the reassembled TAR contains the expected objects
+	verifyTarResults(t, [][]byte{combined}, objects)
+}
+
+func TestGetCompressSmallPackedObjectNotChunked(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "pack/")
+	writePackedFiles(tc, 1, 1, nil, "pack/a")
+
+	fs := tc.FsApi()
+	stream := &mockGetCompressServer{ctx: tc.Context()}
+	err := fs.GetCompress(buildCompressRequest(1, nil, nil, nil, ""), stream)
+	require.NoError(t, err, "fs.GetCompress")
+
+	// Collect only responses for the pack path
+	packPath := "pack/a"
+	var packResponses []*pb.GetCompressResponse
+	for _, r := range stream.results {
+		if r.PackPath != nil && *r.PackPath == packPath {
+			packResponses = append(packResponses, r)
+		}
+	}
+
+	require.Equal(t, 1, len(packResponses), "expected exactly one response for small packed object")
+	assert.False(t, packResponses[0].Continued, "small packed object should have Continued == false")
+}
+
+func TestGetCompressPackedObjectAtExactChunkBoundary(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 1, "pack/")
+
+	// Insert a packed object whose stored bytes are exactly PackedObjectChunkSize.
+	// The chunking condition is len(tar) > chunkSize, so at exactly the boundary
+	// the object must be sent as a single message with Continued == false.
+	rawBytes := make([]byte, api.PackedObjectChunkSize)
+	_, err := rand.Read(rawBytes)
+	require.NoError(t, err, "generate random bytes")
+
+	conn := tc.Connect()
+	packPath := "pack/"
+	hash := db.HashContent(rawBytes)
+	_, err = conn.Exec(tc.Context(), `
+		INSERT INTO dl.objects (project, start_version, stop_version, path, hash, mode, size, packed)
+		VALUES ($1, $2, $3, $4, ($5, $6), $7, $8, $9)
+	`, int64(1), int64(1), nil, packPath, hash.H1, hash.H2, int64(0), len(rawBytes), true)
+	require.NoError(t, err, "insert object")
+
+	_, err = conn.Exec(tc.Context(), `
+		INSERT INTO dl.contents (hash, bytes)
+		VALUES (($1, $2), $3)
+		ON CONFLICT DO NOTHING
+	`, hash.H1, hash.H2, rawBytes)
+	require.NoError(t, err, "insert contents")
+
+	fs := tc.FsApi()
+	stream := &mockGetCompressServer{ctx: tc.Context()}
+	err = fs.GetCompress(buildCompressRequest(1, nil, nil, nil, ""), stream)
+	require.NoError(t, err, "fs.GetCompress")
+
+	var packResponses []*pb.GetCompressResponse
+	for _, r := range stream.results {
+		if r.PackPath != nil && *r.PackPath == packPath {
+			packResponses = append(packResponses, r)
+		}
+	}
+
+	require.Equal(t, 1, len(packResponses), "packed object at exact chunk boundary should be a single response")
+	assert.Equal(t, api.PackedObjectChunkSize, len(packResponses[0].Bytes), "response should contain all bytes")
+	assert.False(t, packResponses[0].Continued, "packed object at exact chunk boundary should have Continued == false")
 }
 
 func TestGetCompressWithCacheVersions(t *testing.T) {
@@ -509,7 +637,7 @@ func TestGetCompressWithCacheVersions(t *testing.T) {
 
 	assert.Equal(t, 2, len(stream.results), "expected 2 TAR files")
 
-	verifyTarResults(t, stream.results, map[string]expectedObject{
+	verifyTarResults(t, collectBytes(stream.results), map[string]expectedObject{
 		"pack/a":   {content: string(hashes[0].Bytes())},
 		"pack/b/1": {content: "pack/b/1 v2"},
 		"pack/b/2": {content: "pack/b/2 v2"},
