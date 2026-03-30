@@ -678,3 +678,283 @@ func TestRebuildFirstResponseContinued(t *testing.T) {
 
 	verifyDir(t, tmpDir, 1, expectedFiles)
 }
+
+func TestRebuildWithSIFREGMode(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	// Store a file with Unix raw mode 33188 (0100644 = S_IFREG | 0644).
+	// The dl.objects.mode column stores both Go-native modes (just permission
+	// bits, e.g. 0644) and raw Unix stat modes (including S_IFREG, e.g. 0100644).
+	// Rebuild should handle both representations correctly.
+	writeProject(tc, 1, 1)
+	writeObjectFull(tc, 1, 1, nil, "a", "a v1", 33188) // S_IFREG | 0644
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   1,
+	}, nil)
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"a": {content: "a v1"},
+	})
+
+	// Verify the file has the correct permission bits (0644), not the raw S_IFREG mode
+	info, err := os.Stat(filepath.Join(tmpDir, "a"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode()&os.ModePerm)
+}
+
+func TestRebuildModeChangeFromPermOnlyToSIFREG(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	// A file is first stored with Go-native mode 0644 (no file type bits),
+	// then updated with Unix raw mode 33188 (0100644 = S_IFREG | 0644).
+	// The actual permissions are identical, so the incremental rebuild
+	// should NOT attempt a chmod.
+	writeProject(tc, 1, 2)
+	writeObjectFull(tc, 1, 1, i(2), "dist/function.wasm", "wasm v1", 0o644) // Go-native 0644
+	writeObjectFull(tc, 1, 2, nil, "dist/function.wasm", "wasm v2", 33188)  // Unix raw S_IFREG | 0644
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	// First rebuild: write the file at v1 with mode 420
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   1,
+	}, nil)
+
+	verifyDir(t, tmpDir, 1, map[string]expectedFile{
+		"dist/function.wasm": {content: "wasm v1"},
+	})
+
+	// Second rebuild: update to v2 where mode changed from 420 to 33188.
+	// This should succeed without EPERM — the permissions are the same.
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 2,
+		count:   1,
+	}, nil)
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"dist/function.wasm": {content: "wasm v2"},
+	})
+
+	// Verify permissions are correct
+	info, err := os.Stat(filepath.Join(tmpDir, "dist/function.wasm"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode()&os.ModePerm)
+}
+
+func TestRebuildModeChangeFromSIFREGToPermOnly(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	// Reverse direction: file goes from S_IFREG mode to Go-native mode.
+	writeProject(tc, 1, 2)
+	writeObjectFull(tc, 1, 1, i(2), "a", "a v1", 33188) // Unix raw S_IFREG | 0644
+	writeObjectFull(tc, 1, 2, nil, "a", "a v2", 0o644)  // Go-native 0644
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   1,
+	}, nil)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 2,
+		count:   1,
+	}, nil)
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"a": {content: "a v2"},
+	})
+
+	info, err := os.Stat(filepath.Join(tmpDir, "a"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode()&os.ModePerm)
+}
+
+func TestRebuildRealPermissionChange(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	// When the actual permissions DO change (e.g. 0644 -> 0755),
+	// the chmod should still happen.
+	// Note: we include a second file ("a") so that the root directory is
+	// registered in existingDirs before "script.sh" is processed. The chmod
+	// check is skipped for the first file in a directory (createdDir == true).
+	writeProject(tc, 1, 2)
+	writeObjectFull(tc, 1, 1, i(2), "a", "anchor v1", 0o644)
+	writeObjectFull(tc, 1, 2, nil, "a", "anchor v2", 0o644)
+	writeObjectFull(tc, 1, 1, i(2), "script.sh", "#!/bin/sh\necho hi", 0o644)
+	writeObjectFull(tc, 1, 2, nil, "script.sh", "#!/bin/sh\necho hi v2", 0o755)
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   2,
+	}, nil)
+
+	info, err := os.Stat(filepath.Join(tmpDir, "script.sh"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode()&os.ModePerm)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 2,
+		count:   2,
+	}, nil)
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"a":         {content: "anchor v2"},
+		"script.sh": {content: "#!/bin/sh\necho hi v2"},
+	})
+
+	info, err = os.Stat(filepath.Join(tmpDir, "script.sh"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), info.Mode()&os.ModePerm)
+}
+
+func TestRebuildModeChange0755GoToSIFREG(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	// Same as the 0644 case but with 0755: Go-native 493 (0755) → Unix raw 33261 (0100755).
+	// Permissions are identical, no chmod needed.
+	writeProject(tc, 1, 2)
+	writeObjectFull(tc, 1, 1, i(2), "a", "a v1", 0o755) // Go-native 0755
+	writeObjectFull(tc, 1, 2, nil, "a", "a v2", 33261)  // Unix raw S_IFREG | 0755
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   1,
+	}, nil)
+
+	info, err := os.Stat(filepath.Join(tmpDir, "a"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), info.Mode()&os.ModePerm)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 2,
+		count:   1,
+	}, nil)
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"a": {content: "a v2"},
+	})
+
+	info, err = os.Stat(filepath.Join(tmpDir, "a"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), info.Mode()&os.ModePerm)
+}
+
+func TestRebuildRealPermChangeAcrossSIFREGModes(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	// Real permission change where both versions use Unix raw modes:
+	// 33188 (S_IFREG | 0644) → 33261 (S_IFREG | 0755). The chmod should fire.
+	writeProject(tc, 1, 2)
+	writeObjectFull(tc, 1, 1, i(2), "a", "anchor v1", 33188)  // S_IFREG | 0644
+	writeObjectFull(tc, 1, 2, nil, "a", "anchor v2", 33188)   // S_IFREG | 0644 (unchanged)
+	writeObjectFull(tc, 1, 1, i(2), "script.sh", "v1", 33188) // S_IFREG | 0644
+	writeObjectFull(tc, 1, 2, nil, "script.sh", "v2", 33261)  // S_IFREG | 0755
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   2,
+	}, nil)
+
+	info, err := os.Stat(filepath.Join(tmpDir, "script.sh"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode()&os.ModePerm)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 2,
+		count:   2,
+	}, nil)
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"a":         {content: "anchor v2"},
+		"script.sh": {content: "v2"},
+	})
+
+	info, err = os.Stat(filepath.Join(tmpDir, "script.sh"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), info.Mode()&os.ModePerm)
+}
+
+func TestRebuildRealPermChangeMixedModeRepresentations(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	// Real permission change across different mode representations:
+	// Go-native 0644 (420) → Unix raw 33261 (S_IFREG | 0755).
+	// Both the representation AND the permissions change. chmod should fire.
+	writeProject(tc, 1, 2)
+	writeObjectFull(tc, 1, 1, i(2), "a", "anchor v1", 0o644)  // Go-native 0644
+	writeObjectFull(tc, 1, 2, nil, "a", "anchor v2", 0o644)   // Go-native 0644 (unchanged)
+	writeObjectFull(tc, 1, 1, i(2), "script.sh", "v1", 0o644) // Go-native 0644
+	writeObjectFull(tc, 1, 2, nil, "script.sh", "v2", 33261)  // S_IFREG | 0755
+
+	c, _, close := createTestClient(tc)
+	defer close()
+
+	tmpDir := emptyTmpDir(t)
+	defer os.RemoveAll(tmpDir)
+
+	rebuild(tc, c, 1, i(1), tmpDir, nil, expectedResponse{
+		version: 1,
+		count:   2,
+	}, nil)
+
+	info, err := os.Stat(filepath.Join(tmpDir, "script.sh"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode()&os.ModePerm)
+
+	rebuild(tc, c, 1, nil, tmpDir, nil, expectedResponse{
+		version: 2,
+		count:   2,
+	}, nil)
+
+	verifyDir(t, tmpDir, 2, map[string]expectedFile{
+		"a":         {content: "anchor v2"},
+		"script.sh": {content: "v2"},
+	})
+
+	info, err = os.Stat(filepath.Join(tmpDir, "script.sh"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), info.Mode()&os.ModePerm)
+}
