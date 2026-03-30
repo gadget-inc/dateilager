@@ -101,6 +101,15 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 		dir := filepath.Dir(path)
 		createdDir := false
 
+		// Mask to extract only permission + special bits (lower 12 bits of Unix
+		// st_mode: rwx for owner/group/other + setuid/setgid/sticky), ignoring
+		// file type bits like S_IFREG (0100000). The dl.objects.mode column
+		// stores both Go-native modes (e.g. 0644 = 420) and raw Unix stat modes
+		// (e.g. 0100644 = 33188) — both represent the same permissions, just
+		// with different representations.
+		const permBits = os.FileMode(0o7777)
+		fileMode := os.FileMode(header.Mode) & permBits
+
 		if _, exists := existingDirs[dir]; !exists {
 			_, err := retryFileErrors(dir, func() (interface{}, error) {
 				createdDir = true
@@ -113,7 +122,7 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 		}
 
 		file, err := retryFileErrors(path, func() (*os.File, error) {
-			return os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
+			return os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, fileMode)
 		})
 		if err != nil {
 			return false, fmt.Errorf("open file %v: %w", path, err)
@@ -135,8 +144,8 @@ func writeObject(rootDir string, cacheObjectsDir string, reader *db.TarReader, h
 				return false, fmt.Errorf("stat %v: %w", path, err)
 			}
 
-			if info.Mode() != os.FileMode(header.Mode) {
-				err = file.Chmod(os.FileMode(header.Mode))
+			if info.Mode()&permBits != fileMode {
+				err = file.Chmod(fileMode)
 				if err != nil {
 					return false, fmt.Errorf("chmod %v on disk: %w", path, err)
 				}
