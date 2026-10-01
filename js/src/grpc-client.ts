@@ -179,7 +179,7 @@ export class DateiLagerGrpcClient {
    * }
    */
   public async *listObjects(project: bigint, path: string, options: ListObjectsOptions = {}): AsyncGenerator<Objekt, void> {
-    const { ignores = [], subpaths = [], from, to } = options;
+    const { ignores = [], subpaths = [], from, to, maxContentSendSize } = options;
 
     const parentContext = contextAPI.active();
     const span = tracer.startSpan(
@@ -192,6 +192,7 @@ export class DateiLagerGrpcClient {
           "dl.subpaths": subpaths,
           "dl.from_version": String(from),
           "dl.to_version": String(to),
+          "dl.max_content_send_size": String(maxContentSendSize),
         },
       },
       parentContext
@@ -204,6 +205,7 @@ export class DateiLagerGrpcClient {
             project,
             fromVersion: from,
             toVersion: to,
+            maxContentSendSize,
             queries: [
               {
                 path,

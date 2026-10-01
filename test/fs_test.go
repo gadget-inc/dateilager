@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/gadget-inc/dateilager/internal/auth"
@@ -338,6 +339,87 @@ func TestGetExactlyOneVersioned(t *testing.T) {
 			require.NoError(t, err, "fs.Get")
 
 			verifyStreamResults(t, stream.results, testCase.expected)
+		})
+	}
+}
+
+func TestGetWithMaxContentSendSize(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	writeProject(tc, 1, 2)
+	writeObject(tc, 1, 1, nil, "/a", "a v1")
+	writeObjectFull(tc, 1, 1, nil, "/b", strings.Repeat("b", 10), 0o644) // exactly at the limit used below, so content is still sent
+	writeObjectFull(tc, 1, 2, nil, "/c", strings.Repeat("c", 100), 0o600)
+
+	withLimit := func(req *pb.GetRequest, limit int64) *pb.GetRequest {
+		req.MaxContentSendSize = &limit
+		return req
+	}
+
+	testCases := []struct {
+		name     string
+		req      *pb.GetRequest
+		expected map[string]expectedObject
+		oversize map[string]int64
+	}{
+		{
+			name: "no limit",
+			req:  prefixQuery(1, nil, ""),
+			expected: map[string]expectedObject{
+				"/a": {content: "a v1"},
+				"/b": {content: strings.Repeat("b", 10), mode: 0o644},
+				"/c": {content: strings.Repeat("c", 100), mode: 0o600},
+			},
+		},
+		{
+			name: "limit of zero is unlimited",
+			req:  withLimit(prefixQuery(1, nil, ""), 0),
+			expected: map[string]expectedObject{
+				"/a": {content: "a v1"},
+				"/b": {content: strings.Repeat("b", 10), mode: 0o644},
+				"/c": {content: strings.Repeat("c", 100), mode: 0o600},
+			},
+		},
+		{
+			name: "limit omits content of larger objects",
+			req:  withLimit(prefixQuery(1, nil, ""), 10),
+			expected: map[string]expectedObject{
+				"/a": {content: "a v1"},
+				"/b": {content: strings.Repeat("b", 10), mode: 0o644},
+				"/c": {content: "", mode: 0o600},
+			},
+			oversize: map[string]int64{"/c": 100},
+		},
+		{
+			name: "limit with version range",
+			req:  withLimit(rangeQuery(1, i(1), i(2), ""), 10),
+			expected: map[string]expectedObject{
+				"/c": {content: "", mode: 0o600},
+			},
+			oversize: map[string]int64{"/c": 100},
+		},
+	}
+
+	fs := tc.FsApi()
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stream := &mockGetServer{ctx: tc.Context()}
+			err := fs.Get(testCase.req, stream)
+			require.NoError(t, err, "fs.Get")
+
+			verifyStreamResults(t, stream.results, testCase.expected)
+
+			for _, result := range stream.results {
+				if size, ok := testCase.oversize[result.Path]; ok {
+					assert.Nil(t, result.Content, "expected no content for %v", result.Path)
+					assert.Equal(t, size, result.Size, "mismatch size for %v", result.Path)
+				} else {
+					assert.NotNil(t, result.Content, "expected content for %v", result.Path)
+					assert.Equal(t, int64(len(result.Content)), result.Size, "mismatch size for %v", result.Path)
+				}
+			}
 		})
 	}
 }

@@ -263,6 +263,17 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 		key.ToVersion.Attribute(req.ToVersion),
 	)
 
+	var maxContentSize int64
+	if req.MaxContentSendSize != nil {
+		maxContentSize = *req.MaxContentSendSize
+	} else {
+		maxContentSize = -1
+	}
+
+	trace.SpanFromContext(ctx).SetAttributes(
+		key.MaxContentSendSize.Attribute(maxContentSize),
+	)
+
 	project, err := requireProjectAuth(ctx)
 	if err != nil {
 		return err
@@ -312,7 +323,7 @@ func (f *Fs) Get(req *pb.GetRequest, stream pb.Fs_GetServer) error {
 			key.QueryIgnores.Field(query.Ignores),
 		)
 
-		objects, err := db.GetObjects(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query, -1)
+		objects, err := db.GetObjects(ctx, tx, f.ContentLookup, packManager, req.Project, vrange, query, maxContentSize)
 		if err != nil {
 			return status.Errorf(codes.Internal, "FS get objects: %v", err)
 		}
