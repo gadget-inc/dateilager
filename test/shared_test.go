@@ -38,6 +38,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/proto"
 )
 
 func init() {
@@ -762,6 +763,19 @@ func buildRequest(project int64, fromVersion, toVersion *int64, prefix bool, pat
 	}
 }
 
+// unaryRequest builds the GetUnary equivalent of a Get request, cloned because db.GetObjects can rewrite query paths
+func unaryRequest(req *pb.GetRequest) *pb.GetUnaryRequest {
+	req = proto.Clone(req).(*pb.GetRequest)
+
+	return &pb.GetUnaryRequest{
+		Project:            req.Project,
+		FromVersion:        req.FromVersion,
+		ToVersion:          req.ToVersion,
+		Queries:            req.Queries,
+		MaxContentSendSize: req.MaxContentSendSize,
+	}
+}
+
 func exactQuery(project int64, version *int64, paths ...string) *pb.GetRequest {
 	return buildRequest(project, nil, version, false, paths...)
 }
@@ -806,6 +820,21 @@ func verifyStreamResults(t *testing.T, results []*pb.Object, expected map[string
 		assert.Equal(t, object.deleted, result.Deleted, "mismatch deleted flag for %v", result.Path)
 		if object.mode != 0 {
 			assert.Equal(t, object.mode, result.Mode, "mismatch mode for %v", result.Path)
+		}
+	}
+}
+
+// verifyContentLimitedResults checks results like verifyStreamResults, and that oversize objects keep their size but have no content
+func verifyContentLimitedResults(t *testing.T, results []*pb.Object, expected map[string]expectedObject, oversize map[string]int64) {
+	verifyStreamResults(t, results, expected)
+
+	for _, result := range results {
+		if size, ok := oversize[result.Path]; ok {
+			assert.Nil(t, result.Content, "expected no content for %v", result.Path)
+			assert.Equal(t, size, result.Size, "mismatch size for %v", result.Path)
+		} else {
+			assert.NotNil(t, result.Content, "expected content for %v", result.Path)
+			assert.Equal(t, int64(len(expected[result.Path].content)), result.Size, "mismatch size for %v", result.Path)
 		}
 	}
 }

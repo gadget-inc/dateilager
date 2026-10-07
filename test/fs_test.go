@@ -351,6 +351,8 @@ func TestGetWithMaxContentSendSize(t *testing.T) {
 	writeObject(tc, 1, 1, nil, "/a", "a v1")
 	writeObjectFull(tc, 1, 1, nil, "/b", strings.Repeat("b", 10), 0o644) // exactly at the limit used below, so content is still sent
 	writeObjectFull(tc, 1, 2, nil, "/c", strings.Repeat("c", 100), 0o600)
+	writeObject(tc, 1, 1, i(2), "/d", "d v1")
+	writeObject(tc, 1, 2, nil, "/d", strings.Repeat("d", 100)) // grows past the limit at version 2
 
 	withLimit := func(req *pb.GetRequest, limit int64) *pb.GetRequest {
 		req.MaxContentSendSize = &limit
@@ -370,6 +372,7 @@ func TestGetWithMaxContentSendSize(t *testing.T) {
 				"/a": {content: "a v1"},
 				"/b": {content: strings.Repeat("b", 10), mode: 0o644},
 				"/c": {content: strings.Repeat("c", 100), mode: 0o600},
+				"/d": {content: strings.Repeat("d", 100)},
 			},
 		},
 		{
@@ -379,6 +382,7 @@ func TestGetWithMaxContentSendSize(t *testing.T) {
 				"/a": {content: "a v1"},
 				"/b": {content: strings.Repeat("b", 10), mode: 0o644},
 				"/c": {content: strings.Repeat("c", 100), mode: 0o600},
+				"/d": {content: strings.Repeat("d", 100)},
 			},
 		},
 		{
@@ -388,16 +392,18 @@ func TestGetWithMaxContentSendSize(t *testing.T) {
 				"/a": {content: "a v1"},
 				"/b": {content: strings.Repeat("b", 10), mode: 0o644},
 				"/c": {content: "", mode: 0o600},
+				"/d": {content: ""},
 			},
-			oversize: map[string]int64{"/c": 100},
+			oversize: map[string]int64{"/c": 100, "/d": 100},
 		},
 		{
 			name: "limit with version range",
 			req:  withLimit(rangeQuery(1, i(1), i(2), ""), 10),
 			expected: map[string]expectedObject{
 				"/c": {content: "", mode: 0o600},
+				"/d": {content: ""},
 			},
-			oversize: map[string]int64{"/c": 100},
+			oversize: map[string]int64{"/c": 100, "/d": 100},
 		},
 	}
 
@@ -405,23 +411,63 @@ func TestGetWithMaxContentSendSize(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			// the streaming and unary RPCs must apply the limit the same way
+			unaryReq := unaryRequest(testCase.req)
+
 			stream := &mockGetServer{ctx: tc.Context()}
 			err := fs.Get(testCase.req, stream)
 			require.NoError(t, err, "fs.Get")
 
-			verifyStreamResults(t, stream.results, testCase.expected)
+			verifyContentLimitedResults(t, stream.results, testCase.expected, testCase.oversize)
 
-			for _, result := range stream.results {
-				if size, ok := testCase.oversize[result.Path]; ok {
-					assert.Nil(t, result.Content, "expected no content for %v", result.Path)
-					assert.Equal(t, size, result.Size, "mismatch size for %v", result.Path)
-				} else {
-					assert.NotNil(t, result.Content, "expected content for %v", result.Path)
-					assert.Equal(t, int64(len(result.Content)), result.Size, "mismatch size for %v", result.Path)
-				}
-			}
+			response, err := fs.GetUnary(tc.Context(), unaryReq)
+			require.NoError(t, err, "fs.GetUnary")
+
+			verifyContentLimitedResults(t, response.Objects, testCase.expected, testCase.oversize)
 		})
 	}
+}
+
+func TestGetPackedObjectsWithMaxContentSendSize(t *testing.T) {
+	tc := util.NewTestCtx(t, auth.Project, 1)
+	defer tc.Close()
+
+	packed := map[string]expectedObject{
+		"/p/a": {content: "p/a v1"},
+		"/p/b": {content: "p/b v1"},
+	}
+
+	// the limit is checked against the stored pack, so this only covers packs that fit under it
+	limit := int64(1000)
+	require.Less(t, int64(len(packObjects(tc, packed))), limit, "pack must be smaller than the limit")
+
+	writeProject(tc, 1, 1, "/p/")
+	writePackedObjects(tc, 1, 1, nil, "/p/", packed)
+	writeObject(tc, 1, 1, nil, "/big", strings.Repeat("b", 2000))
+
+	req := prefixQuery(1, nil, "")
+	req.MaxContentSendSize = &limit
+	unaryReq := unaryRequest(req)
+
+	expected := map[string]expectedObject{
+		"/p/a": {content: "p/a v1"},
+		"/p/b": {content: "p/b v1"},
+		"/big": {content: ""},
+	}
+	oversize := map[string]int64{"/big": 2000}
+
+	fs := tc.FsApi()
+
+	stream := &mockGetServer{ctx: tc.Context()}
+	err := fs.Get(req, stream)
+	require.NoError(t, err, "fs.Get")
+
+	verifyContentLimitedResults(t, stream.results, expected, oversize)
+
+	response, err := fs.GetUnary(tc.Context(), unaryReq)
+	require.NoError(t, err, "fs.GetUnary")
+
+	verifyContentLimitedResults(t, response.Objects, expected, oversize)
 }
 
 func TestGetCompress(t *testing.T) {
