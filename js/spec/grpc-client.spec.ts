@@ -1,5 +1,12 @@
+import type { Objekt } from "../src";
 import { decodeContent, encodeContent } from "../src";
 import { buildTestFiles, grpcClient } from "./util";
+
+const byFileNumber = (a: { path: string }, b: { path: string }) => {
+  const aNum = parseInt(a.path.split("-")[1]!.slice(0, -4));
+  const bNum = parseInt(b.path.split("-")[1]!.slice(0, -4));
+  return aNum - bNum;
+};
 
 describe("grpc client operations", () => {
   afterEach(async () => {
@@ -162,6 +169,43 @@ describe("grpc client operations", () => {
       });
 
     expect(receivedObjects).toEqual(objects);
+  });
+
+  it("can list objects with content when no size limit is set", async () => {
+    const projectId = 1337n;
+    await grpcClient.newProject(projectId, []);
+
+    const smallObjects = await buildTestFiles(32, 10, projectId);
+    const largeObjects = await buildTestFiles(64, 10, projectId, 10);
+
+    const receivedObjects: Objekt[] = [];
+    for await (const object of grpcClient.listObjects(projectId, "")) {
+      receivedObjects.push(object);
+    }
+
+    expect(receivedObjects.map((object) => ({ ...object, content: decodeContent(object.content) })).sort(byFileNumber)).toEqual(
+      smallObjects.concat(largeObjects)
+    );
+  });
+
+  it("doesn't list content for objects over limit with size limit set", async () => {
+    const projectId = 1337n;
+    await grpcClient.newProject(projectId, []);
+
+    const smallObjects = await buildTestFiles(32, 10, projectId);
+    const largeObjects = await buildTestFiles(64, 10, projectId, 10);
+
+    const receivedObjects: Objekt[] = [];
+    for await (const object of grpcClient.listObjects(projectId, "", { maxContentSendSize: 100n })) {
+      receivedObjects.push(object);
+    }
+
+    // large objects keep their path, mode and size but have no content at all (not even empty content)
+    expect(
+      receivedObjects
+        .map((object) => ({ ...object, content: object.content === undefined ? undefined : decodeContent(object.content) }))
+        .sort(byFileNumber)
+    ).toEqual([...smallObjects, ...largeObjects.map((object) => ({ ...object, content: undefined }))]);
   });
 
   it("can rollback a project", async () => {
